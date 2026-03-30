@@ -11,7 +11,7 @@ Remove claude-delegator from Claude Code.
 
 ## Confirm Removal
 
-**Question**: "Remove Codex/Gemini MCP configuration and plugin rules?"
+**Question**: "Remove Codex/Gemini/Copilot MCP configuration and plugin rules?"
 **Options**:
 - "Yes, uninstall"
 - "No, cancel"
@@ -23,6 +23,7 @@ If cancelled, stop here.
 ```bash
 claude mcp remove --scope user codex
 claude mcp remove --scope user gemini
+claude mcp remove --scope user copilot
 ```
 
 ## Remove Installed Rules

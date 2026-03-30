@@ -1,13 +1,13 @@
 ---
 name: setup
-description: Configure claude-delegator with Codex (GPT) or Gemini MCP servers
+description: Configure claude-delegator with Codex (GPT), Gemini, or Copilot MCP servers
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
 
 # Setup
 
-Configure GPT (via Codex) or Gemini as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
+Configure GPT (via Codex or Copilot) or Gemini as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
 
@@ -19,6 +19,11 @@ which codex 2>/dev/null && codex --version 2>&1 | head -1 || echo "CODEX_MISSING
 ### Gemini
 ```bash
 which gemini 2>/dev/null && gemini --version 2>&1 | head -1 || echo "GEMINI_MISSING"
+```
+
+### Copilot (GPT)
+```bash
+which copilot 2>/dev/null && copilot --version 2>&1 | head -1 || echo "COPILOT_MISSING"
 ```
 
 ### If Missing
@@ -35,6 +40,13 @@ Then authenticate: codex login
 Gemini CLI not found.
 Install with: npm install -g @google/gemini-cli
 Then authenticate: launch `gemini` once and complete sign-in (or set `GOOGLE_API_KEY`)
+```
+
+**Copilot Missing:**
+```
+Copilot CLI not found.
+Install with: npm install -g @github/copilot
+Then authenticate: copilot login
 ```
 
 **STOP here if no providers are installed.**
@@ -57,10 +69,17 @@ claude mcp remove gemini >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
 ```
 
+### Copilot (GPT)
+```bash
+# Idempotent: safe to rerun setup
+claude mcp remove copilot >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user copilot -- node ${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js
+```
+
 This registers the MCP servers at user scope (available across all projects).
 
-**Note:** To customise Codex behaviour, add CLI flags before `mcp-server`.
-- For Codex: `-p nosandbox`
+**Note (Codex only):** To customise Codex behaviour, add CLI flags before `mcp-server`, for example:
+- `codex -p nosandbox mcp-server`
 
 ## Step 3: Install Orchestration Rules
 
@@ -76,6 +95,7 @@ Run these checks and report results:
 # Check 1: CLI versions
 codex --version 2>&1 | head -1 || echo "Not installed"
 gemini --version 2>&1 | head -1 || echo "Not installed"
+copilot --version 2>&1 | head -1 || echo "Not installed"
 
 # Check 2: Codex MCP server
 CODEX_CONFIG=$(claude mcp get codex 2>/dev/null)
@@ -104,10 +124,28 @@ else
   echo "Gemini Bridge: SKIPPED (Gemini MCP not configured)"
 fi
 
-# Check 5: Rules installed (count files)
+# Check 5: Copilot MCP server
+COPILOT_CONFIG=$(claude mcp get copilot 2>/dev/null)
+if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
+  echo "Copilot: OK"
+else
+  echo "Copilot: NOT CONFIGURED"
+fi
+
+# Check 6: Copilot bridge health (initialize handshake)
+if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
+  BRIDGE_HEALTH=$(printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
+    | node "${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js" 2>/dev/null \
+    | grep -q '"id":"health"' && echo "Copilot Bridge: HEALTHY" || echo "Copilot Bridge: UNHEALTHY")
+  echo "$BRIDGE_HEALTH"
+else
+  echo "Copilot Bridge: SKIPPED (Copilot MCP not configured)"
+fi
+
+# Check 7: Rules installed (count files)
 ls ~/.claude/rules/delegator/*.md 2>/dev/null | wc -l
 
-# Check 6: Codex auth status
+# Check 8: Codex auth status
 codex login status 2>&1 | head -1 || echo "Codex: Run 'codex login'"
 ```
 
@@ -118,13 +156,16 @@ Display actual values from the checks above:
 ```
 claude-delegator Status
 ───────────────────────────────────────────────────
-Codex CLI:     [version from check 1]
-Gemini CLI:    [version from check 1]
-Codex MCP:     [status from check 2]
-Gemini MCP:    [status from check 3]
-Gemini Bridge: [status from check 4]
-Rules:         ✓ [N] files in ~/.claude/rules/delegator/
-Codex Auth:    [status from check 6]
+Codex CLI:      [version from check 1]
+Gemini CLI:     [version from check 1]
+Copilot CLI:    [version from check 1]
+Codex MCP:      [status from check 2]
+Gemini MCP:     [status from check 3]
+Gemini Bridge:  [status from check 4]
+Copilot MCP:    [status from check 5]
+Copilot Bridge: [status from check 6]
+Rules:          ✓ [N] files in ~/.claude/rules/delegator/
+Codex Auth:     [status from check 8]
 ───────────────────────────────────────────────────
 ```
 
@@ -140,6 +181,7 @@ Next steps:
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
    - Gemini: Run `gemini` once and complete the sign-in flow (or set `GOOGLE_API_KEY`)
+   - Copilot: Run `copilot login`
 
 Five experts available:
 
@@ -167,7 +209,7 @@ Five experts available:
 
 Every expert can advise (read-only) OR implement (write).
 Expert is auto-detected based on your request.
-Explicit: "Ask GPT to..." or "Ask Gemini to..."
+Explicit: "Ask GPT to...", "Ask Gemini to...", or "Ask Copilot to..."
 ```
 
 ## Step 7: Ask About Starring

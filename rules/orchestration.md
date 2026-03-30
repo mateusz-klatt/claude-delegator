@@ -1,15 +1,17 @@
 # Model Orchestration
 
-You have access to GPT experts via MCP tools. Use them strategically based on these guidelines.
+You have access to GPT, Gemini, and Copilot experts via MCP tools. Use them strategically based on these guidelines.
 
 ## Available Tools
 
 | Tool | Provider | Use For |
 |------|----------|---------|
-| `mcp__codex__codex` | GPT | Start a new expert session |
-| `mcp__codex__codex-reply` | GPT | Continue an existing session (multi-turn) |
+| `mcp__codex__codex` | GPT (Codex) | Start a new expert session |
+| `mcp__codex__codex-reply` | GPT (Codex) | Continue an existing session (multi-turn) |
 | `mcp__gemini__gemini` | Gemini | Start a new expert session |
 | `mcp__gemini__gemini-reply` | Gemini | Continue an existing session (multi-turn) |
+| `mcp__copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
+| `mcp__copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
 ## Available Experts
 
@@ -25,17 +27,17 @@ You have access to GPT experts via MCP tools. Use them strategically based on th
 
 ## Session Management
 
-Codex and Gemini support two delegation patterns:
+All three providers support two delegation patterns:
 
 ### Single-Shot (Default)
 
-Use `mcp__codex__codex` or `mcp__gemini__gemini` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
+Use `mcp__codex__codex`, `mcp__gemini__gemini`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
 
 **Best for:** Advisory reviews, one-off analysis, independent implementation tasks.
 
 ### Multi-Turn
 
-Both providers support multi-turn interactions. The initial call returns a `threadId` in its response. Pass this to the corresponding `-reply` tool for follow-up turns with full context preservation.
+All providers support multi-turn interactions. The initial call returns a `threadId` in its response. Pass this to the corresponding `-reply` tool for follow-up turns with full context preservation.
 
 ```typescript
 // Turn 1: Start session (Codex example)
@@ -57,7 +59,7 @@ mcp__codex__codex-reply({
 
 | Pattern | Tool | Context | Use When |
 |---------|------|---------|----------|
-| Single-shot | `codex` / `gemini` | Fresh each call | Advisory, one-off tasks |
+| Single-shot | `codex` / `gemini` / `copilot` | Fresh each call | Advisory, one-off tasks |
 | Multi-turn | `*-reply` | Preserved via threadId | Chained steps, retries |
 
 ---
@@ -81,14 +83,16 @@ Before handling any request, check if an expert would help:
 
 ## REACTIVE Delegation (Explicit User Request)
 
-When user explicitly requests GPT/Codex or Gemini:
+When user explicitly requests a specific provider:
 
 | User Says | Action |
 |-----------|--------|
 | "ask GPT", "consult GPT", "ask codex" | Identify task type → route to appropriate expert |
 | "ask Gemini", "consult Gemini", "ask gemini" | Identify task type → route to appropriate expert |
+| "ask Copilot", "consult Copilot", "ask copilot" | Identify task type → route to appropriate expert |
 | "ask GPT to review the architecture" | Delegate to Architect |
 | "have Gemini review this code" | Delegate to Code Reviewer |
+| "have Copilot review this code" | Delegate to Code Reviewer |
 | "GPT security review" | Delegate to Security Analyst |
 
 **Always honor explicit requests.**
@@ -148,6 +152,15 @@ mcp__gemini__gemini({
   sandbox: "[read-only or workspace-write based on mode]",
   cwd: "[current working directory]"
 })
+
+// OR Using Copilot (GPT)
+mcp__copilot__copilot({
+  prompt: "[your 7-section delegation prompt with FULL context]",
+  "developer-instructions": "[contents of the expert's prompt file]",
+  sandbox: "[read-only or workspace-write based on mode]",
+  effort: "xhigh",
+  cwd: "[current working directory]"
+})
 ```
 
 ### Step 7: Handle Response
@@ -175,11 +188,11 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 (Codex or Gemini)
-const result = mcp__codex__codex({ ... }) // or mcp__gemini__gemini
+// Attempt 1 (Codex, Gemini, or Copilot)
+const result = mcp__codex__codex({ ... }) // or mcp__gemini__gemini / mcp__copilot__copilot
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
-mcp__codex__codex-reply({ // or mcp__gemini__gemini-reply
+mcp__codex__codex-reply({ // or mcp__gemini__gemini-reply / mcp__copilot__copilot-reply
   threadId: result.threadId,
   prompt: `The previous implementation failed verification.
 Error: [exact error message]
@@ -271,7 +284,9 @@ Fix the issue — ensure validation runs after body parser.`
 
 ---
 
-## Codex Configuration Defaults
+## Provider Configuration Defaults
+
+### Codex
 
 Set global defaults in `~/.codex/config.toml` so you don't need to pass `sandbox_mode` and `approval_policy` on every call:
 
@@ -283,8 +298,6 @@ approval_policy = "on-failure"
 
 Per-call parameters override these defaults. For example, pass `sandbox: "read-only"` to override the global default for advisory-only tasks.
 
-### Project Trust Levels
-
 Codex also supports per-project trust configuration:
 
 ```toml
@@ -293,6 +306,10 @@ trust_level = "trusted"
 ```
 
 Trusted projects allow the expert full access within the sandbox policy.
+
+### Copilot
+
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter controls reasoning depth (`low`, `medium`, `high`, `xhigh`); default is `xhigh` for delegation tasks.
 
 ---
 

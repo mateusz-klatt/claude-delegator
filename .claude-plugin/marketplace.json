@@ -8,8 +8,8 @@
     {
       "name": "claude-delegator",
       "source": "./",
-      "description": "GPT expert subagents for Claude Code via Codex CLI. Five specialized experts: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, Security Analyst.",
-      "version": "1.0.0",
+      "description": "GPT and Gemini expert subagents for Claude Code via Codex, Gemini, or Copilot CLI. Five specialized experts: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, Security Analyst.",
+      "version": "1.2.0",
       "author": {
         "name": "Jarrod Watts",
         "url": "https://github.com/jarrodwatts"
@@ -23,6 +23,9 @@
         "codex",
         "gpt",
         "openai",
+        "gemini",
+        "copilot",
+        "github",
         "experts",
         "subagents",
         "orchestration"

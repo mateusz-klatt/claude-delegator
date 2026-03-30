@@ -1,6 +1,6 @@
 # Delegation Triggers
 
-This file defines when to delegate to GPT experts via Codex.
+This file defines when to delegate to experts via Codex, Gemini, or Copilot.
 
 ## IMPORTANT: Check These Triggers on EVERY Message
 
@@ -8,7 +8,7 @@ You MUST scan incoming messages for delegation triggers. This is NOT optional.
 
 **Behavior:**
 1. **PROACTIVE**: On every user message, check if semantic triggers match → delegate automatically
-2. **REACTIVE**: If user explicitly mentions GPT/Codex or Gemini → delegate immediately
+2. **REACTIVE**: If user explicitly mentions GPT/Codex, Gemini, or Copilot → delegate immediately
 
 When a trigger matches:
 1. Identify the appropriate expert
@@ -35,6 +35,7 @@ User explicitly requests delegation:
 |----------------|--------|
 | "ask GPT", "consult GPT" | Route based on context |
 | "ask Gemini", "ask gemini" | Route based on context |
+| "ask Copilot", "ask copilot" | Route based on context |
 | "review this architecture" | Architect |
 | "review this plan" | Plan Reviewer |
 | "analyze the scope" | Scope Analyst |
@@ -134,10 +135,11 @@ mcp__gemini__gemini({
   sandbox: "workspace-write"
 })
 
-// Security Analyst reviewing (advisory via Gemini)
-mcp__gemini__gemini({
+// Security Analyst reviewing (advisory via Copilot)
+mcp__copilot__copilot({
   prompt: "Review this auth flow for vulnerabilities",
-  sandbox: "read-only"
+  sandbox: "read-only",
+  effort: "xhigh"
 })
 
 // Security Analyst hardening (implementation via Codex)

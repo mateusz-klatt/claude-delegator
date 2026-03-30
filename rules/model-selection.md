@@ -1,17 +1,18 @@
 # Model Selection Guidelines
 
-GPT (Codex) and Gemini experts serve as specialized consultants for complex problems.
+GPT (Codex), Copilot (GPT/Claude), and Gemini experts serve as specialized consultants for complex problems.
 
 ## Provider Selection
 
 Before delegating, check which MCP tools are available in the current environment:
 
-1. **If both are available**: 
+1. **If multiple are available**:
    - Use **Gemini** for tasks requiring large context or multimodal analysis.
    - Use **GPT (Codex)** for tasks where the user explicitly asked for "GPT" or "Codex".
+   - Use **Copilot** for tasks where the user explicitly asked for "Copilot".
    - Default to **Gemini** for general reasoning.
 2. **If only one is available**: Use the available provider regardless of the task type.
-3. **If neither is available**: Do not delegate; inform the user that they need to run `/claude-delegator:setup`.
+3. **If none are available**: Do not delegate; inform the user that they need to run `/claude-delegator:setup`.
 
 ## Expert Directory
 
@@ -156,7 +157,29 @@ Every expert can operate in two modes:
 | `threadId` | string | **Required.** Thread ID from previous `gemini` call |
 | `prompt` | string | **Required.** Follow-up instruction |
 
-### Response Format (both providers)
+## Copilot Parameters Reference
+
+### `mcp__copilot__copilot` (Start Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
+| `sandbox` | `read-only`, `workspace-write` | Controls file access. |
+| `model` | e.g. `gpt-5.4` | Override the default model |
+| `effort` | `low`, `medium`, `high`, `xhigh` | Reasoning effort level. Default: `xhigh` |
+| `cwd` | path | Working directory for the task |
+
+### `mcp__copilot__copilot-reply` (Continue Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `threadId` | string | **Required.** Thread ID (session ID) from previous `copilot` call |
+| `prompt` | string | **Required.** Follow-up instruction |
+| `effort` | `low`, `medium`, `high`, `xhigh` | Reasoning effort level. Default: `xhigh` |
+
+
+### Response Format (all providers)
 
 | Field | Type | Description |
 |-------|------|-------------|
