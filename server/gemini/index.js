@@ -11,6 +11,7 @@ const { spawn, execSync } = require("node:child_process");
 
 const DEFAULT_MODEL = "gemini-3.1-pro-preview";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
+const IS_WINDOWS = process.platform === "win32";
 
 // --- MCP Protocol Helpers ---
 
@@ -48,7 +49,10 @@ async function runGemini(args, cwd) {
   return new Promise((resolve, reject) => {
     // Force JSON output for reliable parsing
     const geminiArgs = [...args, "-o", "json"];
-    const geminiProcess = spawn("gemini", geminiArgs, {
+    const isJsFile = GEMINI_BIN.toLowerCase().endsWith(".js");
+    const spawnCmd = isJsFile ? process.execPath : GEMINI_BIN;
+    const spawnArgs = isJsFile ? [GEMINI_BIN, ...geminiArgs] : geminiArgs;
+    const geminiProcess = spawn(spawnCmd, spawnArgs, {
       env: process.env,
       shell: false,
       cwd: cwd || process.cwd() // Ensure we run in the requested directory
@@ -269,9 +273,38 @@ process.stdin.on("data", async (chunk) => {
   }
 });
 
-// Startup Check
+// Startup: resolve gemini binary path
+// On Windows, npm shims are .cmd files that cannot be spawned with shell: false.
+// Prefer .exe → .cmd shim (parsed for real .js); .js is spawned via node.
+let GEMINI_BIN;
 try {
-  execSync("gemini --version", { stdio: "ignore" });
+  const cmd = IS_WINDOWS ? "where gemini" : "which gemini";
+  const candidates = execSync(cmd, { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+  let resolved = IS_WINDOWS
+    ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
+        || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
+        || candidates[0])
+    : candidates[0];
+  if (IS_WINDOWS && resolved.toLowerCase().endsWith(".cmd")) {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const shimContent = fs.readFileSync(resolved, "utf8");
+    const match = shimContent.match(/"([^"]+gemini[^"]*\.js)"/i) ||
+                  shimContent.match(/"([^"]+gemini[^"]*\.exe)"/i);
+    if (match) {
+      // Expand %dp0% (cmd-shell variable for .cmd's directory, with trailing slash)
+      const dp0 = path.dirname(resolved) + path.sep;
+      resolved = match[1].replace(/%dp0%\\?/gi, dp0);
+    } else {
+      console.error("Could not resolve gemini binary from .cmd shim.");
+      process.exit(1);
+    }
+  }
+  GEMINI_BIN = resolved;
+  const validateCmd = GEMINI_BIN.toLowerCase().endsWith(".js")
+    ? `"${process.execPath}" "${GEMINI_BIN}" --version`
+    : `"${GEMINI_BIN}" --version`;
+  execSync(validateCmd, { stdio: "pipe" });
 } catch (e) {
   console.error("Gemini CLI not found. Please install it first.");
   process.exit(1);

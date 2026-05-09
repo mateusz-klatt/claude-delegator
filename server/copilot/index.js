@@ -76,7 +76,10 @@ async function runCopilot(args, cwd, timeoutMs) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const copilotProcess = spawn(COPILOT_BIN, fullArgs, {
+    const isJsFile = COPILOT_BIN.toLowerCase().endsWith(".js");
+    const spawnCmd = isJsFile ? process.execPath : COPILOT_BIN;
+    const spawnArgs = isJsFile ? [COPILOT_BIN, ...fullArgs] : fullArgs;
+    const copilotProcess = spawn(spawnCmd, spawnArgs, {
       env: process.env,
       shell: false,
       cwd: cwd || process.cwd(),
@@ -385,21 +388,36 @@ process.stdin.on("data", async (chunk) => {
 let COPILOT_BIN;
 try {
   const cmd = IS_WINDOWS ? "where copilot" : "which copilot";
-  let resolved = execSync(cmd, { encoding: "utf8" }).trim().split(/\r?\n/)[0];
+  const candidates = execSync(cmd, { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+  // On Windows, prefer .exe (e.g. winget copilot.exe) over the npm .cmd shim — the
+  // shim points to a .js loader that triggers the "Open with..." dialog when spawned
+  // without shell. .cmd is the fallback.
+  let resolved = IS_WINDOWS
+    ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
+        || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
+        || candidates[0])
+    : candidates[0];
   if (IS_WINDOWS && resolved.toLowerCase().endsWith(".cmd")) {
     const fs = require("node:fs");
+    const path = require("node:path");
     const shimContent = fs.readFileSync(resolved, "utf8");
     const match = shimContent.match(/"([^"]+copilot[^"]*\.js)"/i) ||
                   shimContent.match(/"([^"]+copilot[^"]*\.exe)"/i);
     if (match) {
-      resolved = match[1];
+      // Expand %dp0% (cmd-shell variable for .cmd's directory, with trailing slash)
+      const dp0 = path.dirname(resolved) + path.sep;
+      resolved = match[1].replace(/%dp0%\\?/gi, dp0);
     } else {
       console.error("Could not resolve copilot binary from .cmd shim. Falling back to shell mode.");
       process.exit(1);
     }
   }
   COPILOT_BIN = resolved;
-  execSync(`"${COPILOT_BIN}" --version`, { stdio: "ignore" });
+  // stdio: "pipe" (not "ignore") — winget copilot.exe crashes with stdio:ignore.
+  const validateCmd = COPILOT_BIN.toLowerCase().endsWith(".js")
+    ? `"${process.execPath}" "${COPILOT_BIN}" --version`
+    : `"${COPILOT_BIN}" --version`;
+  execSync(validateCmd, { stdio: "pipe" });
 } catch (e) {
   console.error("Copilot CLI not found. Please install it first.");
   process.exit(1);
