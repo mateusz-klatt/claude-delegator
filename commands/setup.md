@@ -64,9 +64,18 @@ claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.5 -c model
 
 ### Gemini
 ```bash
-# Idempotent: safe to rerun setup
+# Idempotent: safe to rerun setup. Preserves GEMINI_API_KEY across re-runs by
+# reading it from the existing mcp config first, falling back to the current env.
+EXISTING_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GEMINI_API_KEY=\S+' | head -1 | cut -d= -f2-)
+EFFECTIVE_KEY="${EXISTING_KEY:-${GEMINI_API_KEY:-}}"
 claude mcp remove gemini >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
+if [ -n "$EFFECTIVE_KEY" ]; then
+  claude mcp add --transport stdio --scope user -e "GEMINI_API_KEY=$EFFECTIVE_KEY" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
+else
+  claude mcp add --transport stdio --scope user gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
+  echo "Note: GEMINI_API_KEY is not set in env or mcp config. Gemini calls will fail until you add it:"
+  echo "  claude mcp remove gemini && claude mcp add --transport stdio --scope user -e GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"
+fi
 ```
 
 ### Copilot (GPT)
@@ -106,10 +115,14 @@ else
   echo "Codex: NOT CONFIGURED"
 fi
 
-# Check 3: Gemini MCP server
+# Check 3: Gemini MCP server (and API key presence)
 GEMINI_CONFIG=$(claude mcp get gemini 2>/dev/null)
 if echo "$GEMINI_CONFIG" | grep -q "server/gemini/index.js"; then
-  echo "Gemini: OK"
+  if echo "$GEMINI_CONFIG" | grep -q "GEMINI_API_KEY="; then
+    echo "Gemini: OK (API key configured)"
+  else
+    echo "Gemini: OK (warning: GEMINI_API_KEY not configured)"
+  fi
 else
   echo "Gemini: NOT CONFIGURED"
 fi
@@ -180,7 +193,9 @@ Next steps:
 1. Restart Claude Code to load MCP server(s)
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
-   - Gemini: Run `gemini` once and complete the sign-in flow (or set `GOOGLE_API_KEY`)
+   - Gemini: The MCP bridge requires `GEMINI_API_KEY`. Either export it in your shell before running setup (so it gets saved into the mcp config), or add it manually:
+     `claude mcp remove gemini && claude mcp add --transport stdio --scope user -e GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js`
+     Re-running `/claude-delegator:setup` preserves the key once it is in the mcp config.
    - Copilot: Run `copilot login`
 
 Five experts available:
