@@ -70,11 +70,11 @@ EXISTING_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GEMINI_API_KEY=\S+'
 EFFECTIVE_KEY="${EXISTING_KEY:-${GEMINI_API_KEY:-}}"
 claude mcp remove gemini >/dev/null 2>&1 || true
 if [ -n "$EFFECTIVE_KEY" ]; then
-  claude mcp add --transport stdio --scope user -e "GEMINI_API_KEY=$EFFECTIVE_KEY" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
+  claude mcp add --transport stdio --scope user --env="GEMINI_API_KEY=$EFFECTIVE_KEY" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
 else
   claude mcp add --transport stdio --scope user gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
   echo "Note: GEMINI_API_KEY is not set in env or mcp config. Gemini calls will fail until you add it:"
-  echo "  claude mcp remove gemini && claude mcp add --transport stdio --scope user -e GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"
+  echo "  claude mcp remove gemini && claude mcp add --transport stdio --scope user --env=GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"
 fi
 ```
 
@@ -194,7 +194,7 @@ Next steps:
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
    - Gemini: The MCP bridge requires `GEMINI_API_KEY`. Either export it in your shell before running setup (so it gets saved into the mcp config), or add it manually:
-     `claude mcp remove gemini && claude mcp add --transport stdio --scope user -e GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js`
+     `claude mcp remove gemini && claude mcp add --transport stdio --scope user --env=GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js`
      Re-running `/claude-delegator:setup` preserves the key once it is in the mcp config.
    - Copilot: Run `copilot login`
 
