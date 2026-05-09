@@ -2,8 +2,10 @@
 
 GPT and Gemini expert subagents for Claude Code. Five specialists that can analyze AND implement—architecture, security, code review, and more.
 
-[![License](https://img.shields.io/github/license/jarrodwatts/claude-delegator?v=2)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/jarrodwatts/claude-delegator?v=2)](https://github.com/jarrodwatts/claude-delegator/stargazers)
+[![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
+
+> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Copilot CLI as a third provider, refreshed default models (Codex `gpt-5.5` xhigh, Gemini `gemini-3.1-pro-preview`), and metadata pointed at this fork.
 
 ![Claude Delegator in action](claude-delegator.png)
 
@@ -13,13 +15,15 @@ Inside a Claude Code instance, run the following commands:
 
 **Step 1: Add the marketplace**
 ```
-/plugin marketplace add jarrodwatts/claude-delegator
+/plugin marketplace add mateusz-klatt/claude-delegator
 ```
 
 **Step 2: Install the plugin**
 ```
-/plugin install claude-delegator
+/plugin install claude-delegator@jarrodwatts-claude-delegator
 ```
+
+> The marketplace registers under the historical label `jarrodwatts-claude-delegator` (preserved in `marketplace.json` for upstream attribution), even though the source repo is the fork.
 
 **Step 3: Run setup**
 ```
@@ -136,6 +140,14 @@ approval_policy = "on-failure"
 
 Per-call parameters override these defaults. See [Codex CLI docs](https://github.com/openai/codex) for all config options.
 
+### Supported Models
+
+| Provider | Default | Selectable models |
+|---|---|---|
+| **Codex** | `gpt-5.5` (with `model_reasoning_effort=xhigh`) | Any model your Codex CLI accepts via `-m`. Override per call with the `model` parameter. |
+| **Gemini** | `gemini-3.1-pro-preview` | Any model your Gemini CLI accepts via `-m`. Override per call with the `model` parameter. |
+| **Copilot** | `gpt-5.4` (effort: `xhigh`) | `gpt-5.4`, `gpt-5.3-codex`, `claude-sonnet-4.6`, `claude-sonnet-4.5`. Effort levels: `low`, `medium`, `high`, `xhigh` (claude family is capped at `high`). |
+
 ### Manual MCP Setup
 
 If `/setup` doesn't work, register the MCP server(s) manually:
@@ -216,7 +228,7 @@ You need at least one of the following providers configured:
 ## Development
 
 ```bash
-git clone https://github.com/jarrodwatts/claude-delegator
+git clone https://github.com/mateusz-klatt/claude-delegator
 cd claude-delegator
 
 # Test locally without reinstalling
@@ -241,4 +253,4 @@ MIT — see [LICENSE](LICENSE)
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=jarrodwatts/claude-delegator&type=Date&v=2)](https://star-history.com/#jarrodwatts/claude-delegator&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=mateusz-klatt/claude-delegator&type=Date&v=2)](https://star-history.com/#mateusz-klatt/claude-delegator&Date)
