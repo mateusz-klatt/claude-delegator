@@ -14,6 +14,8 @@ const DEFAULT_EFFORT = "xhigh";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh"]);
 const VALID_MODELS = new Set(["gpt-5.4", "gpt-5.3-codex", "claude-sonnet-4.6", "claude-sonnet-4.5"]);
+// Models that reject the --effort flag (Copilot CLI returns an error if it is sent).
+const MODELS_WITHOUT_EFFORT = new Set(["claude-sonnet-4.5"]);
 
 const MAX_EFFORT_BY_FAMILY = {
   "gpt": "xhigh",
@@ -277,7 +279,9 @@ const handlers = {
 
         const model = args.model || DEFAULT_MODEL;
         copilotArgs.push("--model", model);
-        copilotArgs.push("--effort", resolveEffort(model, args.effort));
+        if (!MODELS_WITHOUT_EFFORT.has(model)) {
+          copilotArgs.push("--effort", resolveEffort(model, args.effort));
+        }
 
         if (args.sandbox === "workspace-write") {
           copilotArgs.push("--allow-all-tools");
