@@ -9,7 +9,7 @@
 
 const { spawn, execSync } = require("node:child_process");
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.1-pro-preview";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 
 // --- MCP Protocol Helpers ---

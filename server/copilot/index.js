@@ -13,7 +13,7 @@ const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_EFFORT = "xhigh";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh"]);
-const VALID_MODELS = new Set(["gpt-5.4", "gpt-5.3-codex", "claude-opus-4.6", "claude-sonnet-4.6"]);
+const VALID_MODELS = new Set(["gpt-5.4", "gpt-5.3-codex", "claude-sonnet-4.6", "claude-sonnet-4.5"]);
 
 const MAX_EFFORT_BY_FAMILY = {
   "gpt": "xhigh",

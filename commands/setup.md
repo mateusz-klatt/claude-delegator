@@ -59,7 +59,7 @@ Register your preferred provider(s) as MCP servers using Claude Code's native co
 ```bash
 # Idempotent: safe to rerun setup
 claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.3-codex mcp-server
+claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.5 -c model_reasoning_effort=xhigh mcp-server
 ```
 
 ### Gemini

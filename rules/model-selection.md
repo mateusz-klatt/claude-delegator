@@ -124,7 +124,7 @@ Every expert can operate in two modes:
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write`, `danger-full-access` | Controls file access. Default from `~/.codex/config.toml` |
 | `approval-policy` | `untrusted`, `on-failure`, `on-request`, `never` | Controls shell command approval. Default from config |
-| `model` | e.g. `gpt-5.3-codex` | Override the default model |
+| `model` | e.g. `gpt-5.5` | Override the default model |
 | `config` | key-value object | Override `config.toml` settings per-call |
 | `cwd` | path | Working directory for the task |
 | `base-instructions` | string | Override default system instructions |
@@ -147,7 +147,7 @@ Every expert can operate in two modes:
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | Controls file access. |
-| `model` | e.g. `gemini-2.5-pro` | Override the default model |
+| `model` | e.g. `gemini-3.1-pro-preview` | Override the default model |
 | `cwd` | path | Working directory for the task |
 
 ### `mcp__gemini__gemini-reply` (Continue Session)

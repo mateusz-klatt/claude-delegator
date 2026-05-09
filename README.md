@@ -144,7 +144,7 @@ If `/setup` doesn't work, register the MCP server(s) manually:
 # For Codex (GPT)
 # Idempotent: safe to rerun
 claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.3-codex mcp-server
+claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.5 -c model_reasoning_effort=xhigh mcp-server
 
 # For Gemini
 # Idempotent: safe to rerun
