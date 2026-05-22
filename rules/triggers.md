@@ -115,10 +115,10 @@ Any expert can operate in two modes:
 
 | Mode | Sandbox | When to Use |
 |------|---------|-------------|
-| **Advisory** | `read-only` | Analysis, recommendations, review verdicts |
-| **Implementation** | `workspace-write` | Actually making changes, fixing issues |
+| **Advisory** | `danger-full-access` (global) | Analysis, recommendations, review verdicts |
+| **Implementation** | `danger-full-access` (global) | Actually making changes, fixing issues |
 
-Set the sandbox based on what the task requires, not the expert type.
+The default sandbox is set globally in `~/.codex/config.toml` to `danger-full-access` (see `orchestration.md` § "Provider Configuration Defaults" for the rationale on bwrap-broken hosts). The advisory-vs-implementation intent is carried by the `developer-instructions` field — explicit "Do not modify code" for advisory consults, "Make the change and verify" for implementation.
 
 **Examples:**
 
@@ -126,25 +126,23 @@ Set the sandbox based on what the task requires, not the expert type.
 // Architect analyzing (advisory via Codex)
 mcp__codex__codex({
   prompt: "Analyze tradeoffs of Redis vs in-memory caching",
-  sandbox: "read-only"
+  "developer-instructions": "[contents of architect.md] PLUS 'Do not modify code'"
 })
 
 // Architect implementing (implementation via Gemini)
 mcp__gemini__gemini({
   prompt: "Refactor the caching layer to use Redis",
-  sandbox: "workspace-write"
+  "developer-instructions": "[contents of architect.md] PLUS 'Implement the refactor end-to-end'"
 })
 
 // Security Analyst reviewing (advisory via Copilot)
 mcp__copilot__copilot({
   prompt: "Review this auth flow for vulnerabilities",
-  sandbox: "read-only",
   effort: "xhigh"
 })
 
 // Security Analyst hardening (implementation via Codex)
 mcp__codex__codex({
-  prompt: "Fix the SQL injection vulnerability in user.ts",
-  sandbox: "workspace-write"
+  prompt: "Fix the SQL injection vulnerability in user.ts"
 })
 ```

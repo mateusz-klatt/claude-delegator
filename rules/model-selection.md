@@ -30,10 +30,19 @@ Every expert can operate in two modes:
 
 | Mode | Sandbox | Approval | Use When |
 |------|---------|----------|----------|
-| **Advisory** | `read-only` | `on-request` | Analysis, recommendations, reviews |
-| **Implementation** | `workspace-write` | `on-failure` | Making changes, fixing issues |
+| **Advisory** | `danger-full-access` | `never` | Analysis, recommendations, reviews |
+| **Implementation** | `danger-full-access` | `never` | Making changes, fixing issues |
 
-**Key principle**: The mode is determined by the task, not the expert. An Architect can implement architectural changes. A Security Analyst can fix vulnerabilities.
+**Key principle**: The mode is determined by the task, not the expert. The advisory-vs-implementation intent is carried by `developer-instructions` (e.g., "Do not modify code" for advisory; "Make the change and verify" for implementation), NOT by the sandbox parameter.
+
+**Why both modes use `danger-full-access` + `never`**: Operator-level user preference. On hosts where `bwrap` sandboxing helper is broken (loopback / RTM_NEWADDR errors), the `read-only` and `workspace-write` sandbox modes silently escalate to permission-prompt fallback. `approval-policy=never` only auto-DECLINES the prompt; it doesn't grant the sandbox more room — so the expert can't read repo files and gives degraded "best guess from the inlined prompt" responses. Using `danger-full-access` bypasses bwrap entirely and gives the expert reliable shell access. Set globally in `~/.codex/config.toml`:
+
+```toml
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+```
+
+Per-call values still override the global. For advisory consults, prefer leaving them blank (inheriting global) and let the `developer-instructions` carry the "do not modify" intent.
 
 ## Expert Details
 

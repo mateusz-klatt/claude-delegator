@@ -137,11 +137,11 @@ Use the 7-section format from `rules/delegation-format.md`.
 
 ### Step 6: Call the Expert
 ```typescript
-// Using Codex (GPT)
+// Using Codex (GPT) — sandbox/approval inherit from ~/.codex/config.toml
+// (defaults: sandbox_mode="danger-full-access", approval_policy="never")
 mcp__codex__codex({
   prompt: "[your 7-section delegation prompt with FULL context]",
-  "developer-instructions": "[contents of the expert's prompt file]",
-  sandbox: "[read-only or workspace-write based on mode]",
+  "developer-instructions": "[contents of the expert's prompt file — also carries advisory-vs-implementation intent]",
   cwd: "[current working directory]"
 })
 
@@ -149,15 +149,13 @@ mcp__codex__codex({
 mcp__gemini__gemini({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
-  sandbox: "[read-only or workspace-write based on mode]",
   cwd: "[current working directory]"
 })
 
-// OR Using Copilot (GPT)
+// OR Using Copilot (GPT) — Copilot defaults to never-asking
 mcp__copilot__copilot({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
-  sandbox: "[read-only or workspace-write based on mode]",
   effort: "xhigh",
   cwd: "[current working directory]"
 })
@@ -238,8 +236,7 @@ mcp__codex__codex({
 EXPECTED OUTCOME: Clear recommendation with rationale.
 CONTEXT: [user's situation, full details]
 ...`,
-  "developer-instructions": "[contents of architect.md]",
-  sandbox: "read-only"
+  "developer-instructions": "[contents of architect.md] PLUS \"Do not modify code\""
 })
 ```
 
@@ -266,7 +263,6 @@ REQUIREMENTS:
 - Ensure validation runs after body parser
 - Report all files modified`,
   "developer-instructions": "[contents of code-reviewer.md]",
-  sandbox: "workspace-write",
   cwd: "/path/to/project"
 })
 ```
@@ -292,11 +288,13 @@ Set global defaults in `~/.codex/config.toml` so you don't need to pass `sandbox
 
 ```toml
 # ~/.codex/config.toml
-sandbox_mode = "workspace-write"
-approval_policy = "on-failure"
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
 ```
 
-Per-call parameters override these defaults. For example, pass `sandbox: "read-only"` to override the global default for advisory-only tasks.
+**Why these defaults**: on hosts where `bwrap` sandboxing is broken (loopback / RTM_NEWADDR), the more restrictive sandbox modes (`read-only`, `workspace-write`) silently escalate to permission-prompt fallbacks, and `approval_policy="never"` only auto-declines the prompt — leaving the expert unable to read the repo. `danger-full-access` bypasses bwrap entirely so the expert has reliable shell access; the advisory-vs-implementation intent is then carried by `developer-instructions` ("Do not modify code" vs "Implement the change"), not by the sandbox parameter.
+
+Per-call parameters still override these defaults if a specific consult genuinely needs stricter isolation.
 
 Codex also supports per-project trust configuration:
 
