@@ -116,10 +116,12 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
 ### Step 3: Determine Mode
-| Task Type | Mode | Sandbox |
-|-----------|------|---------|
-| Analysis, review, recommendations | Advisory | `read-only` |
-| Make changes, fix issues, implement | Implementation | `workspace-write` |
+| Task Type | Mode | Sandbox | Approval policy |
+|-----------|------|---------|-----------------|
+| Analysis, review, recommendations | Advisory | `danger-full-access` (global) | `never` (global) |
+| Make changes, fix issues, implement | Implementation | `danger-full-access` (global) | `never` (global) |
+
+**Both modes use `danger-full-access` + `never` from the operator's `~/.codex/config.toml`.** Do NOT pass `sandbox` or `approval-policy` parameters to the Codex/Gemini/Copilot tools unless you have a host-specific reason to override the global config. Passing an explicit lower-privilege sandbox value (`workspace-write` / `read-only`) on a host where `bwrap` is broken silently degrades the expert to permission-prompt-fallback and the expert ends up unable to read files. The advisory-vs-implementation intent is carried in the `developer-instructions` field (e.g. "Mode: advisory. Do not modify code." vs "Mode: implementation. Make the change and verify."), NOT by the sandbox parameter. See the full rationale at `model-selection.md § "Operating Modes" → "Why both modes use danger-full-access + never"`.
 
 ### Step 4: Notify User
 Always inform the user before delegating:
