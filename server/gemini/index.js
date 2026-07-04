@@ -184,7 +184,10 @@ const handlers = {
         }
 
         geminiArgs.push("-m", args.model || DEFAULT_MODEL);
-        if (args.sandbox === "workspace-write") geminiArgs.push("-s");
+        // workspace-write maps to --approval-mode yolo (auto-approve all tools), mirroring
+        // the Copilot bridge's --allow-all-tools. The previous -s (container sandbox) flag
+        // strips the shell tool entirely on hosts without a working sandbox runtime.
+        if (args.sandbox === "workspace-write") geminiArgs.push("--approval-mode", "yolo");
         let prompt = args.prompt;
         if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
         geminiArgs.push("-p", prompt);
@@ -204,7 +207,7 @@ const handlers = {
         }
 
         geminiArgs.push("--resume", threadId);
-        if (args.sandbox === "workspace-write") geminiArgs.push("-s");
+        if (args.sandbox === "workspace-write") geminiArgs.push("--approval-mode", "yolo");
         geminiArgs.push("-p", args.prompt);
       } else {
         if (shouldRespond) sendError(id, -32601, `Tool not found: ${name}`);
