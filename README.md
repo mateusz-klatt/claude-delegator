@@ -5,7 +5,7 @@ GPT and Gemini expert subagents for Claude Code. Five specialists that can analy
 [![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
 
-> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Copilot CLI as a third provider, refreshed default models (Codex `gpt-5.5` xhigh, Gemini `gemini-3.1-pro-preview`), and metadata pointed at this fork.
+> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Copilot CLI as a third provider, refreshed default models (Codex `gpt-5.5` xhigh, Gemini `gemini-3.1-pro-preview`, Copilot `gpt-5.4` with a modernized allowlist incl. Gemini and Claude Sonnet 5), and metadata pointed at this fork.
 
 ![Claude Delegator in action](claude-delegator.png)
 
@@ -146,7 +146,7 @@ Per-call parameters override these defaults. See [Codex CLI docs](https://github
 |---|---|---|
 | **Codex** | `gpt-5.5` (with `model_reasoning_effort=xhigh`) | Any model your Codex CLI accepts via `-m`. Override per call with the `model` parameter. |
 | **Gemini** | `gemini-3.1-pro-preview` | Any model your Gemini CLI accepts via `-m`. Override per call with the `model` parameter. |
-| **Copilot** | `gpt-5.4` (effort: `xhigh`) | `gpt-5.4`, `gpt-5.3-codex`, `claude-sonnet-4.6`, `claude-sonnet-4.5`. Effort levels: `low`, `medium`, `high`, `xhigh` (claude family is capped at `high`). |
+| **Copilot** | `gpt-5.4` (effort: `xhigh`) | `gpt-5.4`, `gpt-5.5`, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `claude-sonnet-5`. Effort levels: `low`, `medium`, `high`, `xhigh` (all listed models accept `xhigh`). |
 
 ### Manual MCP Setup
 

@@ -13,19 +13,34 @@ const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_EFFORT = "xhigh";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh"]);
-const VALID_MODELS = new Set(["gpt-5.4", "gpt-5.3-codex", "claude-sonnet-4.6", "claude-sonnet-4.5"]);
+const VALID_MODELS = new Set([
+  "gpt-5.4",
+  "gpt-5.5",
+  "gpt-5.3-codex",
+  "gemini-3.1-pro-preview",
+  "gemini-3.5-flash",
+  "claude-sonnet-5"
+]);
 // Models that reject the --effort flag (Copilot CLI returns an error if it is sent).
-const MODELS_WITHOUT_EFFORT = new Set(["claude-sonnet-4.5"]);
+// Empty as of the current roster — every VALID_MODELS entry was verified to accept
+// --effort xhigh against Copilot CLI. Kept as a mechanism for future models.
+const MODELS_WITHOUT_EFFORT = new Set([]);
 
 const MAX_EFFORT_BY_FAMILY = {
   "gpt": "xhigh",
-  "claude": "high"
+  "claude": "xhigh",
+  "gemini": "xhigh"
 };
+
+function modelFamily(model) {
+  if (model.startsWith("claude")) return "claude";
+  if (model.startsWith("gemini")) return "gemini";
+  return "gpt";
+}
 
 function resolveEffort(model, requestedEffort) {
   const effort = requestedEffort || DEFAULT_EFFORT;
-  const family = model.startsWith("claude") ? "claude" : "gpt";
-  const maxEffort = MAX_EFFORT_BY_FAMILY[family];
+  const maxEffort = MAX_EFFORT_BY_FAMILY[modelFamily(model)];
   const ranking = ["low", "medium", "high", "xhigh"];
   const maxIdx = ranking.indexOf(maxEffort);
   const reqIdx = ranking.indexOf(effort);
@@ -308,7 +323,12 @@ const handlers = {
         }
 
         copilotArgs.push("--resume", threadId);
-        copilotArgs.push("--effort", resolveEffort(DEFAULT_MODEL, args.effort));
+        // The resumed session already carries its model and effort; only forward
+        // --effort when the caller explicitly asks for a change. (Resolving against
+        // DEFAULT_MODEL here would apply the wrong family cap to non-default threads.)
+        if (args.effort !== undefined) {
+          copilotArgs.push("--effort", args.effort);
+        }
         if (args.sandbox === "workspace-write") {
           copilotArgs.push("--allow-all-tools");
         } else {

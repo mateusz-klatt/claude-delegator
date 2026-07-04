@@ -156,8 +156,10 @@ Per-call values still override the global. For advisory consults, prefer leaving
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | Controls file access. |
-| `model` | e.g. `gemini-3.1-pro-preview` | Override the default model |
+| `model` | e.g. `gemini-3.1-pro-preview` | Override the default model (free-form string, any model the Gemini CLI accepts) |
 | `cwd` | path | Working directory for the task |
+
+**Model guidance**: The default `gemini-3.1-pro-preview` is the right choice for expert work (architecture, security, plan review). Pass `model: "gemini-3.5-flash"` for quick, low-stakes checks where speed matters more than depth.
 
 ### `mcp__gemini__gemini-reply` (Continue Session)
 
@@ -175,9 +177,11 @@ Per-call values still override the global. For advisory consults, prefer leaving
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | Controls file access. |
-| `model` | e.g. `gpt-5.4` | Override the default model |
+| `model` | one of: `gpt-5.4` (default), `gpt-5.5`, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `claude-sonnet-5` | Override the default model (hard allowlist — other values are rejected) |
 | `effort` | `low`, `medium`, `high`, `xhigh` | Reasoning effort level. Default: `xhigh` |
 | `cwd` | path | Working directory for the task |
+
+**Model guidance**: `gpt-5.4` (default) for everyday expert work; `gpt-5.3-codex` for fast code-focused tasks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5` only when Codex is unavailable (Codex already runs `gpt-5.5` natively); Gemini models only when the Gemini MCP server is unavailable (it covers them natively).
 
 ### `mcp__copilot__copilot-reply` (Continue Session)
 
@@ -185,7 +189,7 @@ Per-call values still override the global. For advisory consults, prefer leaving
 |-----------|--------|-------|
 | `threadId` | string | **Required.** Thread ID (session ID) from previous `copilot` call |
 | `prompt` | string | **Required.** Follow-up instruction |
-| `effort` | `low`, `medium`, `high`, `xhigh` | Reasoning effort level. Default: `xhigh` |
+| `effort` | `low`, `medium`, `high`, `xhigh` | Optional. Omit to keep the resumed session's effort; pass a value only to change it |
 
 
 ### Response Format (all providers)

@@ -31,8 +31,8 @@
       "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
     },
     "copilot": {
-      "name": "Copilot (GPT & Claude)",
-      "description": "GitHub Copilot GPT and Claude models via Copilot CLI - specialized expert subagents",
+      "name": "Copilot (GPT, Claude & Gemini)",
+      "description": "GitHub Copilot GPT, Claude, and Gemini models via Copilot CLI - specialized expert subagents",
       "cli": "copilot",
       "install": "npm install -g @github/copilot",
       "auth": "copilot login",
