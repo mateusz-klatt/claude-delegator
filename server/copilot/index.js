@@ -9,11 +9,14 @@
 
 const { spawn, execSync } = require("node:child_process");
 
-const DEFAULT_MODEL = "gpt-5.4";
-const DEFAULT_EFFORT = "xhigh";
+const DEFAULT_MODEL = "gpt-5.6-sol";
+const DEFAULT_EFFORT = "max";
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
-const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh"]);
+const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh", "max"]);
 const VALID_MODELS = new Set([
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
   "gpt-5.4",
   "gpt-5.5",
   "gpt-5.3-codex",
@@ -25,6 +28,14 @@ const VALID_MODELS = new Set([
 // Empty as of the current roster — every VALID_MODELS entry was verified to accept
 // --effort xhigh against Copilot CLI. Kept as a mechanism for future models.
 const MODELS_WITHOUT_EFFORT = new Set([]);
+
+// Per-model effort ceilings override the family default. Only gpt-5.6-sol is
+// verified to accept --effort max (2026-07-10); every other model stays capped
+// at xhigh until individually verified — the CLI parser takes "max" for any
+// model, but backend support is per-model.
+const MAX_EFFORT_BY_MODEL = {
+  "gpt-5.6-sol": "max"
+};
 
 const MAX_EFFORT_BY_FAMILY = {
   "gpt": "xhigh",
@@ -40,8 +51,8 @@ function modelFamily(model) {
 
 function resolveEffort(model, requestedEffort) {
   const effort = requestedEffort || DEFAULT_EFFORT;
-  const maxEffort = MAX_EFFORT_BY_FAMILY[modelFamily(model)];
-  const ranking = ["low", "medium", "high", "xhigh"];
+  const maxEffort = MAX_EFFORT_BY_MODEL[model] || MAX_EFFORT_BY_FAMILY[modelFamily(model)];
+  const ranking = ["low", "medium", "high", "xhigh", "max"];
   const maxIdx = ranking.indexOf(maxEffort);
   const reqIdx = ranking.indexOf(effort);
   if (reqIdx > maxIdx) return maxEffort;
@@ -218,7 +229,7 @@ const handlers = {
               sandbox: { type: "string", enum: ["read-only", "workspace-write"], default: "read-only" },
               cwd: { type: "string", description: "Current working directory" },
               model: { type: "string", enum: [...VALID_MODELS], default: DEFAULT_MODEL, description: "Model to use" },
-              effort: { type: "string", enum: ["low", "medium", "high", "xhigh"], default: DEFAULT_EFFORT, description: "Reasoning effort level" },
+              effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
               timeout: { type: "number", description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" }
             },
             required: ["prompt"]
@@ -234,7 +245,7 @@ const handlers = {
               prompt: { type: "string", description: "Follow-up prompt" },
               sandbox: { type: "string", enum: ["read-only", "workspace-write"], default: "read-only" },
               cwd: { type: "string" },
-              effort: { type: "string", enum: ["low", "medium", "high", "xhigh"], default: DEFAULT_EFFORT, description: "Reasoning effort level" },
+              effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
               timeout: { type: "number", description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" }
             },
             required: ["threadId", "prompt"]
@@ -268,7 +279,7 @@ const handlers = {
       return;
     }
     if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'effort' must be 'low', 'medium', 'high', or 'xhigh'");
+      if (shouldRespond) sendError(id, -32602, "Invalid params: 'effort' must be 'low', 'medium', 'high', 'xhigh', or 'max'");
       return;
     }
     if (args.timeout !== undefined && (typeof args.timeout !== "number" || !Number.isFinite(args.timeout) || args.timeout < 0)) {

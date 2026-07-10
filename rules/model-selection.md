@@ -133,7 +133,7 @@ Per-call values still override the global. For advisory consults, prefer leaving
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write`, `danger-full-access` | Controls file access. Default from `~/.codex/config.toml` |
 | `approval-policy` | `untrusted`, `on-failure`, `on-request`, `never` | Controls shell command approval. Default from config |
-| `model` | e.g. `gpt-5.5` | Override the default model |
+| `model` | e.g. `gpt-5.6-sol` | Override the default model |
 | `config` | key-value object | Override `config.toml` settings per-call |
 | `cwd` | path | Working directory for the task |
 | `base-instructions` | string | Override default system instructions |
@@ -177,11 +177,11 @@ Per-call values still override the global. For advisory consults, prefer leaving
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | Controls file access. |
-| `model` | one of: `gpt-5.4` (default), `gpt-5.5`, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `claude-sonnet-5` | Override the default model (hard allowlist — other values are rejected) |
-| `effort` | `low`, `medium`, `high`, `xhigh` | Reasoning effort level. Default: `xhigh` |
+| `model` | one of: `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.4`, `gpt-5.5`, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `claude-sonnet-5` | Override the default model (hard allowlist — other values are rejected) |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Reasoning effort level. Default: `max` (`max` is verified on `gpt-5.6-sol` only; other models are capped to `xhigh` server-side) |
 | `cwd` | path | Working directory for the task |
 
-**Model guidance**: `gpt-5.4` (default) for everyday expert work; `gpt-5.3-codex` for fast code-focused tasks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5` only when Codex is unavailable (Codex already runs `gpt-5.5` natively); Gemini models only when the Gemini MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; `gpt-5.6-terra` for everyday tasks; `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`); Gemini models only when the Gemini MCP server is unavailable (it covers them natively).
 
 ### `mcp__copilot__copilot-reply` (Continue Session)
 
@@ -189,7 +189,7 @@ Per-call values still override the global. For advisory consults, prefer leaving
 |-----------|--------|-------|
 | `threadId` | string | **Required.** Thread ID (session ID) from previous `copilot` call |
 | `prompt` | string | **Required.** Follow-up instruction |
-| `effort` | `low`, `medium`, `high`, `xhigh` | Optional. Omit to keep the resumed session's effort; pass a value only to change it |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Optional. Omit to keep the resumed session's effort; pass a value only to change it |
 
 
 ### Response Format (all providers)

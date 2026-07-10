@@ -158,7 +158,7 @@ mcp__gemini__gemini({
 mcp__copilot__copilot({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
-  effort: "xhigh",
+  effort: "max",
   cwd: "[current working directory]"
 })
 ```
@@ -309,7 +309,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter controls reasoning depth (`low`, `medium`, `high`, `xhigh`); default is `xhigh` for delegation tasks.
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter controls reasoning depth (`low`, `medium`, `high`, `xhigh`, `max`); default is `max` for delegation tasks (`max` is verified on `gpt-5.6-sol` only — other models are capped to `xhigh` server-side).
 
 ---
 

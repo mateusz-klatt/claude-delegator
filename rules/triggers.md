@@ -138,7 +138,7 @@ mcp__gemini__gemini({
 // Security Analyst reviewing (advisory via Copilot)
 mcp__copilot__copilot({
   prompt: "Review this auth flow for vulnerabilities",
-  effort: "xhigh"
+  effort: "max"
 })
 
 // Security Analyst hardening (implementation via Codex)
