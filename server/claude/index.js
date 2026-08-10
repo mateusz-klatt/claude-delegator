@@ -21,6 +21,7 @@ const {
   validateCoordination
 } = require("../shared/coordination.js");
 const { buildCalleeEnv } = require("../shared/environment.js");
+const { resultText } = require("../shared/result.js");
 
 const CLAUDE_CATALOG = modelCatalog.providers.claude;
 const DEFAULT_MODEL = CLAUDE_CATALOG.defaultModel;
@@ -433,7 +434,7 @@ const handlers = {
         ? "\n\n(Warning: no session ID returned — multi-turn reply will not be available)"
         : "";
       sendResponse(id, {
-        content: [{ type: "text", text: response + warning }],
+        content: [{ type: "text", text: resultText(threadId, response + warning) }],
         threadId,
         ...coordinationMetadata(coordination)
       });

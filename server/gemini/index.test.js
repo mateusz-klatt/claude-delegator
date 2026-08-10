@@ -317,7 +317,7 @@ test("constructs read-only plan plus explicit and default workspace-write yolo c
       coordination
     }
   });
-  assert.equal(start.result.content[0].text, "start result via plan");
+  assert.deepEqual(JSON.parse(start.result.content[0].text), { threadId: start.result.threadId, content: "start result via plan" });
   assert.equal(start.result.threadId, "session-start-plan");
   assert.equal(start.result.coordinationRequested, true);
   assert.deepEqual(
@@ -333,7 +333,7 @@ test("constructs read-only plan plus explicit and default workspace-write yolo c
       sandbox: "workspace-write"
     }
   });
-  assert.equal(reply.result.content[0].text, "reply result via yolo");
+  assert.deepEqual(JSON.parse(reply.result.content[0].text), { threadId: reply.result.threadId, content: "reply result via yolo" });
   assert.equal(reply.result.threadId, "session-reply-yolo");
   assert.equal(reply.result.coordinationRequested, false);
 
@@ -344,7 +344,7 @@ test("constructs read-only plan plus explicit and default workspace-write yolo c
       model: "gemini-experimental-account-model"
     }
   });
-  assert.equal(defaultWorkspaceWrite.result.content[0].text, "start result via yolo");
+  assert.deepEqual(JSON.parse(defaultWorkspaceWrite.result.content[0].text), { threadId: defaultWorkspaceWrite.result.threadId, content: "start result via yolo" });
   assert.equal(defaultWorkspaceWrite.result.threadId, "session-start-yolo");
 
   const [planCall, replyCall, defaultCall] = readCalls(server.capturePath);
@@ -388,7 +388,7 @@ test("uses explicit fallback output and reports CLI and parse failures", async (
     name: "gemini",
     arguments: { prompt: "NO_RESPONSE" }
   });
-  assert.equal(empty.result.content[0].text, "(No output)");
+  assert.deepEqual(JSON.parse(empty.result.content[0].text), { threadId: empty.result.threadId, content: "(No output)" });
   assert.equal(empty.result.threadId, "session-empty");
 
   const cliFailure = await server.request("tools/call", {

@@ -17,6 +17,7 @@ const {
   validateCoordination
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
+const { resultText } = require("../shared/result");
 
 const COPILOT_CATALOG = modelCatalog.providers.copilot;
 const DEFAULT_MODEL = COPILOT_CATALOG.defaultModel;
@@ -407,14 +408,14 @@ const handlers = {
       if (threadId === "unknown" && name === "copilot") {
         if (shouldRespond) {
           sendResponse(id, {
-            content: [{ type: "text", text: response + "\n\n(Warning: no session ID returned — multi-turn reply will not be available)" }],
+            content: [{ type: "text", text: resultText(threadId, response + "\n\n(Warning: no session ID returned — multi-turn reply will not be available)") }],
             threadId: threadId,
             ...coordinationMetadata(coordination)
           });
         }
       } else if (shouldRespond) {
         sendResponse(id, {
-          content: [{ type: "text", text: response }],
+          content: [{ type: "text", text: resultText(threadId, response) }],
           threadId: threadId,
           ...coordinationMetadata(coordination)
         });

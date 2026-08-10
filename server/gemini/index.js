@@ -17,6 +17,7 @@ const {
   validateCoordination
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
+const { resultText } = require("../shared/result");
 
 const GEMINI_CATALOG = modelCatalog.providers.gemini;
 const DEFAULT_MODEL = GEMINI_CATALOG.defaultModel;
@@ -346,11 +347,12 @@ const handlers = {
         abortController.signal
       );
 
-      // Return metadata (threadId) at the top level for orchestration rules,
-      // and standard content array for the UI.
+      // Embed threadId in the text envelope (clients strip sibling result
+      // fields before the model sees them) and keep it at the top level for
+      // orchestration rules and probes.
       if (shouldRespond) {
         sendResponse(id, {
-          content: [{ type: "text", text: response }],
+          content: [{ type: "text", text: resultText(threadId, response) }],
           threadId: threadId,
           ...coordinationMetadata(coordination)
         });

@@ -326,7 +326,7 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
     }
   });
 
-  assert.equal(response.result.content[0].text, "start result");
+  assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "start result" });
   assert.equal(response.result.threadId, "thread-start");
   assert.equal(response.result.coordinationRequested, true);
   assert.deepEqual(Object.keys(response.result).sort(), ["content", "coordinationRequested", "threadId"]);
@@ -421,7 +421,7 @@ test("uses verified model effort floors and ceilings and caps max conservatively
       sandbox: "read-only"
     }
   });
-  assert.equal(reply.result.content[0].text, "reply result");
+  assert.deepEqual(JSON.parse(reply.result.content[0].text), { threadId: reply.result.threadId, content: "reply result" });
   assert.equal(reply.result.threadId, "thread-reply");
 
   const [startCall, flooredStartCall, replyCall] = readCalls(server.capturePath);
@@ -648,7 +648,8 @@ test("warns when a successful start does not return a session id", async () => {
   });
 
   assert.equal(response.result.threadId, "unknown");
-  assert.match(response.result.content[0].text, /^start result/);
-  assert.match(response.result.content[0].text, /Warning: no session ID returned/);
+  const warned = JSON.parse(response.result.content[0].text);
+  assert.match(warned.content, /^start result/);
+  assert.match(warned.content, /Warning: no session ID returned/);
   await server.close();
 });

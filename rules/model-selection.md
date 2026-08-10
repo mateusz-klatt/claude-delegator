@@ -214,6 +214,8 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `threadId` | string | Session ID for multi-turn follow-ups |
 | `content` | MCP content array | Text is normally in `content[0].text`; native Codex also returns `structuredContent.content` |
 
+The bridges (Claude, Gemini, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
+
 ## When NOT to Delegate
 
 - Simple questions you can answer

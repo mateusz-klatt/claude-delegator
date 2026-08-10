@@ -289,7 +289,7 @@ test("starts Claude with read-only mode, coordination, and a clean nested marker
     }
   });
 
-  assert.equal(response.result.content[0].text, "start result");
+  assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "start result" });
   assert.equal(response.result.threadId, "session-start");
   assert.equal(response.result.coordinationRequested, true);
   assert.equal(Object.hasOwn(response.result, "delegationId"), false);
@@ -332,7 +332,7 @@ test("resumes the explicit session and retains it when Claude omits session_id",
     }
   });
 
-  assert.equal(response.result.content[0].text, "reply result");
+  assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "reply result" });
   assert.equal(response.result.threadId, "session-original");
   assert.equal(response.result.coordinationRequested, true);
   assert.equal(Object.hasOwn(response.result, "agentMailThreadId"), false);
@@ -437,7 +437,7 @@ test("stamps the delegation depth into the Claude child environment", async () =
     arguments: { prompt: "first-level delegation" }
   });
 
-  assert.equal(response.result.content[0].text, "start result");
+  assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "start result" });
   const [call] = readCalls(server.capturePath);
   assert.equal(call.delegationDepth, "1");
   await server.close();
@@ -474,7 +474,7 @@ test("a non-positive or malformed depth marker does not block first-level delega
       name: "claude",
       arguments: { prompt: `depth marker ${JSON.stringify(depth)}` }
     });
-    assert.equal(response.result.content[0].text, "start result");
+    assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "start result" });
     assert.equal(readCalls(server.capturePath)[0].delegationDepth, "1");
     await server.close();
   }
