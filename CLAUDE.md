@@ -73,7 +73,7 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 | `config/providers.json` | Provider metadata | Discovery/documentation metadata |
 | `config/model-catalog.json` | Empirically discovered per-CLI model roster | Consumed by bridges and documentation |
 | `server/claude/index.js` | Claude MCP bridge | Wraps Claude CLI as `claude` / `claude-reply` |
-| `server/codex/launcher.js` | Transparent Codex launcher | Preserves native MCP stdio while scrubbing caller identity and credentials |
+| `server/codex/launcher.js` | Transparent Codex launcher | Preserves native MCP/model handling while isolating env and supervising the process tree |
 | `server/gemini/index.js` | Gemini MCP bridge | Wraps Gemini CLI as MCP server |
 | `server/copilot/index.js` | Copilot MCP bridge | Wraps Copilot CLI as MCP server |
 

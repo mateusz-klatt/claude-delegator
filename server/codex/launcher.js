@@ -5,7 +5,8 @@
  *
  * Keeps Codex's native `codex` / `codex-reply` protocol unchanged while
  * removing the caller's Agent Mail identity and credentials at the process
- * boundary. Works with native executables and npm-style shims on Windows.
+ * boundary. It does not select or restrict models. Works with native
+ * executables and npm-style shims on Windows.
  */
 
 "use strict";

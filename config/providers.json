@@ -12,14 +12,6 @@
         "command": "node",
         "args": ["${CLAUDE_PLUGIN_ROOT}/server/claude/index.js"]
       },
-      "nativeMcpAlternative": {
-        "type": "stdio",
-        "command": "claude",
-        "args": ["mcp", "serve"],
-        "enabledTools": ["Agent"],
-        "defaultEnabled": false,
-        "standaloneProbe": "handshake succeeds, but Agent cannot launch without agent types supplied by a parent Claude session"
-      },
       "orchestrators": ["codex", "other-mcp-clients"],
       "selfTarget": false,
       "modelCatalogKey": "claude",

@@ -193,9 +193,7 @@ tool_timeout_sec = 3600
 
 See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for Claude, Codex, Gemini, and Copilot entries. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 
-The example also contains a disabled diagnostic `claude_native` entry for `claude mcp serve`. Its MCP handshake succeeds and exposes `Agent`, but a standalone live probe could not launch an agent because agent types are supplied by a parent Claude session. It is therefore not a self-contained Claude model target. The supported external target is the uniform `claude` / `claude-reply` bridge.
-
-The Codex entry disables its own nested `mcp_servers.codex` target, preventing an MCP-started Codex session from recursively targeting itself. `server/codex/launcher.js` is not a protocol bridge: it forwards stdio unchanged and only establishes the same cross-platform environment boundary used by the custom bridges.
+The Codex entry disables its own nested `mcp_servers.codex` target, preventing an MCP-started Codex session from recursively targeting itself. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent.
 
 ### Tests and CI
 

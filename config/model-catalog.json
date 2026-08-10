@@ -29,13 +29,7 @@
           "operations": ["start", "reply"],
           "result": "success"
         }
-      ],
-      "nativeMcpServe": {
-        "handshake": "success",
-        "tools": ["Agent", "SendMessage"],
-        "standaloneAgentCall": "failed-no-agent-types",
-        "scope": "Diagnostic only: claude mcp serve exposes Claude's internal tool host, not a self-contained model endpoint."
-      }
+      ]
     },
     "codex": {
       "cliVersion": "0.147.0-alpha.6.5",
