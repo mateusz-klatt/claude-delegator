@@ -101,7 +101,8 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
 6. **Copilot effort levels** - Copilot supports `--effort` from `none` through `max`; delegation defaults to `max` only for `gpt-5.6-sol` and caps other models at `xhigh`
 7. **Copilot disk persistence** - Unlike Codex (in-memory), Copilot persists session state to `~/.copilot/session-state/`, surviving process restarts
 8. **Conditional Agent Mail progress** - Callers pass `{projectKey, callerAgentName, mailTopic?, checkpointIntervalSeconds?}` without credentials or caller-provided mail thread ids. The callee replies to its own first checkpoint so Agent Mail maintains the thread internally; the provider session `threadId` remains separate. A target uses MCP Agent Mail only when already available and otherwise completes normally.
-9. **No Claude self-target** - Configure the Claude bridge in Codex or another external orchestrator, not in Claude Code itself.
+9. **No Claude self-target** - Configure the Claude bridge in Codex or another external orchestrator, not in Claude Code itself. Native subagents already cover in-family fan-out, and a self-target adds no model diversity while drawing on the same Anthropic quota.
+10. **Delegation-depth guard** - The Claude bridge stamps `CLAUDE_DELEGATOR_CLAUDE_DEPTH` into every child environment and refuses both tools when it is already set. Because the variable survives each further hop, this closes indirect loops too — a delegated Claude that calls Codex cannot have that Codex call back into another Claude. The guard is defence in depth, not a security boundary: under `workspace-write` the child can still invoke any CLI itself.
 
 ## When NOT to Delegate
 

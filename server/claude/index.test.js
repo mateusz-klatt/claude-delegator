@@ -42,7 +42,8 @@ fs.appendFileSync(process.env.CLAUDE_STUB_CAPTURE, JSON.stringify({
   agentName: process.env.AGENT_NAME,
   agentMailAgent: process.env.AGENT_MAIL_AGENT,
   agentMailToken: process.env.AGENT_MAIL_REGISTRATION_TOKEN,
-  providerAuth: process.env.ANTHROPIC_API_KEY
+  providerAuth: process.env.ANTHROPIC_API_KEY,
+  delegationDepth: process.env.CLAUDE_DELEGATOR_CLAUDE_DEPTH
 }) + "\\n");
 if (process.env.CLAUDE_STUB_HANG === "1") {
   setInterval(() => {}, 1_000);
@@ -427,4 +428,54 @@ test("terminating the MCP server also terminates an active Claude process group"
   await server.terminate();
   await pending;
   await waitFor(() => !processIsAlive(pid), "Claude child survived MCP server termination");
+});
+
+test("stamps the delegation depth into the Claude child environment", async () => {
+  const server = startServer();
+  const response = await server.request("tools/call", {
+    name: "claude",
+    arguments: { prompt: "first-level delegation" }
+  });
+
+  assert.equal(response.result.content[0].text, "start result");
+  const [call] = readCalls(server.capturePath);
+  assert.equal(call.delegationDepth, "1");
+  await server.close();
+});
+
+test("refuses both tools when already running inside a delegated Claude session", async () => {
+  const server = startServer({ CLAUDE_DELEGATOR_CLAUDE_DEPTH: "1" });
+
+  const started = await server.request("tools/call", {
+    name: "claude",
+    arguments: { prompt: "second-level delegation" }
+  });
+  assert.equal(started.error.code, -32603);
+  assert.match(started.error.message, /Refusing to delegate/);
+  assert.match(started.error.message, /CLAUDE_DELEGATOR_CLAUDE_DEPTH=1/);
+
+  const resumed = await server.request("tools/call", {
+    name: "claude-reply",
+    arguments: { threadId: "session-start", prompt: "second-level reply" }
+  });
+  assert.equal(resumed.error.code, -32603);
+
+  assert.equal(fs.existsSync(server.capturePath), false);
+
+  const listed = await server.request("tools/list");
+  assert.deepEqual(listed.result.tools.map((tool) => tool.name), ["claude", "claude-reply"]);
+  await server.close();
+});
+
+test("a non-positive or malformed depth marker does not block first-level delegation", async () => {
+  for (const depth of ["0", "", "not-a-number"]) {
+    const server = startServer({ CLAUDE_DELEGATOR_CLAUDE_DEPTH: depth });
+    const response = await server.request("tools/call", {
+      name: "claude",
+      arguments: { prompt: `depth marker ${JSON.stringify(depth)}` }
+    });
+    assert.equal(response.result.content[0].text, "start result");
+    assert.equal(readCalls(server.capturePath)[0].delegationDepth, "1");
+    await server.close();
+  }
 });

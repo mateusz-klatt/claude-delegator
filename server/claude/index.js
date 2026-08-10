@@ -35,6 +35,12 @@ const VALID_MODELS = new Set([
 const VALID_EFFORT_VALUES = new Set(CLAUDE_CATALOG.efforts);
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const IS_WINDOWS = process.platform === "win32";
+// Delegation-loop guard. The bridge stamps this into every child environment, and the
+// variable survives each further hop (see server/shared/environment.js), so a Claude
+// session reached through this bridge cannot reach another one — directly, or via a
+// round trip through Codex or any other provider that is configured to call back here.
+const DEPTH_ENV_VAR = "CLAUDE_DELEGATOR_CLAUDE_DEPTH";
+const MAX_DELEGATION_DEPTH = 1;
 const activeChildren = new Set();
 const activeRequests = new Map();
 let shuttingDown = false;
@@ -63,6 +69,11 @@ function hasRequestId(request) {
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function currentDelegationDepth(source = process.env) {
+  const parsed = Number.parseInt(String(source[DEPTH_ENV_VAR] ?? "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function validateCommonArguments(args) {
@@ -158,6 +169,7 @@ async function runClaude(args, cwd, timeoutMs, fallbackThreadId, abortSignal) {
   const effectiveTimeout = Math.max(requestedTimeout, MIN_TIMEOUT_MS);
   const invocation = commandForBinary(CLAUDE_BIN, args);
   const childEnv = buildCalleeEnv(process.env);
+  childEnv[DEPTH_ENV_VAR] = String(currentDelegationDepth() + 1);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -333,6 +345,14 @@ const handlers = {
     }
     if (!isObject(args)) {
       if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
+      return;
+    }
+
+    if ((name === "claude" || name === "claude-reply") &&
+        currentDelegationDepth() >= MAX_DELEGATION_DEPTH) {
+      if (shouldRespond) {
+        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Claude session (${DEPTH_ENV_VAR}=${currentDelegationDepth()}). Complete the work here instead of delegating further.`);
+      }
       return;
     }
 
