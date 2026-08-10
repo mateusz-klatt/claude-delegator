@@ -25,7 +25,9 @@ afterEach(() => {
 });
 
 function createCopilotStub() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-bridge-test-"));
+  // macOS reports /var for a directory the kernel resolves to /private/var, so the cwd
+  // the child reports back would never equal the path we asked for. Resolve it up front.
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "copilot-bridge-test-")));
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "calls.jsonl");
   const scriptPath = path.join(directory, "copilot-stub.js");

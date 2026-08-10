@@ -22,7 +22,9 @@ afterEach(() => {
 });
 
 function createGeminiStub() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-bridge-test-"));
+  // macOS reports /var for a directory the kernel resolves to /private/var, so the cwd
+  // the child reports back would never equal the path we asked for. Resolve it up front.
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gemini-bridge-test-")));
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "calls.jsonl");
   const workspacePath = path.join(directory, "workspace");
