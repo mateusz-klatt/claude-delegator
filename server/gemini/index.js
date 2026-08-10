@@ -28,6 +28,7 @@ const MODEL_EXAMPLES = [
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const DEFAULT_TIMEOUT_MS = 900_000;
 const MAX_TIMEOUT_MS = 3_600_000;
+const TRUST_WORKSPACE_ENV = "GEMINI_CLI_TRUST_WORKSPACE";
 const IS_WINDOWS = process.platform === "win32";
 const activeChildren = new Set();
 const activeRequests = new Map();
@@ -37,6 +38,22 @@ let GEMINI_BIN;
 function sandboxArguments(sandbox) {
   if (sandbox === "read-only") return ["--approval-mode", "plan"];
   return ["--approval-mode", "yolo"];
+}
+
+/**
+ * Gemini gates every run behind folder trust. In an untrusted directory it overrides
+ * the requested approval mode back to "default" and then fails, because a headless
+ * child has nobody to answer the interactive trust prompt — which defeats both bridge
+ * sandbox modes, not just workspace-write. Default the escape hatch Gemini documents
+ * for automated environments to on; an operator who wants the gate back sets the
+ * variable explicitly in the MCP server env and that value is preserved.
+ */
+function buildGeminiEnv(source = process.env) {
+  const env = buildCalleeEnv(source);
+  if (env[TRUST_WORKSPACE_ENV] === undefined) {
+    env[TRUST_WORKSPACE_ENV] = "true";
+  }
+  return env;
 }
 
 // --- MCP Protocol Helpers ---
@@ -127,7 +144,7 @@ async function runGemini(args, cwd, timeoutMs, abortSignal) {
     const spawnCmd = isJsFile ? process.execPath : GEMINI_BIN;
     const spawnArgs = isJsFile ? [GEMINI_BIN, ...geminiArgs] : geminiArgs;
     const geminiProcess = spawn(spawnCmd, spawnArgs, {
-      env: buildCalleeEnv(process.env),
+      env: buildGeminiEnv(process.env),
       shell: false,
       cwd: cwd || process.cwd(),
       detached: !IS_WINDOWS
@@ -499,6 +516,7 @@ try {
 }
 
 module.exports = {
+  buildGeminiEnv,
   handlers,
   sandboxArguments,
   toolDefinitions: GEMINI_TOOLS
