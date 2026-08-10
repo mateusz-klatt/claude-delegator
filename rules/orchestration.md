@@ -1,11 +1,13 @@
 # Model Orchestration
 
-You have access to GPT, Gemini, and Copilot experts via MCP tools. Use them strategically based on these guidelines.
+You have access to Claude, GPT, Gemini, and Copilot experts via MCP tools. Use them strategically based on these guidelines. The Claude target is for external orchestrators such as Codex; Claude Code must not target itself.
 
 ## Available Tools
 
 | Tool | Provider | Use For |
 |------|----------|---------|
+| `mcp__claude__claude` | Claude | Start a new Claude expert session from an external orchestrator |
+| `mcp__claude__claude-reply` | Claude | Continue an existing Claude session (multi-turn) |
 | `mcp__codex__codex` | GPT (Codex) | Start a new expert session |
 | `mcp__codex__codex-reply` | GPT (Codex) | Continue an existing session (multi-turn) |
 | `mcp__gemini__gemini` | Gemini | Start a new expert session |
@@ -27,17 +29,17 @@ You have access to GPT, Gemini, and Copilot experts via MCP tools. Use them stra
 
 ## Session Management
 
-All three providers support two delegation patterns:
+All four provider targets support both single-shot and multi-turn delegation.
 
 ### Single-Shot (Default)
 
-Use `mcp__codex__codex`, `mcp__gemini__gemini`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
+Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__gemini__gemini`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
 
 **Best for:** Advisory reviews, one-off analysis, independent implementation tasks.
 
 ### Multi-Turn
 
-All providers support multi-turn interactions. The initial call returns a `threadId` in its response. Pass this to the corresponding `-reply` tool for follow-up turns with full context preservation.
+All four targets return a `threadId` from the initial call. Pass it to the corresponding `-reply` tool for follow-up turns with full context preservation.
 
 ```typescript
 // Turn 1: Start session (Codex example)
@@ -59,7 +61,7 @@ mcp__codex__codex-reply({
 
 | Pattern | Tool | Context | Use When |
 |---------|------|---------|----------|
-| Single-shot | `codex` / `gemini` / `copilot` | Fresh each call | Advisory, one-off tasks |
+| Single-shot | `claude` / `codex` / `gemini` / `copilot` | Fresh each call | Advisory, one-off tasks |
 | Multi-turn | `*-reply` | Preserved via threadId | Chained steps, retries |
 
 ---
@@ -87,6 +89,7 @@ When user explicitly requests a specific provider:
 
 | User Says | Action |
 |-----------|--------|
+| "ask Claude", "consult Claude" | From a non-Claude orchestrator, identify task type → route to the appropriate expert prompt |
 | "ask GPT", "consult GPT", "ask codex" | Identify task type → route to appropriate expert |
 | "ask Gemini", "consult Gemini", "ask gemini" | Identify task type → route to appropriate expert |
 | "ask Copilot", "consult Copilot", "ask copilot" | Identify task type → route to appropriate expert |
@@ -115,13 +118,17 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-### Step 3: Determine Mode
-| Task Type | Mode | Sandbox | Approval policy |
-|-----------|------|---------|-----------------|
-| Analysis, review, recommendations | Advisory | `danger-full-access` (global) | `never` (global) |
-| Make changes, fix issues, implement | Implementation | `danger-full-access` (global) | `never` (global) |
+For the Claude, Gemini, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
 
-**Both modes use `danger-full-access` + `never` from the operator's `~/.codex/config.toml`.** Do NOT pass `sandbox` or `approval-policy` parameters to the Codex/Gemini/Copilot tools unless you have a host-specific reason to override the global config. Passing an explicit lower-privilege sandbox value (`workspace-write` / `read-only`) on a host where `bwrap` is broken silently degrades the expert to permission-prompt-fallback and the expert ends up unable to read files. The advisory-vs-implementation intent is carried in the `developer-instructions` field (e.g. "Mode: advisory. Do not modify code." vs "Mode: implementation. Make the change and verify."), NOT by the sandbox parameter. See the full rationale at `model-selection.md § "Operating Modes" → "Why both modes use danger-full-access + never"`.
+### Step 3: Determine Mode
+| Provider | Advisory | Implementation |
+|----------|----------|----------------|
+| Codex native MCP | Default `danger-full-access` + `never`; state "do not modify" in developer instructions | Same non-interactive policy; edits are authorized in developer instructions |
+| Claude bridge | Default `workspace-write` (permission bypass); state "do not modify" | Default `workspace-write` |
+| Gemini bridge | Default `workspace-write` (`yolo`); state "do not modify" | Default `workspace-write` |
+| Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify" | Default `workspace-write` |
+
+The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. The explicit bridge `read-only` option is available for provider-enforced denial; it may also prevent Agent Mail writes, which must fail open.
 
 ### Step 4: Notify User
 Always inform the user before delegating:
@@ -137,13 +144,41 @@ Use the 7-section format from `rules/delegation-format.md`.
 - Relevant code/files
 - Any previous attempts and their results (for retries)
 
+#### Optional Agent Mail coordination
+
+When MCP Agent Mail is already available to the caller, resolve the caller's bound identity and pass a coordination envelope containing:
+
+```json
+{
+  "projectKey": "/owner/project",
+  "callerAgentName": "codex-wsl-home-1",
+  "mailTopic": "optional-topic-tag",
+  "checkpointIntervalSeconds": 300
+}
+```
+
+`callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
+
+The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `gemini`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+
+For the Claude, Gemini, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
+
 ### Step 6: Call the Expert
 ```typescript
 // Using Codex (GPT) — sandbox/approval inherit from ~/.codex/config.toml
-// (defaults: sandbox_mode="danger-full-access", approval_policy="never")
 mcp__codex__codex({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file — also carries advisory-vs-implementation intent]",
+  cwd: "[current working directory]"
+})
+
+// OR using Claude from a non-Claude orchestrator
+mcp__claude__claude({
+  prompt: "[your 7-section delegation prompt with FULL context]",
+  "developer-instructions": "[contents of the expert prompt]",
+  coordination: { /* optional caller envelope */ },
+  model: "claude-opus-5",
+  sandbox: "workspace-write",
   cwd: "[current working directory]"
 })
 
@@ -151,6 +186,8 @@ mcp__codex__codex({
 mcp__gemini__gemini({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
+  coordination: { /* optional caller envelope */ },
+  sandbox: "workspace-write",
   cwd: "[current working directory]"
 })
 
@@ -158,6 +195,8 @@ mcp__gemini__gemini({
 mcp__copilot__copilot({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
+  coordination: { /* optional caller envelope */ },
+  sandbox: "workspace-write",
   effort: "max",
   cwd: "[current working directory]"
 })
@@ -188,17 +227,21 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 (Codex, Gemini, or Copilot)
-const result = mcp__codex__codex({ ... }) // or mcp__gemini__gemini / mcp__copilot__copilot
+// Attempt 1 (Claude, Codex, Gemini, or Copilot)
+const result = mcp__codex__codex({ ... }) // or mcp__claude__claude / mcp__gemini__gemini / mcp__copilot__copilot
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
-mcp__codex__codex-reply({ // or mcp__gemini__gemini-reply / mcp__copilot__copilot-reply
+mcp__codex__codex-reply({ // or mcp__claude__claude-reply / mcp__gemini__gemini-reply / mcp__copilot__copilot-reply
   threadId: result.threadId,
   prompt: `The previous implementation failed verification.
 Error: [exact error message]
 Fix the issue and verify the change works.`
 })
 ```
+
+Keep the original caller envelope and Agent Mail reply chain across retries. Do not redirect progress to an intermediary runner. Continue using the provider's independently returned `threadId` only for `*-reply` calls.
+
+For bridge reply calls, repeat the original `sandbox` when permission continuity matters. Claude and Copilot only change effort on reply when an explicit override is supplied.
 
 ### Retry with Single-Shot (Fallback)
 
@@ -227,7 +270,7 @@ User: "What are the tradeoffs of Redis vs in-memory caching?"
 
 **Step 2**: Read `${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-**Step 3**: Advisory mode (question, not implementation) → `read-only`
+**Step 3**: Advisory mode (question, not implementation) → keep non-interactive full access, but inject an explicit "do not modify" instruction
 
 **Step 4**: "Delegating to Architect: Analyze caching tradeoffs"
 
@@ -286,17 +329,16 @@ Fix the issue — ensure validation runs after body parser.`
 
 ### Codex
 
-Set global defaults in `~/.codex/config.toml` so you don't need to pass `sandbox_mode` and `approval_policy` on every call:
+The native Codex MCP server is started through the transparent environment-boundary launcher with explicit unattended settings:
 
-```toml
-# ~/.codex/config.toml
-sandbox_mode = "danger-full-access"
-approval_policy = "never"
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js \
+  -m gpt-5.6-sol -s danger-full-access -a never \
+  -c model_reasoning_effort=ultra \
+  -c mcp_servers.codex.enabled=false mcp-server
 ```
 
-**Why these defaults**: on hosts where `bwrap` sandboxing is broken (loopback / RTM_NEWADDR), the more restrictive sandbox modes (`read-only`, `workspace-write`) silently escalate to permission-prompt fallbacks, and `approval_policy="never"` only auto-declines the prompt — leaving the expert unable to read the repo. `danger-full-access` bypasses bwrap entirely so the expert has reliable shell access; the advisory-vs-implementation intent is then carried by `developer-instructions` ("Do not modify code" vs "Implement the change"), not by the sandbox parameter.
-
-Per-call parameters still override these defaults if a specific consult genuinely needs stricter isolation.
+This prevents an inner approval prompt from suspending the parent CLI. The launcher preserves native MCP stdio while scrubbing the caller's Agent Mail identity and credentials. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use a restrictive per-call override only when refusal is preferable to autonomous completion.
 
 Codex also supports per-project trust configuration:
 
@@ -309,7 +351,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter controls reasoning depth (`low`, `medium`, `high`, `xhigh`, `max`); default is `max` for delegation tasks (`max` is verified on `gpt-5.6-sol` only — other models are capped to `xhigh` server-side).
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; default is `max` for delegation tasks (`max` is verified on `gpt-5.6-sol` only — other models are capped to `xhigh` server-side).
 
 ---
 

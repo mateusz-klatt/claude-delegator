@@ -8,53 +8,43 @@
  */
 
 const { spawn, execSync } = require("node:child_process");
+const { version: PACKAGE_VERSION } = require("../../package.json");
+const modelCatalog = require("../../config/model-catalog.json");
+const {
+  appendCoordinationInstructions,
+  coordinationMetadata,
+  coordinationSchema,
+  validateCoordination
+} = require("../shared/coordination");
+const { buildCalleeEnv } = require("../shared/environment");
 
-const DEFAULT_MODEL = "gpt-5.6-sol";
-const DEFAULT_EFFORT = "max";
+const COPILOT_CATALOG = modelCatalog.providers.copilot;
+const DEFAULT_MODEL = COPILOT_CATALOG.defaultModel;
+const DEFAULT_EFFORT = COPILOT_CATALOG.defaultEffort;
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
-const VALID_EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh", "max"]);
-const VALID_MODELS = new Set([
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-5.6-luna",
-  "gpt-5.4",
-  "gpt-5.5",
-  "gpt-5.3-codex",
-  "gemini-3.1-pro-preview",
-  "gemini-3.5-flash",
-  "claude-sonnet-5"
-]);
-// Models that reject the --effort flag (Copilot CLI returns an error if it is sent).
-// Empty as of the current roster — every VALID_MODELS entry was verified to accept
-// --effort xhigh against Copilot CLI. Kept as a mechanism for future models.
+const VALID_EFFORT_VALUES = new Set(COPILOT_CATALOG.efforts);
+const VALID_MODELS = new Set(COPILOT_CATALOG.models);
+// Models known to reject the --effort flag entirely. The CLI advertises effort
+// values globally, but individual model/value combinations can still be rejected
+// by the backend; the catalog records only combinations actually called live.
 const MODELS_WITHOUT_EFFORT = new Set([]);
 
-// Per-model effort ceilings override the family default. Only gpt-5.6-sol is
-// verified to accept --effort max (2026-07-10); every other model stays capped
+// Per-model effort ceilings override the catalog fallback. Only gpt-5.6-sol is
+// verified to accept --effort max (2026-08-10); every other model stays capped
 // at xhigh until individually verified — the CLI parser takes "max" for any
-// model, but backend support is per-model.
-const MAX_EFFORT_BY_MODEL = {
-  "gpt-5.6-sol": "max"
-};
-
-const MAX_EFFORT_BY_FAMILY = {
-  "gpt": "xhigh",
-  "claude": "xhigh",
-  "gemini": "xhigh"
-};
-
-function modelFamily(model) {
-  if (model.startsWith("claude")) return "claude";
-  if (model.startsWith("gemini")) return "gemini";
-  return "gpt";
-}
+// model, but backend support is per-model. The fallback is conservative rather
+// than a claim that every listed model was called live at xhigh.
+const MAX_EFFORT_BY_MODEL = COPILOT_CATALOG.maxEffortByModel;
+const MIN_EFFORT_BY_MODEL = COPILOT_CATALOG.minEffortByModel || {};
+const FALLBACK_MAX_EFFORT = COPILOT_CATALOG.fallbackMaxEffort;
 
 function resolveEffort(model, requestedEffort) {
   const effort = requestedEffort || DEFAULT_EFFORT;
-  const maxEffort = MAX_EFFORT_BY_MODEL[model] || MAX_EFFORT_BY_FAMILY[modelFamily(model)];
-  const ranking = ["low", "medium", "high", "xhigh", "max"];
-  const maxIdx = ranking.indexOf(maxEffort);
-  const reqIdx = ranking.indexOf(effort);
+  const maxEffort = MAX_EFFORT_BY_MODEL[model] || FALLBACK_MAX_EFFORT;
+  const minEffort = MIN_EFFORT_BY_MODEL[model];
+  const maxIdx = COPILOT_CATALOG.efforts.indexOf(maxEffort);
+  const reqIdx = COPILOT_CATALOG.efforts.indexOf(effort);
+  if (minEffort && reqIdx < COPILOT_CATALOG.efforts.indexOf(minEffort)) return minEffort;
   if (reqIdx > maxIdx) return maxEffort;
   return effort;
 }
@@ -95,8 +85,21 @@ const DEFAULT_TIMEOUT_MS = 900_000; // 15 minutes
 const MAX_TIMEOUT_MS = 3_600_000; // 1 hour hard cap
 
 const IS_WINDOWS = process.platform === "win32";
+const activeChildren = new Set();
+const activeRequests = new Map();
+let COPILOT_BIN;
+let shuttingDown = false;
 
-async function runCopilot(args, cwd, timeoutMs) {
+function killProcessTree(child, signal) {
+  if (!child.pid) return;
+  if (IS_WINDOWS) {
+    try { execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: "ignore" }); } catch (_error) { /* already dead */ }
+    return;
+  }
+  try { process.kill(-child.pid, signal); } catch (_error) { /* already dead */ }
+}
+
+async function runCopilot(args, cwd, timeoutMs, abortSignal) {
   const t = typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS;
   const effectiveTimeout = Math.min(Math.max(t, 10_000), MAX_TIMEOUT_MS);
   // Always force JSON output, non-interactive mode (no stdin approval prompts)
@@ -108,38 +111,61 @@ async function runCopilot(args, cwd, timeoutMs) {
     const spawnCmd = isJsFile ? process.execPath : COPILOT_BIN;
     const spawnArgs = isJsFile ? [COPILOT_BIN, ...fullArgs] : fullArgs;
     const copilotProcess = spawn(spawnCmd, spawnArgs, {
-      env: process.env,
+      env: buildCalleeEnv(process.env),
       shell: false,
       cwd: cwd || process.cwd(),
       detached: !IS_WINDOWS
     });
+    activeChildren.add(copilotProcess);
 
-    function killTree(signal) {
-      if (IS_WINDOWS) {
-        try { execSync(`taskkill /F /T /PID ${copilotProcess.pid}`, { stdio: "ignore" }); } catch (e) { /* already dead */ }
-      } else {
-        try { process.kill(-copilotProcess.pid, signal); } catch (e) { /* already dead */ }
-      }
+    function removeAbortListener() {
+      if (abortSignal) abortSignal.removeEventListener("abort", handleAbort);
+    }
+
+    function forceKillLater() {
+      const killTimer = setTimeout(() => {
+        if (!exited) killProcessTree(copilotProcess, "SIGKILL");
+      }, 3000);
+      killTimer.unref();
+    }
+
+    function handleAbort() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      killProcessTree(copilotProcess, "SIGTERM");
+      forceKillLater();
+      reject(new Error("Copilot CLI call cancelled"));
     }
 
     let exited = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        killTree("SIGTERM");
-        const killTimer = setTimeout(() => { if (!exited) killTree("SIGKILL"); }, 3000);
-        killTimer.unref();
+        removeAbortListener();
+        killProcessTree(copilotProcess, "SIGTERM");
+        forceKillLater();
         reject(new Error(`Copilot CLI timed out after ${effectiveTimeout / 1000}s`));
       }
     }, effectiveTimeout);
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        handleAbort();
+      } else {
+        abortSignal.addEventListener("abort", handleAbort, { once: true });
+      }
+    }
 
     let stdout = "";
     let stderr = "";
 
     copilotProcess.on("error", (err) => {
+      activeChildren.delete(copilotProcess);
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      removeAbortListener();
       if (err.code === "ENOENT") {
         const cwdNote = cwd ? ` (cwd: ${cwd})` : "";
         reject(new Error(`Copilot CLI not found or invalid working directory${cwdNote}. Install with 'npm install -g @github/copilot'.`));
@@ -152,10 +178,12 @@ async function runCopilot(args, cwd, timeoutMs) {
     copilotProcess.stderr.on("data", (data) => { stderr += data.toString(); });
 
     copilotProcess.on("close", (code) => {
+      activeChildren.delete(copilotProcess);
       exited = true;
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      removeAbortListener();
 
       if (code !== 0) {
         return reject(new Error(stderr.trim() || `Copilot exited with code ${code}`));
@@ -204,54 +232,60 @@ async function runCopilot(args, cwd, timeoutMs) {
 
 // --- Request Handlers ---
 
+const COPILOT_TOOLS = [
+  {
+    name: "copilot",
+    description: "Start a new Copilot expert session (GPT, Claude, Gemini, and other Copilot models)",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        prompt: { type: "string", description: "The delegation prompt" },
+        "developer-instructions": { type: "string", description: "Expert system instructions" },
+        sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only denies shell/write/edit; workspace-write enables all tools for unattended execution" },
+        cwd: { type: "string", description: "Current working directory" },
+        model: { type: "string", enum: COPILOT_CATALOG.models, default: DEFAULT_MODEL, description: "Model to use" },
+        effort: { type: "string", enum: COPILOT_CATALOG.efforts, default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
+        timeout: { type: "number", minimum: 10_000, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        coordination: coordinationSchema
+      },
+      required: ["prompt"]
+    }
+  },
+  {
+    name: "copilot-reply",
+    description: "Continue an existing Copilot session",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        threadId: { type: "string", description: "Session ID returned by a previous copilot call" },
+        prompt: { type: "string", description: "Follow-up prompt" },
+        sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only denies shell/write/edit; workspace-write enables all tools for unattended execution" },
+        cwd: { type: "string" },
+        effort: { type: "string", enum: COPILOT_CATALOG.efforts, description: "Optional reasoning effort override (max is capped to xhigh because a resumed session's model is unknown)" },
+        timeout: { type: "number", minimum: 10_000, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        coordination: coordinationSchema
+      },
+      required: ["threadId", "prompt"]
+    }
+  }
+];
+
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
     sendResponse(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-copilot", version: "1.2.0" }
+      serverInfo: { name: "claude-delegator-copilot", version: PACKAGE_VERSION }
     });
   },
 
   "tools/list": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
     sendResponse(id, {
-      tools: [
-        {
-          name: "copilot",
-          description: "Start a new Copilot expert session (GPT or Claude models via GitHub Copilot)",
-          inputSchema: {
-            type: "object",
-            properties: {
-              prompt: { type: "string", description: "The delegation prompt" },
-              "developer-instructions": { type: "string", description: "Expert system instructions" },
-              sandbox: { type: "string", enum: ["read-only", "workspace-write"], default: "read-only" },
-              cwd: { type: "string", description: "Current working directory" },
-              model: { type: "string", enum: [...VALID_MODELS], default: DEFAULT_MODEL, description: "Model to use" },
-              effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
-              timeout: { type: "number", description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" }
-            },
-            required: ["prompt"]
-          }
-        },
-        {
-          name: "copilot-reply",
-          description: "Continue an existing Copilot session",
-          inputSchema: {
-            type: "object",
-            properties: {
-              threadId: { type: "string", description: "Session ID returned by a previous copilot call" },
-              prompt: { type: "string", description: "Follow-up prompt" },
-              sandbox: { type: "string", enum: ["read-only", "workspace-write"], default: "read-only" },
-              cwd: { type: "string" },
-              effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
-              timeout: { type: "number", description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" }
-            },
-            required: ["threadId", "prompt"]
-          }
-        }
-      ]
+      tools: COPILOT_TOOLS
     });
   },
 
@@ -279,11 +313,19 @@ const handlers = {
       return;
     }
     if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'effort' must be 'low', 'medium', 'high', 'xhigh', or 'max'");
+      if (shouldRespond) sendError(id, -32602, `Invalid params: 'effort' must be one of: ${COPILOT_CATALOG.efforts.join(", ")}`);
       return;
     }
-    if (args.timeout !== undefined && (typeof args.timeout !== "number" || !Number.isFinite(args.timeout) || args.timeout < 0)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'timeout' must be a non-negative number (milliseconds)");
+    if (args.timeout !== undefined && (typeof args.timeout !== "number" || !Number.isFinite(args.timeout) || args.timeout < 10_000 || args.timeout > MAX_TIMEOUT_MS)) {
+      if (shouldRespond) sendError(id, -32602, `Invalid params: 'timeout' must be from 10000 to ${MAX_TIMEOUT_MS} milliseconds`);
+      return;
+    }
+
+    let coordination;
+    try {
+      coordination = validateCoordination(args.coordination);
+    } catch (e) {
+      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
       return;
     }
 
@@ -309,14 +351,15 @@ const handlers = {
           copilotArgs.push("--effort", resolveEffort(model, args.effort));
         }
 
-        if (args.sandbox === "workspace-write") {
-          copilotArgs.push("--allow-all-tools");
-        } else {
+        if (args.sandbox === "read-only") {
           copilotArgs.push("--deny-tool=shell", "--deny-tool=write", "--deny-tool=edit");
+        } else {
+          copilotArgs.push("--allow-all-tools");
         }
 
         let prompt = args.prompt;
         if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
+        prompt = appendCoordinationInstructions(prompt, coordination);
         copilotArgs.push("-p", prompt);
       } else if (name === "copilot-reply") {
         if (!isNonEmptyString(args.threadId)) {
@@ -335,54 +378,70 @@ const handlers = {
 
         copilotArgs.push("--resume", threadId);
         // The resumed session already carries its model and effort; only forward
-        // --effort when the caller explicitly asks for a change. (Resolving against
-        // DEFAULT_MODEL here would apply the wrong family cap to non-default threads.)
+        // --effort when the caller explicitly asks for a change. The model is not
+        // known at resume time, so max uses the conservative catalog fallback cap.
         if (args.effort !== undefined) {
-          copilotArgs.push("--effort", args.effort);
+          copilotArgs.push("--effort", args.effort === "max" ? FALLBACK_MAX_EFFORT : args.effort);
         }
-        if (args.sandbox === "workspace-write") {
-          copilotArgs.push("--allow-all-tools");
-        } else {
+        if (args.sandbox === "read-only") {
           copilotArgs.push("--deny-tool=shell", "--deny-tool=write", "--deny-tool=edit");
+        } else {
+          copilotArgs.push("--allow-all-tools");
         }
-        copilotArgs.push("-p", args.prompt);
+        copilotArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
       } else {
-        if (shouldRespond) sendError(id, -32601, `Tool not found: ${name}`);
+        if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
         return;
       }
 
-      const { response, threadId } = await runCopilot(copilotArgs, args.cwd, args.timeout);
+      const abortController = new AbortController();
+      if (shouldRespond) activeRequests.set(id, abortController);
+      let result;
+      try {
+        result = await runCopilot(copilotArgs, args.cwd, args.timeout, abortController.signal);
+      } finally {
+        if (shouldRespond) activeRequests.delete(id);
+      }
+      const { response, threadId } = result;
 
       if (threadId === "unknown" && name === "copilot") {
         if (shouldRespond) {
           sendResponse(id, {
             content: [{ type: "text", text: response + "\n\n(Warning: no session ID returned — multi-turn reply will not be available)" }],
-            threadId: threadId
+            threadId: threadId,
+            ...coordinationMetadata(coordination)
           });
         }
       } else if (shouldRespond) {
         sendResponse(id, {
           content: [{ type: "text", text: response }],
-          threadId: threadId
+          threadId: threadId,
+          ...coordinationMetadata(coordination)
         });
       }
     } catch (e) {
       if (shouldRespond) {
         sendResponse(id, {
           content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true
+          isError: true,
+          ...coordinationMetadata(coordination)
         });
       }
     }
   },
 
+  "notifications/cancelled": (_id, params) => {
+    if (!isObject(params) || !Object.prototype.hasOwnProperty.call(params, "requestId")) return;
+    activeRequests.get(params.requestId)?.abort();
+  },
   "notifications/initialized": () => {}
 };
 
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
+if (require.main === module) {
 let buffer = "";
-process.stdin.on("data", async (chunk) => {
+process.stdin.on("data", (chunk) => {
   buffer += chunk.toString();
   let lines = buffer.split("\n");
   buffer = lines.pop(); // Keep partial line in buffer
@@ -394,11 +453,12 @@ process.stdin.on("data", async (chunk) => {
     try {
       request = JSON.parse(line);
     } catch (e) {
+      sendError(null, -32700, "Parse error");
       continue;
     }
 
     const shouldRespond = hasRequestId(request);
-    if (!isObject(request) || typeof request.method !== "string") {
+    if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
       if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
       continue;
     }
@@ -410,17 +470,37 @@ process.stdin.on("data", async (chunk) => {
     }
 
     try {
-      await handler(request.id, request.params, shouldRespond);
+      Promise.resolve(handler(request.id, request.params, shouldRespond)).catch((e) => {
+        if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
+      });
     } catch (e) {
       if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
     }
   }
 });
 
+function shutdown(exitCode) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  for (const controller of activeRequests.values()) controller.abort();
+  for (const child of activeChildren) killProcessTree(child, "SIGTERM");
+  if (activeChildren.size === 0) {
+    process.exit(exitCode);
+    return;
+  }
+  setTimeout(() => {
+    for (const child of activeChildren) killProcessTree(child, "SIGKILL");
+    process.exit(exitCode);
+  }, 500);
+}
+
+process.once("SIGTERM", () => shutdown(0));
+process.once("SIGINT", () => shutdown(130));
+process.stdin.once("end", () => shutdown(0));
+
 // Startup: resolve copilot binary path
 // On Windows, npm shims are .cmd files that cannot be spawned with shell: false.
 // Follow the shim to find the real executable.
-let COPILOT_BIN;
 try {
   const cmd = IS_WINDOWS ? "where copilot" : "which copilot";
   const candidates = execSync(cmd, { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
@@ -457,3 +537,10 @@ try {
   console.error("Copilot CLI not found. Please install it first.");
   process.exit(1);
 }
+}
+
+module.exports = {
+  handlers,
+  resolveEffort,
+  toolDefinitions: COPILOT_TOOLS
+};

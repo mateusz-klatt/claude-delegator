@@ -59,23 +59,26 @@ Register your preferred provider(s) as MCP servers using Claude Code's native co
 ```bash
 # Idempotent: safe to rerun setup
 claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.5 -c model_reasoning_effort=xhigh mcp-server
+claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js -m gpt-5.6-sol -s danger-full-access -a never -c model_reasoning_effort=ultra -c mcp_servers.codex.enabled=false mcp-server
 ```
 
 ### Gemini
 ```bash
-# Idempotent: safe to rerun setup. Preserves GEMINI_API_KEY across re-runs by
-# reading it from the existing mcp config first, falling back to the current env.
-EXISTING_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GEMINI_API_KEY=\S+' | head -1 | cut -d= -f2-)
-EFFECTIVE_KEY="${EXISTING_KEY:-${GEMINI_API_KEY:-}}"
-claude mcp remove gemini >/dev/null 2>&1 || true
-if [ -n "$EFFECTIVE_KEY" ]; then
-  claude mcp add --transport stdio --scope user --env="GEMINI_API_KEY=$EFFECTIVE_KEY" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
-else
-  claude mcp add --transport stdio --scope user gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
-  echo "Note: GEMINI_API_KEY is not set in env or mcp config. Gemini calls will fail until you add it:"
-  echo "  claude mcp remove gemini && claude mcp add --transport stdio --scope user --env=GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"
+# Idempotent: safe to rerun setup. Preserve either supported API-key variable;
+# OAuth/user login remains in the Gemini CLI's own user configuration.
+EXISTING_GEMINI_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GEMINI_API_KEY=\S+' | head -1 | cut -d= -f2-)
+EXISTING_GOOGLE_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GOOGLE_API_KEY=\S+' | head -1 | cut -d= -f2-)
+EFFECTIVE_GEMINI_KEY="${EXISTING_GEMINI_KEY:-${GEMINI_API_KEY:-}}"
+EFFECTIVE_GOOGLE_KEY="${EXISTING_GOOGLE_KEY:-${GOOGLE_API_KEY:-}}"
+GEMINI_ENV_ARGS=()
+if [ -n "$EFFECTIVE_GEMINI_KEY" ]; then
+  GEMINI_ENV_ARGS+=("--env=GEMINI_API_KEY=$EFFECTIVE_GEMINI_KEY")
 fi
+if [ -n "$EFFECTIVE_GOOGLE_KEY" ]; then
+  GEMINI_ENV_ARGS+=("--env=GOOGLE_API_KEY=$EFFECTIVE_GOOGLE_KEY")
+fi
+claude mcp remove gemini >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user "${GEMINI_ENV_ARGS[@]}" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
 ```
 
 ### Copilot (GPT)
@@ -86,9 +89,6 @@ claude mcp add --transport stdio --scope user copilot -- node ${CLAUDE_PLUGIN_RO
 ```
 
 This registers the MCP servers at user scope (available across all projects).
-
-**Note (Codex only):** To customise Codex behaviour, add CLI flags before `mcp-server`, for example:
-- `codex -p nosandbox mcp-server`
 
 ## Step 3: Install Orchestration Rules
 
@@ -115,13 +115,13 @@ else
   echo "Codex: NOT CONFIGURED"
 fi
 
-# Check 3: Gemini MCP server (and API key presence)
+# Check 3: Gemini MCP server (authentication can be OAuth or an API key)
 GEMINI_CONFIG=$(claude mcp get gemini 2>/dev/null)
 if echo "$GEMINI_CONFIG" | grep -q "server/gemini/index.js"; then
-  if echo "$GEMINI_CONFIG" | grep -q "GEMINI_API_KEY="; then
+  if echo "$GEMINI_CONFIG" | grep -qE "(GEMINI|GOOGLE)_API_KEY="; then
     echo "Gemini: OK (API key configured)"
   else
-    echo "Gemini: OK (warning: GEMINI_API_KEY not configured)"
+    echo "Gemini: OK (using Gemini CLI user/OAuth configuration; verify with a live call)"
   fi
 else
   echo "Gemini: NOT CONFIGURED"
@@ -193,9 +193,7 @@ Next steps:
 1. Restart Claude Code to load MCP server(s)
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
-   - Gemini: The MCP bridge requires `GEMINI_API_KEY`. Either export it in your shell before running setup (so it gets saved into the mcp config), or add it manually:
-     `claude mcp remove gemini && claude mcp add --transport stdio --scope user --env=GEMINI_API_KEY=YOUR_KEY gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js`
-     Re-running `/claude-delegator:setup` preserves the key once it is in the mcp config.
+   - Gemini: Run `gemini` once to complete OAuth/user login, or set `GEMINI_API_KEY` / `GOOGLE_API_KEY`. Re-running `/claude-delegator:setup` preserves either key already stored in the MCP config.
    - Copilot: Run `copilot login`
 
 Five experts available:
@@ -222,7 +220,7 @@ Five experts available:
 │                  │ → Vulnerabilities, threat modeling          │
 └──────────────────┴─────────────────────────────────────────────┘
 
-Every expert can advise (read-only) OR implement (write).
+Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is enforced by a clear "do not modify" instruction, while `read-only` is an explicit opt-in.
 Expert is auto-detected based on your request.
 Explicit: "Ask GPT to...", "Ask Gemini to...", or "Ask Copilot to..."
 ```

@@ -1,6 +1,6 @@
 # Delegation Triggers
 
-This file defines when to delegate to experts via Codex, Gemini, or Copilot.
+This file defines when to delegate to experts via Claude, Codex, Gemini, or Copilot.
 
 ## IMPORTANT: Check These Triggers on EVERY Message
 
@@ -8,7 +8,7 @@ You MUST scan incoming messages for delegation triggers. This is NOT optional.
 
 **Behavior:**
 1. **PROACTIVE**: On every user message, check if semantic triggers match → delegate automatically
-2. **REACTIVE**: If user explicitly mentions GPT/Codex, Gemini, or Copilot → delegate immediately
+2. **REACTIVE**: If user explicitly mentions Claude, GPT/Codex, Gemini, or Copilot → delegate immediately
 
 When a trigger matches:
 1. Identify the appropriate expert
@@ -33,6 +33,7 @@ User explicitly requests delegation:
 
 | Phrase Pattern | Expert |
 |----------------|--------|
+| "ask Claude", "consult Claude" | Route based on context; external orchestrators only |
 | "ask GPT", "consult GPT" | Route based on context |
 | "ask Gemini", "ask gemini" | Route based on context |
 | "ask Copilot", "ask copilot" | Route based on context |
@@ -113,12 +114,12 @@ User explicitly requests delegation:
 
 Any expert can operate in two modes:
 
-| Mode | Sandbox | When to Use |
-|------|---------|-------------|
-| **Advisory** | `danger-full-access` (global) | Analysis, recommendations, review verdicts |
-| **Implementation** | `danger-full-access` (global) | Actually making changes, fixing issues |
+| Mode | Bridge sandbox | When to Use |
+|------|----------------|-------------|
+| **Advisory** | Default `workspace-write` + explicit "do not modify" instruction | Analysis, recommendations, review verdicts without nested approval prompts |
+| **Implementation** | `workspace-write` (non-interactive full-tool mode) | Actually making changes, fixing issues |
 
-The default sandbox is set globally in `~/.codex/config.toml` to `danger-full-access` (see `orchestration.md` § "Provider Configuration Defaults" for the rationale on bwrap-broken hosts). The advisory-vs-implementation intent is carried by the `developer-instructions` field — explicit "Do not modify code" for advisory consults, "Make the change and verify" for implementation.
+Codex native MCP may inherit the operator's own sandbox. Claude, Gemini, and Copilot bridge calls should receive the bridge sandbox above. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
 
 **Examples:**
 
@@ -132,12 +133,14 @@ mcp__codex__codex({
 // Architect implementing (implementation via Gemini)
 mcp__gemini__gemini({
   prompt: "Refactor the caching layer to use Redis",
-  "developer-instructions": "[contents of architect.md] PLUS 'Implement the refactor end-to-end'"
+  "developer-instructions": "[contents of architect.md] PLUS 'Implement the refactor end-to-end'",
+  sandbox: "workspace-write"
 })
 
 // Security Analyst reviewing (advisory via Copilot)
 mcp__copilot__copilot({
   prompt: "Review this auth flow for vulnerabilities",
+  sandbox: "workspace-write",
   effort: "max"
 })
 

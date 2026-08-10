@@ -1,6 +1,6 @@
 # Delegation Prompt Templates
 
-When delegating to GPT experts, use these structured templates.
+When delegating to any provider expert, use these structured templates.
 
 ## The 7-Section Format (MANDATORY)
 
@@ -15,6 +15,11 @@ Every delegation prompt MUST include these sections:
    - Current state: [what exists now]
    - Relevant code: [paths or snippets]
    - Background: [why this is needed]
+   - Coordination (optional, only when MCP Agent Mail is available):
+     - projectKey: [Agent Mail project key]
+     - callerAgentName: [canonical mailbox address: <client>-<os>-<host>-<slot>]
+     - mailTopic: [optional Agent Mail topic tag]
+     - checkpointIntervalSeconds: [default 300]
 
 4. CONSTRAINTS:
    - Technical: [versions, dependencies]
@@ -32,6 +37,10 @@ Every delegation prompt MUST include these sections:
 7. OUTPUT FORMAT:
    - [How to structure response]
 ```
+
+Never include the caller's registration token or another credential. `callerAgentName` is the canonical routable value that Agent Mail accepts in `to`; it is neither the numeric database `Agent.id` nor a display label. A native subagent used only as a runner must forward the original caller envelope unchanged.
+
+The callee sends `STARTED` without a caller-provided mail thread id, remembers `deliveries[0].payload.id`, and uses `reply_message` on that outbound message for subsequent checkpoints. Agent Mail then establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by the matching `*-reply` tool.
 
 ---
 

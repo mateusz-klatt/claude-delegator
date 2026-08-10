@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-08-10",
+  "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
+  "providers": {
+    "claude": {
+      "cliVersion": "2.1.226",
+      "discoverySource": "Models visible in this account's /model selector; full ids corroborated by the installed CLI bundle.",
+      "defaultModel": "claude-opus-5",
+      "defaultEffort": "xhigh",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "models": [
+        "claude-opus-5",
+        "claude-fable-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5"
+      ],
+      "aliases": {
+        "opus": "claude-opus-5",
+        "fable": "claude-fable-5",
+        "sonnet": "claude-sonnet-5",
+        "haiku": "claude-haiku-4-5"
+      },
+      "liveCalls": [
+        {
+          "model": "claude-haiku-4-5",
+          "effort": "low",
+          "transport": "uniform bridge",
+          "operations": ["start", "reply"],
+          "result": "success"
+        }
+      ],
+      "nativeMcpServe": {
+        "handshake": "success",
+        "tools": ["Agent", "SendMessage"],
+        "standaloneAgentCall": "failed-no-agent-types",
+        "scope": "Diagnostic only: claude mcp serve exposes Claude's internal tool host, not a self-contained model endpoint."
+      }
+    },
+    "codex": {
+      "cliVersion": "0.147.0-alpha.6.5",
+      "discoverySource": "Visible entries in this account's models_cache.json; hidden/internal entries are intentionally excluded.",
+      "defaultModel": "gpt-5.6-sol",
+      "defaultEffort": "ultra",
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"]
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"]
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "efforts": ["low", "medium", "high", "xhigh", "max"]
+        },
+        {
+          "id": "gpt-5.5",
+          "efforts": ["low", "medium", "high", "xhigh"]
+        },
+        {
+          "id": "gpt-5.4",
+          "efforts": ["low", "medium", "high", "xhigh"]
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "efforts": ["low", "medium", "high", "xhigh"]
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "efforts": ["low", "medium", "high", "xhigh"]
+        }
+      ],
+      "liveCalls": [
+        {
+          "model": "gpt-5.6-sol",
+          "effort": "ultra",
+          "transport": "native codex mcp-server",
+          "operations": ["start", "reply"],
+          "result": "success"
+        },
+        {
+          "model": "gpt-5.4-mini",
+          "effort": "xhigh",
+          "transport": "native codex mcp-server",
+          "operations": ["start"],
+          "result": "success"
+        }
+      ]
+    },
+    "gemini": {
+      "cliVersion": "0.54.4",
+      "discoverySource": "Installed CLI registry and aliases. --model remains free-form and backend entitlement is account-specific.",
+      "defaultModel": "gemini-3.1-pro-preview",
+      "freeFormModel": true,
+      "models": [
+        "auto",
+        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash",
+        "gemini-3-pro-preview",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemma-4-31b-it",
+        "gemma-4-26b-a4b-it"
+      ],
+      "aliases": {
+        "pro": "gemini-2.5-pro",
+        "flash": "gemini-2.5-flash",
+        "flash-lite": "gemini-2.5-flash-lite",
+        "auto-gemini-3": "auto-gemini-3",
+        "auto-gemini-2.5": "auto-gemini-2.5"
+      },
+      "liveCalls": [
+        {
+          "model": "gemini-2.5-flash",
+          "transport": "uniform bridge",
+          "operations": ["start", "reply"],
+          "result": "success"
+        }
+      ]
+    },
+    "copilot": {
+      "cliVersion": "1.0.78",
+      "discoverySource": "Model and effort values advertised by copilot help config. Effort support is model-specific and parser acceptance is not backend acceptance.",
+      "defaultModel": "gpt-5.6-sol",
+      "defaultEffort": "max",
+      "efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      "models": [
+        "claude-sonnet-5",
+        "claude-sonnet-4.6",
+        "claude-sonnet-4.5",
+        "claude-haiku-4.5",
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-opus-4.8",
+        "claude-opus-4.8-fast",
+        "claude-opus-4.7",
+        "claude-opus-4.6",
+        "claude-opus-4.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.3-codex",
+        "gpt-5.4-mini",
+        "gpt-5-mini",
+        "mai-code-1-flash-picker",
+        "gemini-3.1-pro-preview",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "grok-4.5",
+        "kimi-k2.7-code"
+      ],
+      "maxEffortByModel": {
+        "gpt-5.6-sol": "max"
+      },
+      "minEffortByModel": {
+        "gpt-5-mini": "low"
+      },
+      "fallbackMaxEffort": "xhigh",
+      "liveCalls": [
+        {
+          "model": "gpt-5-mini",
+          "effort": "low",
+          "transport": "uniform bridge",
+          "operations": ["start"],
+          "result": "success"
+        },
+        {
+          "model": "gpt-5-mini",
+          "effort": "minimal",
+          "transport": "uniform bridge",
+          "operations": ["start"],
+          "result": "backend-rejected"
+        },
+        {
+          "model": "gpt-5-mini",
+          "effort": "none",
+          "transport": "uniform bridge",
+          "operations": ["start"],
+          "result": "backend-rejected"
+        }
+      ]
+    }
+  }
+}

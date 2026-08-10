@@ -8,8 +8,8 @@
     {
       "name": "claude-delegator",
       "source": "./",
-      "description": "GPT and Gemini expert subagents for Claude Code via Codex, Gemini, or Copilot CLI. Five specialized experts: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, Security Analyst.",
-      "version": "1.3.4",
+      "description": "Claude, GPT, and Gemini expert subagents over MCP via Claude, Codex, Gemini, or Copilot CLI. Five specialized experts with optional Agent Mail progress reporting.",
+      "version": "1.4.0",
       "author": {
         "name": "Jarrod Watts",
         "url": "https://github.com/jarrodwatts"
@@ -20,6 +20,8 @@
       "keywords": [
         "delegation",
         "mcp",
+        "claude",
+        "anthropic",
         "codex",
         "gpt",
         "openai",

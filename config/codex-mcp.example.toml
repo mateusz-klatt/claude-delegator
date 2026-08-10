@@ -1,0 +1,48 @@
+# MCP targets for Codex as the orchestrator. Copy the relevant tables into the
+# active CODEX_HOME/config.toml and replace /absolute/path/to/claude-delegator.
+# For unattended nesting, the Codex server args below explicitly select
+# danger-full-access and never so a child approval prompt cannot suspend its parent.
+
+[mcp_servers.claude]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/claude/index.js"]
+enabled_tools = ["claude", "claude-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+
+# Native alternative for side-by-side evaluation (different tool contract).
+# A standalone live probe exposed Agent but could not launch it because no
+# parent Claude session supplied agent types. Keep disabled for diagnostics.
+[mcp_servers.claude_native]
+command = "claude"
+args = ["mcp", "serve"]
+enabled_tools = ["Agent"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+enabled = false
+
+[mcp_servers.codex]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
+enabled_tools = ["codex", "codex-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+
+[mcp_servers.gemini]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/gemini/index.js"]
+enabled_tools = ["gemini", "gemini-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+
+[mcp_servers.copilot]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/copilot/index.js"]
+enabled_tools = ["copilot", "copilot-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false

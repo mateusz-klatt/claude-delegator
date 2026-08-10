@@ -1,0 +1,18 @@
+{
+  "name": "claude-delegator",
+  "version": "1.4.0",
+  "private": true,
+  "description": "MCP bridges for delegating work between Claude, Codex, Gemini, and Copilot CLIs.",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\" \"server/**/*.test.js\"",
+    "test:coverage": "c8 --all --src server --exclude '**/*.test.js' --exclude 'test/**' --reporter=text --reporter=lcov npm test"
+  },
+  "devDependencies": {
+    "c8": "12.0.0"
+  }
+}

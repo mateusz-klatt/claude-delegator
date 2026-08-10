@@ -1,15 +1,15 @@
 # Claude Delegator
 
-GPT and Gemini expert subagents for Claude Code. Five specialists that can analyze AND implement—architecture, security, code review, and more.
+Claude, GPT, and Gemini expert subagents over MCP. Claude Code can orchestrate Codex, Gemini, and Copilot; Codex and other MCP clients can invoke Claude through the same start/reply contract.
 
 [![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
 
-> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Copilot CLI as a third provider, refreshed default models (Codex `gpt-5.5` xhigh, Gemini `gemini-3.1-pro-preview`, Copilot `gpt-5.4` with a modernized allowlist incl. Gemini and Claude Sonnet 5), and metadata pointed at this fork.
+> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Copilot and Claude targets, empirically refreshed per-CLI model catalogs, and optional out-of-band progress reporting through MCP Agent Mail.
 
 ![Claude Delegator in action](claude-delegator.png)
 
-## Install
+## Install for Claude Code
 
 Inside a Claude Code instance, run the following commands:
 
@@ -38,15 +38,15 @@ Done! Claude now routes complex tasks to GPT, Gemini, and Copilot experts automa
 
 ## What is Claude Delegator?
 
-Claude gains a team of specialists via native MCP — GPT and Claude models via Codex/Copilot, plus Gemini. Each expert has a distinct specialty and can advise OR implement.
+An MCP-capable coding agent gains a team of specialists: Claude through Claude CLI, GPT through Codex, Gemini through Gemini CLI, and the multi-family roster exposed by Copilot. Each expert has a distinct specialty and can advise OR implement.
 
-**Note:** You can use any provider (GPT via Codex, GPT/Claude via Copilot, or Gemini), or multiple. The plugin will automatically detect which ones are configured and route tasks accordingly.
+**Note:** Claude Code should use Codex, Gemini, or Copilot targets. Configure the Claude target only in a different orchestrator such as Codex; registering Claude inside Claude Code creates an avoidable self-delegation path.
 
 | What You Get | Why It Matters |
 |--------------|----------------|
 | **5 domain experts** | Right specialist for each problem type |
-| **GPT, Claude, or Gemini** | Use your preferred model provider (Codex, Copilot, or Gemini) |
-| **Dual mode** | Experts can analyze (read-only) or implement (write) |
+| **Claude, GPT, or Gemini** | Use your preferred provider (Claude, Codex, Copilot, or Gemini) |
+| **Dual mode** | Experts can advise or implement; intent is explicit even though bridges default to full non-interactive tools |
 | **Auto-routing** | Claude detects when to delegate based on your request |
 | **Synthesized responses** | Claude interprets expert output, never raw passthrough |
 
@@ -85,6 +85,7 @@ Claude: [Detects security question → selects Security Analyst]
                     ↓
         ┌───────────────────────────────┐
         │  mcp__codex__codex            │
+        │  (or mcp__claude__claude)     │
         │  (or mcp__gemini__gemini)     │
         │  (or mcp__copilot__copilot)   │
         │  → Security Analyst prompt    │
@@ -97,7 +98,7 @@ Claude: "Based on the analysis, I found 3 issues..."
 
 **Key details:**
 - Each expert has a specialized system prompt (in `prompts/`)
-- Claude reads your request → picks the right expert → delegates via MCP (GPT or Gemini)
+- The orchestrator reads your request → picks the right expert → delegates via MCP
 - Responses are synthesized, not passed through raw
 - Experts can retry up to 3 times before escalating
 - Multi-turn conversations preserve context via `threadId` for chained tasks
@@ -112,7 +113,11 @@ Turn 2: mcp__*__*-reply(threadId) → expert remembers turn 1
 Turn 3: mcp__*__*-reply(threadId) → expert remembers turns 1-2
 ```
 
-Use single-shot (`codex`, `gemini`, or `copilot` only) for advisory tasks. Use multi-turn for implementation chains and retries.
+Use single-shot (`claude`, `codex`, `gemini`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
+
+### Long-running delegation progress
+
+When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
 
 ---
 
@@ -124,29 +129,25 @@ Every expert supports two modes based on the task:
 
 | Mode | Sandbox | Use When |
 |------|---------|----------|
-| **Advisory** | `read-only` | Analysis, recommendations, reviews |
-| **Implementation** | `workspace-write` | Making changes, fixing issues |
+| **Advisory** | Default `workspace-write` plus a strict "do not modify" instruction | Analysis, recommendations, reviews without nested approval prompts |
+| **Implementation** | `workspace-write` (the provider's non-interactive full-tool mode) | Making changes, fixing issues |
 
-Claude automatically selects the mode based on your request.
+The orchestrator selects the mode based on your request.
 
 ### Configuration Defaults
 
-Set global defaults in `~/.codex/config.toml` instead of passing parameters on every call:
-
-```toml
-sandbox_mode = "workspace-write"
-approval_policy = "on-failure"
-```
-
-Per-call parameters override these defaults. See [Codex CLI docs](https://github.com/openai/codex) for all config options.
+The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The three custom bridges expose only `read-only` and `workspace-write`, defaulting to `workspace-write`: Claude uses permission bypass, Gemini uses `yolo`, and Copilot uses `--allow-all-tools`. This avoids an approval prompt blocking both nested CLIs; advisory behavior is enforced by the expert instruction. Explicit `read-only` remains available when refusal is preferable to completion.
 
 ### Supported Models
 
 | Provider | Default | Selectable models |
 |---|---|---|
-| **Codex** | `gpt-5.5` (with `model_reasoning_effort=xhigh`) | Any model your Codex CLI accepts via `-m`. Override per call with the `model` parameter. |
-| **Gemini** | `gemini-3.1-pro-preview` | Any model your Gemini CLI accepts via `-m`. Override per call with the `model` parameter. |
-| **Copilot** | `gpt-5.4` (effort: `xhigh`) | `gpt-5.4`, `gpt-5.5`, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `claude-sonnet-5`. Effort levels: `low`, `medium`, `high`, `xhigh` (all listed models accept `xhigh`). |
+| **Claude** | `opus` / `claude-opus-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases and their full IDs. |
+| **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
+| **Gemini** | `gemini-3.1-pro-preview` | Eleven discovered registry entries; `--model` remains free-form. |
+| **Copilot** | `gpt-5.6-sol` (`max`) | 25 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; efforts `none` through `max`. |
+
+The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 
 ### Manual MCP Setup
 
@@ -156,7 +157,7 @@ If `/setup` doesn't work, register the MCP server(s) manually:
 # For Codex (GPT)
 # Idempotent: safe to rerun
 claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- codex -m gpt-5.5 -c model_reasoning_effort=xhigh mcp-server
+claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js -m gpt-5.6-sol -s danger-full-access -a never -c model_reasoning_effort=ultra -c mcp_servers.codex.enabled=false mcp-server
 
 # For Gemini
 # Idempotent: safe to rerun
@@ -177,6 +178,37 @@ printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' | n
 printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' | node ${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js
 ```
 
+### Codex as orchestrator (including Claude)
+
+The Claude bridge intentionally exposes `claude` and `claude-reply`, matching the existing provider contracts. Add all desired targets to the active Codex host's `CODEX_HOME/config.toml`; the desktop app and CLI can use different homes, so verify with `codex mcp list`.
+
+```toml
+[mcp_servers.claude]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/claude/index.js"]
+enabled_tools = ["claude", "claude-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+```
+
+See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for Claude, Codex, Gemini, and Copilot entries. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
+
+The example also contains a disabled diagnostic `claude_native` entry for `claude mcp serve`. Its MCP handshake succeeds and exposes `Agent`, but a standalone live probe could not launch an agent because agent types are supplied by a parent Claude session. It is therefore not a self-contained Claude model target. The supported external target is the uniform `claude` / `claude-reply` bridge.
+
+The Codex entry disables its own nested `mcp_servers.codex` target, preventing an MCP-started Codex session from recursively targeting itself. `server/codex/launcher.js` is not a protocol bridge: it forwards stdio unchanged and only establishes the same cross-platform environment boundary used by the custom bridges.
+
+### Tests and CI
+
+Unit tests use Node's built-in test runner; `c8` produces the LCOV report consumed by SonarCloud:
+
+```bash
+npm ci
+npm test
+npm run test:coverage
+```
+
+[`test/mcp-probe.mjs`](test/mcp-probe.mjs) is a manual stdio handshake/live-call probe and is intentionally excluded from the unit-test glob. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the suite on Node 22 and 24, uploads exact-commit coverage, and scans the [`mateusz-klatt_snapper-delegate`](https://sonarcloud.io/project/overview?id=mateusz-klatt_snapper-delegate) SonarCloud project when the repository has a `SONAR_TOKEN` Actions secret. Without the secret, tests remain green and the scan is skipped with a warning.
+
 ### Customizing Expert Prompts
 
 Expert prompts live in `prompts/`. Each follows the same structure:
@@ -191,8 +223,9 @@ Edit these to customize expert behavior for your workflow.
 
 ## Requirements
 
-You need at least one of the following providers configured:
+You need at least one of the following target CLIs configured:
 
+- **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
 - **Codex CLI** (for GPT): `npm install -g @openai/codex`
 - **Gemini CLI** (for Gemini): `npm install -g @google/gemini-cli`
 - **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`
@@ -221,7 +254,8 @@ You need at least one of the following providers configured:
 | MCP server not found | Restart Claude Code after setup |
 | Provider not authenticated | Codex: run `codex login`. Gemini: run `gemini` once to complete sign-in (or set `GOOGLE_API_KEY`). Copilot: run `copilot login` |
 | Tool not appearing | Run `claude mcp list` and verify registration |
-| Expert not triggered | Try explicit: "Ask GPT to review...", "Ask Gemini to review...", or "Ask Copilot to review..." |
+| Expert not triggered | Try explicit: "Ask Claude/GPT/Gemini/Copilot to review..." |
+| Codex cannot see targets | Check the active `CODEX_HOME`, run `codex mcp list`, then restart the Codex client |
 
 ---
 

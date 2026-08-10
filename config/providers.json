@@ -1,5 +1,32 @@
 {
+  "modelCatalog": "./model-catalog.json",
   "providers": {
+    "claude": {
+      "name": "Claude",
+      "description": "Anthropic Claude models via Claude CLI - specialized expert subagents",
+      "cli": "claude",
+      "install": "See https://docs.anthropic.com/en/docs/claude-code/setup",
+      "auth": "claude auth login",
+      "mcp": {
+        "type": "stdio",
+        "command": "node",
+        "args": ["${CLAUDE_PLUGIN_ROOT}/server/claude/index.js"]
+      },
+      "nativeMcpAlternative": {
+        "type": "stdio",
+        "command": "claude",
+        "args": ["mcp", "serve"],
+        "enabledTools": ["Agent"],
+        "defaultEnabled": false,
+        "standaloneProbe": "handshake succeeds, but Agent cannot launch without agent types supplied by a parent Claude session"
+      },
+      "orchestrators": ["codex", "other-mcp-clients"],
+      "selfTarget": false,
+      "modelCatalogKey": "claude",
+      "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
+      "strengths": ["architecture", "code-review", "security", "large-context-reasoning", "independent-review"],
+      "avoid": ["self-delegation-from-claude-code", "simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
+    },
     "codex": {
       "name": "Codex (GPT)",
       "description": "OpenAI GPT models via Codex CLI - specialized expert subagents",
@@ -8,9 +35,10 @@
       "auth": "codex login",
       "mcp": {
         "type": "stdio",
-        "command": "codex",
-        "args": ["-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=ultra", "mcp-server"]
+        "command": "node",
+        "args": ["${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
       },
+      "modelCatalogKey": "codex",
       "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
       "strengths": ["architecture", "code-review", "security", "requirements-analysis", "plan-validation"],
       "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
@@ -26,6 +54,7 @@
         "command": "node",
         "args": ["${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"]
       },
+      "modelCatalogKey": "gemini",
       "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
       "strengths": ["reasoning", "large context", "code generation", "multimodal analysis"],
       "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
@@ -41,6 +70,7 @@
         "command": "node",
         "args": ["${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js"]
       },
+      "modelCatalogKey": "copilot",
       "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
       "strengths": ["reasoning", "code generation", "configurable effort levels", "disk-persisted sessions"],
       "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]

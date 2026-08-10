@@ -8,13 +8,12 @@ Contributions welcome. This document covers how to contribute effectively.
 
 ```bash
 # Clone the repo
-git clone https://github.com/jarrodwatts/claude-delegator
+git clone https://github.com/mateusz-klatt/claude-delegator
 cd claude-delegator
 
-# Install plugin in Claude Code
-/claude-delegator:setup
-
-# Test your changes by invoking the oracle
+# Install development dependencies and run the bridge suite
+npm ci
+npm test
 ```
 
 ---
@@ -39,8 +38,10 @@ claude-delegator/
 │   └── plugin.json
 ├── commands/               # Slash commands (/setup, /uninstall)
 ├── rules/                  # Orchestration logic (installed to ~/.claude/rules/)
-├── prompts/                # Role prompts (oracle, momus)
-├── config/                 # Provider registry
+├── prompts/                # Five expert prompts + Agent Mail contract
+├── server/                 # MCP bridges plus the transparent Codex launcher
+├── test/                   # Shared contract and catalog tests
+├── config/                 # Provider registry and model catalog
 ├── CLAUDE.md               # Development guidance for Claude Code
 └── README.md               # User-facing docs
 ```
@@ -85,13 +86,11 @@ Examples:
 
 1. **Check native MCP support** - If the CLI has `mcp-server` like Codex, no wrapper needed
 
-2. **Create MCP wrapper** (if needed):
+2. **Create an MCP bridge** (if needed):
    ```
-   servers/your-provider-mcp/
-   ├── src/
-   │   └── index.ts
-   ├── package.json
-   └── tsconfig.json
+   server/your-provider/
+   ├── index.js
+   └── index.test.js
    ```
 
 3. **Add to providers.json**:
@@ -100,7 +99,7 @@ Examples:
      "your-provider": {
        "cli": "your-cli",
        "mcp": { ... },
-       "roles": ["oracle"],
+       "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
        "strengths": ["what it's good at"]
      }
    }
@@ -125,15 +124,25 @@ Examples:
 - Keep prompts concise and actionable
 - Test with actual Claude Code usage
 
-### TypeScript (if adding MCP servers)
+### JavaScript (MCP bridges)
 
-- No `any` without explicit justification
-- No `@ts-ignore` or `@ts-expect-error`
-- Use explicit return types on exported functions
+- Keep the runtime zero-dependency; development-only test dependencies are acceptable
+- Validate all public tool arguments before invoking a CLI
+- Never forward caller identity or Agent Mail credentials into a delegated process
 
 ---
 
 ## Testing
+
+### Automated Testing
+
+```bash
+npm ci
+npm test
+npm run test:coverage
+```
+
+CI runs the suite on Ubuntu and Windows with Node 22 and 24. Add stub-CLI tests for command construction, validation, session resume, cancellation, timeouts, and environment boundaries whenever a bridge changes.
 
 ### Manual Testing
 
@@ -142,7 +151,7 @@ After changes, verify with actual MCP calls:
 1. Install the plugin in Claude Code
 2. Run `/claude-delegator:setup`
 3. Verify MCP tools are available (`mcp__codex__codex`)
-4. Test MCP tool calls via oracle delegation
+4. Use `node test/mcp-probe.mjs -- <server command>` for an stdio handshake, then test a live call with a low-cost model
 5. Verify responses are properly synthesized
 6. Test error cases (timeout, missing CLI)
 
