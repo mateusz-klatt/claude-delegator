@@ -29,7 +29,7 @@ const coordinationSchema = Object.freeze({
       type: "string",
       minLength: 1,
       maxLength: 128,
-      pattern: "^(?:claude|codex|copilot|gemini)-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\\d*$",
+      pattern: String.raw`^(?:claude|codex|copilot|gemini)-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\d*$`,
       description: "Canonical routable Agent Mail name (<client>-<os>-<host>-<slot>) used in the message 'to' field"
     },
     mailTopic: {
