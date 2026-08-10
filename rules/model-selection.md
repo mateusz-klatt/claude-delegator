@@ -123,10 +123,12 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `sandbox` | `read-only`, `workspace-write`, `danger-full-access` | Controls file access. The distributed launcher starts the server with `danger-full-access` |
 | `approval-policy` | `untrusted`, `on-request`, `never` | Controls shell command approval. The distributed launcher starts the server with `never` |
 | `model` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` | Models visible to this Codex account at verification time |
-| `config` | key-value object | Override `config.toml` settings per-call |
+| `config` | key-value object | Override `config.toml` settings per-call — including `model_reasoning_effort`, which a `model` override does not adjust on its own |
 | `cwd` | path | Working directory for the task |
 | `base-instructions` | string | Override default system instructions |
 | `compact-prompt` | string | Prompt used when compacting conversation |
+
+**Effort guidance**: the launcher pins `model_reasoning_effort=ultra` when it starts the server, and a per-call `model` override does **not** lower it. Only `gpt-5.6-sol` and `gpt-5.6-terra` accept `ultra`; `gpt-5.6-luna` stops at `max`, and `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` stop at `xhigh`. Delegating to any of those without also passing `config: {"model_reasoning_effort": "xhigh"}` (or `"max"` for `gpt-5.6-luna`) fails with an HTTP 400 `unsupported_value` on `reasoning.effort` before the session starts, so no work happens and no `threadId` comes back to resume. Codex reports the pinned value as `max` in that error because it normalises `ultra` at the API layer. Unlike the Copilot bridge, which clamps effort per model in `resolveEffort`, the transparent launcher never inspects the call and cannot correct this for you.
 
 ### `mcp__codex__codex-reply` (Continue Session)
 

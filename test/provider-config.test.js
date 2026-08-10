@@ -70,3 +70,34 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   assert.match(rules, /\*\*Timeout guidance\*\*/);
   assert.match(rules, /not\*\* rolled back/);
 });
+
+test("rules document the Codex effort ceiling a per-call model override must respect", () => {
+  const catalog = require("../config/model-catalog.json");
+  const codex = catalog.providers.codex;
+
+  // The launcher pins the server-level effort, and the transparent passthrough
+  // cannot lower it when a call overrides `model`, so the caller must do it.
+  assert.ok(
+    EXPECTED_CODEX_ARGS.includes(`model_reasoning_effort=${codex.defaultEffort}`),
+    "launcher args must pin the catalog default effort"
+  );
+
+  const capped = codex.models
+    .filter((model) => !model.efforts.includes(codex.defaultEffort))
+    .map((model) => model.id);
+  assert.ok(capped.length > 0, "expected models that cannot take the pinned default effort");
+
+  const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
+  const guidance = rules
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("**Effort guidance**"));
+
+  assert.ok(guidance, "expected an Effort guidance paragraph in the Codex reference");
+  assert.match(guidance, /model_reasoning_effort/);
+  for (const id of capped) {
+    assert.ok(
+      guidance.includes(id),
+      `Effort guidance must name ${id}, which rejects ${codex.defaultEffort}`
+    );
+  }
+});
