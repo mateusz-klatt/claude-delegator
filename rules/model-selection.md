@@ -145,9 +145,12 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` maps to `plan`; `workspace-write` maps to non-interactive `yolo`. Default: `workspace-write`. |
 | `model` | e.g. `gemini-3.1-pro-preview` | Override the default model (free-form string, any model the Gemini CLI accepts) |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory for the task |
 
 **Model guidance**: The default `gemini-3.1-pro-preview` is the right choice for expert work (architecture, security, plan review). Pass `model: "gemini-3.5-flash"` for quick, low-stakes checks where speed matters more than depth.
+
+**Timeout guidance**: Advisory consults finish well inside the 15-minute default, so leave `timeout` unset for them. Raise it explicitly — up to `3600000` (1 hour, the ceiling) — for implementation-mode delegations that refactor across files, run builds, or execute a test suite. On expiry the bridge SIGTERMs the process group and returns an error, and recovery is poor: Gemini runs `--approval-mode yolo`, so edits already written to disk are **not** rolled back, and `gemini-reply` cannot resume the killed run because the bridge rejects `threadId: "latest"`. The result is a half-applied change with no resumable session, so estimate generously rather than retrying after a kill.
 
 The locally discovered registry also includes `auto`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemma-4-31b-it`, and `gemma-4-26b-a4b-it`. Gemini keeps `--model` free-form; catalog presence is not a guarantee of backend entitlement.
 
@@ -169,6 +172,7 @@ The locally discovered registry also includes `auto`, `gemini-3-pro-preview`, `g
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
 | `model` | One of the 25 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.78) |
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Reasoning effort level. Default: `max` (`max` is verified on `gpt-5.6-sol` only; other models are capped to `xhigh` server-side) |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 
 **Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; `gpt-5.6-terra` for everyday tasks; `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`); Gemini models only when the Gemini MCP server is unavailable (it covers them natively).
@@ -185,6 +189,7 @@ The Claude bridge wraps Claude Code 2.1.226 with the same start/reply contract u
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Default: `xhigh` |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` maps to `plan`; `workspace-write` bypasses permission prompts. Default: `workspace-write`. |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 
 ### `mcp__claude__claude-reply` (Continue Session)
