@@ -143,7 +143,7 @@ function parseClaudeOutput(stdout, fallbackThreadId) {
         data = parsed;
         break;
       }
-    } catch (_error) {
+    } catch {
       // Ignore terminal noise and try the next complete JSON candidate.
     }
   }

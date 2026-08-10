@@ -68,6 +68,14 @@ if (prompt.includes("BROKEN_JSON")) {
   process.stdout.write("Gemini diagnostic without a structured result\\n");
   process.exit(0);
 }
+if (prompt.includes("NOISY_JSON")) {
+  process.stdout.write("warning: telemetry cache {unavailable}\\n");
+  process.stdout.write(JSON.stringify({
+    response: "parsed past the noise",
+    session_id: "session-noisy"
+  }) + "\\n");
+  process.exit(0);
+}
 
 const isReply = args.includes("--resume");
 const suffix = isReply ? "reply" : "start";
@@ -518,5 +526,21 @@ test("terminates a hung Gemini CLI at the requested timeout and remains responsi
 
   const listed = await server.request("tools/list");
   assert.deepEqual(listed.result.tools.map((tool) => tool.name), ["gemini", "gemini-reply"]);
+  await server.close();
+});
+
+test("parses the result past a diagnostic line that contains braces", async () => {
+  const server = startServer();
+  const response = await server.request("tools/call", {
+    name: "gemini",
+    arguments: { prompt: "NOISY_JSON" }
+  });
+
+  assert.deepEqual(JSON.parse(response.result.content[0].text), {
+    threadId: response.result.threadId,
+    content: "parsed past the noise"
+  });
+  assert.equal(response.result.threadId, "session-noisy");
+  assert.equal(response.result.isError, undefined);
   await server.close();
 });

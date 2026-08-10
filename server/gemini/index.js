@@ -89,6 +89,33 @@ function killProcessTree(child, signal) {
   }
 }
 
+function parseGeminiOutput(stdout) {
+  const trimmed = stdout.trim();
+  if (!trimmed) throw new Error("No JSON response found");
+
+  // Try the whole payload first, then each line newest-first. A greedy
+  // brace match would span from the first '{' of any diagnostic line to the
+  // last '}' of the payload and fail to parse, and it backtracks quadratically
+  // on large noisy output. stdout and stderr are captured separately, so a
+  // complete JSON candidate always occupies whole lines.
+  const candidates = [trimmed, ...trimmed.split(/\r?\n/).reverse()];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (isObject(parsed) && (
+        Object.hasOwn(parsed, "response") ||
+        Object.hasOwn(parsed, "session_id")
+      )) {
+        return parsed;
+      }
+    } catch {
+      // Ignore terminal noise and try the next complete JSON candidate.
+    }
+  }
+
+  throw new Error("No JSON response found");
+}
+
 async function runGemini(args, cwd, timeoutMs, abortSignal) {
   const effectiveTimeout = timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : timeoutMs;
   return new Promise((resolve, reject) => {
@@ -175,11 +202,7 @@ async function runGemini(args, cwd, timeoutMs, abortSignal) {
       }
 
       try {
-        // Extract JSON block (ignoring potential terminal noise)
-        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("No JSON response found");
-
-        const data = JSON.parse(jsonMatch[0]);
+        const data = parseGeminiOutput(stdout);
         resolve({
           response: data.response || "(No output)",
           threadId: data.session_id || "unknown"
@@ -469,7 +492,7 @@ try {
     ? `"${process.execPath}" "${GEMINI_BIN}" --version`
     : `"${GEMINI_BIN}" --version`;
   execSync(validateCmd, { stdio: "pipe" });
-} catch (e) {
+} catch {
   console.error("Gemini CLI not found. Please install it first.");
   process.exit(1);
 }

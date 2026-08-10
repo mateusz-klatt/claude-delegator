@@ -209,7 +209,7 @@ async function runCopilot(args, cwd, timeoutMs, abortSignal) {
               if (data.sessionId) sessionId = data.sessionId;
               if (data.exitCode !== undefined) resultExitCode = data.exitCode;
             }
-          } catch (e) {
+          } catch {
             // Not JSON — ignore terminal noise
           }
         }
@@ -534,7 +534,7 @@ try {
     ? `"${process.execPath}" "${COPILOT_BIN}" --version`
     : `"${COPILOT_BIN}" --version`;
   execSync(validateCmd, { stdio: "pipe" });
-} catch (e) {
+} catch {
   console.error("Copilot CLI not found. Please install it first.");
   process.exit(1);
 }
