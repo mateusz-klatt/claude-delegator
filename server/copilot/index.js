@@ -72,7 +72,7 @@ function isObject(value) {
 }
 
 function hasRequestId(request) {
-  return isObject(request) && Object.prototype.hasOwnProperty.call(request, "id");
+  return isObject(request) && Object.hasOwn(request, "id");
 }
 
 function isNonEmptyString(value) {
@@ -201,7 +201,7 @@ async function runCopilot(args, cwd, timeoutMs, abortSignal) {
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
-            if (data.type === "assistant.message" && data.data && data.data.content) {
+            if (data.type === "assistant.message" && data.data?.content) {
               chunks.push(data.data.content);
             }
             if (data.type === "result") {
@@ -431,7 +431,7 @@ const handlers = {
   },
 
   "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.prototype.hasOwnProperty.call(params, "requestId")) return;
+    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
     activeRequests.get(params.requestId)?.abort();
   },
   "notifications/initialized": () => {}

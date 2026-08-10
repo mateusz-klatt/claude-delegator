@@ -61,7 +61,7 @@ function isObject(value) {
 }
 
 function hasRequestId(request) {
-  return isObject(request) && Object.prototype.hasOwnProperty.call(request, "id");
+  return isObject(request) && Object.hasOwn(request, "id");
 }
 
 function isNonEmptyString(value) {
@@ -305,8 +305,7 @@ const handlers = {
           return;
         }
 
-        geminiArgs.push("-m", args.model || DEFAULT_MODEL);
-        geminiArgs.push(...sandboxArguments(args.sandbox));
+        geminiArgs.push("-m", args.model || DEFAULT_MODEL, ...sandboxArguments(args.sandbox));
         let prompt = args.prompt;
         if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
         prompt = appendCoordinationInstructions(prompt, coordination);
@@ -326,9 +325,13 @@ const handlers = {
           return;
         }
 
-        geminiArgs.push("--resume", threadId);
-        geminiArgs.push(...sandboxArguments(args.sandbox));
-        geminiArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
+        geminiArgs.push(
+          "--resume",
+          threadId,
+          ...sandboxArguments(args.sandbox),
+          "-p",
+          appendCoordinationInstructions(args.prompt, coordination)
+        );
       } else {
         if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
         return;
@@ -366,7 +369,7 @@ const handlers = {
   },
 
   "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.prototype.hasOwnProperty.call(params, "requestId")) return;
+    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
     activeRequests.get(params.requestId)?.abort();
   },
   "notifications/initialized": () => {}

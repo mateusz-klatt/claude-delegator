@@ -58,7 +58,7 @@ function isObject(value) {
 }
 
 function hasRequestId(request) {
-  return isObject(request) && Object.prototype.hasOwnProperty.call(request, "id");
+  return isObject(request) && Object.hasOwn(request, "id");
 }
 
 function isNonEmptyString(value) {
@@ -125,8 +125,8 @@ function parseClaudeOutput(stdout, fallbackThreadId) {
     try {
       const parsed = JSON.parse(candidate);
       if (isObject(parsed) && (
-        Object.prototype.hasOwnProperty.call(parsed, "result") ||
-        Object.prototype.hasOwnProperty.call(parsed, "session_id")
+        Object.hasOwn(parsed, "result") ||
+        Object.hasOwn(parsed, "session_id")
       )) {
         data = parsed;
         break;
@@ -386,10 +386,12 @@ const handlers = {
       }
 
       fallbackThreadId = threadId;
-      claudeArgs.push("--resume", threadId);
-      if (args.effort !== undefined) claudeArgs.push("--effort", args.effort);
-      claudeArgs.push(...sandboxArguments(args.sandbox));
-      claudeArgs.push(appendCoordinationInstructions(args.prompt, coordination));
+      claudeArgs.push(
+        "--resume", threadId,
+        ...(args.effort !== undefined ? ["--effort", args.effort] : []),
+        ...sandboxArguments(args.sandbox),
+        appendCoordinationInstructions(args.prompt, coordination)
+      );
     } else {
       if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
       return;
@@ -429,7 +431,7 @@ const handlers = {
   },
 
   "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.prototype.hasOwnProperty.call(params, "requestId")) return;
+    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
     activeRequests.get(params.requestId)?.abort();
   },
   "notifications/initialized": () => {}

@@ -8,6 +8,7 @@ const { spawn } = require("node:child_process");
 const { afterEach, test } = require("node:test");
 
 const LAUNCHER_PATH = path.join(__dirname, "launcher.js");
+const STUB_STARTUP_TIMEOUT_MS = 8_000;
 const temporaryDirectories = [];
 const runningLaunchers = new Set();
 
@@ -203,7 +204,11 @@ test("passes through native MCP stdio and scrubs the caller identity", async () 
 
 test("terminating the launcher terminates the native Codex process tree", async () => {
   const launcher = startLauncher();
-  await waitFor(() => fs.existsSync(launcher.capturePath), "Codex stub did not start");
+  await waitFor(
+    () => fs.existsSync(launcher.capturePath),
+    "Codex stub did not start",
+    STUB_STARTUP_TIMEOUT_MS
+  );
   const { pid } = JSON.parse(fs.readFileSync(launcher.capturePath, "utf8"));
 
   const exited = new Promise((resolve) => launcher.child.once("exit", resolve));
