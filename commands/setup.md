@@ -99,13 +99,28 @@ fallbacks (`cliFallbacks()`), covering `~/.local/bin` and kimi's `~/.kimi-code/b
 ### Clearing registrations from an older install
 
 If you ran a previous setup, you still have hand-added entries that will now
-duplicate the plugin-provided ones. Remove them once:
+duplicate the plugin-provided ones. **Reinstall first, remove second** — the order
+matters and the other way round is destructive:
 
 ```bash
+# 1. Get a plugin copy that actually declares the servers.
+claude plugin marketplace update jarrodwatts-claude-delegator
+claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
+claude plugin install   claude-delegator@jarrodwatts-claude-delegator
+
+# 2. Only now drop the hand-added entries.
 for s in codex agy kimi copilot grok cursor gemini; do
   claude mcp remove "$s" >/dev/null 2>&1 || true
 done
+
+# 3. Restart the CLI.
 ```
+
+Removing first leaves you with **no servers at all** whenever the installed copy
+predates this change, because a cache from an earlier version has no `mcpServers`
+block to fall back on — and the symptom is `CONNECTION_CLOSED`, the same one two
+unrelated defects already produced today. Reinstalling first means you are briefly
+carrying duplicates, which is harmless, instead of briefly carrying nothing.
 
 `gemini` is in the list because that bridge was removed in 1.5.0 and an old
 registration may still be sitting there.

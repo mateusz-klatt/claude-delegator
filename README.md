@@ -167,11 +167,17 @@ The shell expanded that variable at setup time and stored a version-stamped
 cache path, which stopped working as soon as that version directory was removed.
 Declared in the manifest, Claude Code resolves it on every launch instead.
 
-If you set up before 1.8.0, clear the stale entries once:
+If you set up before 1.8.0, clear the stale entries once — REINSTALL FIRST,
+then remove, because an installed copy from before this change has no
+mcpServers block and removing first would leave you with no servers at all:
 
+  claude plugin marketplace update jarrodwatts-claude-delegator
+  claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
+  claude plugin install   claude-delegator@jarrodwatts-claude-delegator
   for s in codex agy kimi copilot grok cursor gemini; do
     claude mcp remove "$s" >/dev/null 2>&1 || true
   done
+  # then restart the CLI
 ```
 
 Verify with:
