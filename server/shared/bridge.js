@@ -141,7 +141,14 @@ function resolveWindowsShim(candidate, command, readShim = (p) => fs.readFileSyn
     : path.win32.resolve(path.win32.dirname(candidate), expanded);
 }
 
-const WINDOWS_EXTENSIONS = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs", ""];
+// Ordered by preference, mirroring how Windows itself walks PATHEXT. There is no
+// entry for "no extension" on purpose: npm installs a POSIX `sh` launcher beside
+// its .cmd in the same directory — measured on a real Windows host, where
+// `where copilot` lists the extensionless one *first*. It is not a valid
+// executable image, resolveWindowsShim only expands .cmd/.bat so it would pass
+// through untouched, and spawn(shell: false) cannot run it.
+const WINDOWS_EXTENSIONS = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs"];
+const WINDOWS_RUNNABLE = new RegExp(`(?:${WINDOWS_EXTENSIONS.map((e) => "\\" + e).join("|")})$`, "i");
 
 /**
  * Pick the first usable candidate, honouring group order above extension order.
@@ -156,6 +163,10 @@ const WINDOWS_EXTENSIONS = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs
  * with no stderr, no child process and no exit until the timeout. In production
  * it means a stale install beats a current one, and a deliberately shimmed PATH
  * is ignored without a word.
+ *
+ * Within a group the extension preference stays, because that is Windows' own
+ * PATHEXT rule and one directory routinely holds several launchers for the same
+ * command. What it must never do is reach across groups to overrule provenance.
  */
 function selectCandidate(groups, isUsable, isWindows = IS_WINDOWS) {
   for (const group of groups) {
@@ -195,10 +206,14 @@ function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
   }
   groups.push(...fallbacks.map((fallback) => [fallback]));
 
+  // The Windows branch had no equivalent of the POSIX X_OK filter: it accepted
+  // anything that was a file and let the extension preference paper over the
+  // difference. That is why an extensionless `sh` launcher could be selected at
+  // all. Rejecting a non-runnable extension outright is the missing half.
   const isUsable = (candidate) => {
     try {
       if (!fs.statSync(candidate).isFile()) return false;
-      if (IS_WINDOWS) return true;
+      if (IS_WINDOWS) return WINDOWS_RUNNABLE.test(candidate);
       fs.accessSync(candidate, fs.constants.X_OK);
       return true;
     } catch {
@@ -459,6 +474,7 @@ module.exports = {
   resolveCli,
   resolveWindowsShim,
   runStdioLoop,
+  WINDOWS_RUNNABLE,
   selectCandidate,
   sendError,
   sendResponse,

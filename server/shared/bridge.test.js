@@ -145,6 +145,46 @@ test("PATH order decides before extension preference, directory by directory", (
   assert.equal(core.selectCandidate([first], (c) => both.has(c), true), "C:\\wrapper\\cli.exe");
 });
 
+test("an extensionless npm launcher is never selectable on Windows", () => {
+  // Measured on a real Windows host, not imagined: npm installs a POSIX `sh`
+  // launcher beside its .cmd in the same directory, and `where copilot` lists
+  // the extensionless one FIRST. It is 427 bytes of `#!/bin/sh`, so
+  // resolveWindowsShim passes it through untouched (it only expands .cmd/.bat)
+  // and spawn(shell: false) cannot run it. Ordering alone would pick it — the
+  // hard rejection is what stops it, and it is the Windows counterpart of the
+  // POSIX X_OK filter the platform branch never had.
+  assert.equal(core.WINDOWS_RUNNABLE.test("C:\\Users\\dev\\AppData\\Roaming\\npm\\copilot"), false);
+  assert.equal(core.WINDOWS_RUNNABLE.test("C:\\Users\\dev\\AppData\\Roaming\\npm\\copilot.cmd"), true);
+  // .ps1 is a third launcher npm drops in the same place and no bridge handles.
+  assert.equal(core.WINDOWS_RUNNABLE.test("C:\\Users\\dev\\AppData\\Roaming\\npm\\copilot.ps1"), false);
+
+  // End to end through the selector, with both launchers present in one
+  // directory exactly as they are installed.
+  const npmDirectory = ["C:\\npm\\copilot.exe", "C:\\npm\\copilot.cmd", "C:\\npm\\copilot"];
+  const onDisk = new Set(["C:\\npm\\copilot.cmd", "C:\\npm\\copilot"]);
+  assert.equal(
+    core.selectCandidate([npmDirectory], (c) => onDisk.has(c) && core.WINDOWS_RUNNABLE.test(c), true),
+    "C:\\npm\\copilot.cmd"
+  );
+});
+
+test("a lone .cmd earlier on PATH beats a .exe later, and fails loudly if unparseable", () => {
+  // The deliberate consequence of ranking provenance above extension: a shim
+  // alone in an earlier directory is now looked at instead of being skipped for
+  // an .exe elsewhere. If that shim is unparseable the resolver throws by name
+  // rather than silently substituting a different binary — the same choice made
+  // for the Copilot error path, where a silent failure was worse than a message.
+  const earlier = ["C:\\shim\\cli.exe", "C:\\shim\\cli.cmd"];
+  const later = ["C:\\vendor\\cli.exe"];
+  const onDisk = new Set(["C:\\shim\\cli.cmd", "C:\\vendor\\cli.exe"]);
+  assert.equal(core.selectCandidate([earlier, later], (c) => onDisk.has(c), true), "C:\\shim\\cli.cmd");
+
+  assert.throws(
+    () => core.resolveWindowsShim("C:\\shim\\cli.cmd", "cli", () => "@echo off\r\nrem opaque\r\n"),
+    /could not resolve cli/
+  );
+});
+
 test("POSIX selection keeps which-order and never applies extension preference", () => {
   const exists = (candidate) => candidate !== "/usr/bin/cli";
   assert.equal(
