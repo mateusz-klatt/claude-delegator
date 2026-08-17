@@ -15,6 +15,16 @@ const COORDINATION_FIELDS = new Set([
   "checkpointIntervalSeconds"
 ]);
 
+// Agent Mail's routable address is <client>-<os>-<host>-<slot>. The client list
+// was previously written out twice, once in the advertised schema pattern and
+// once in the runtime check, with a CONTRIBUTING note asking whoever adds a
+// provider to remember both. grok shipped in 1.7.0 with neither updated, which
+// is the answer to whether that note is sufficient. One definition, two uses.
+const CALLER_CLIENTS = ["agy", "claude", "codex", "copilot", "cursor", "grok", "kimi"];
+const CALLER_AGENT_NAME_PATTERN =
+  String.raw`^(?:${CALLER_CLIENTS.join("|")})-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\d*$`;
+const CALLER_AGENT_NAME_RE = new RegExp(CALLER_AGENT_NAME_PATTERN);
+
 const coordinationSchema = Object.freeze({
   type: "object",
   description: "Optional fail-open progress reporting through MCP Agent Mail",
@@ -29,7 +39,7 @@ const coordinationSchema = Object.freeze({
       type: "string",
       minLength: 1,
       maxLength: 128,
-      pattern: String.raw`^(?:agy|claude|codex|copilot|kimi)-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\d*$`,
+      pattern: CALLER_AGENT_NAME_PATTERN,
       description: "Canonical routable Agent Mail name (<client>-<os>-<host>-<slot>) used in the message 'to' field"
     },
     mailTopic: {
@@ -77,8 +87,7 @@ function validateCoordination(value) {
 
   const projectKey = validateSingleLineString(value.projectKey, "projectKey");
   const callerAgentName = validateSingleLineString(value.callerAgentName, "callerAgentName");
-  if (callerAgentName.length > 128 ||
-      !/^(?:agy|claude|codex|copilot|kimi)-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\d*$/.test(callerAgentName)) {
+  if (callerAgentName.length > 128 || !CALLER_AGENT_NAME_RE.test(callerAgentName)) {
     throw new TypeError("'coordination.callerAgentName' must use <client>-<os>-<host>-<slot> and be at most 128 characters");
   }
 
@@ -130,6 +139,7 @@ function coordinationMetadata(coordination) {
 }
 
 module.exports = {
+  CALLER_CLIENTS,
   appendCoordinationInstructions,
   coordinationInstructions,
   coordinationMetadata,

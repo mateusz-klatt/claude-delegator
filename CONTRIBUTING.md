@@ -129,7 +129,7 @@ Examples:
 
 5. **Add to `config/model-catalog.json`** - Record `cliVersion`, `discoverySource`, `defaultModel` and the roster. Bridges read their schema enums from here, so a missing entry crashes the bridge at load. Say how you discovered the roster; `agy models`, `copilot help config` and `~/.codex/models_cache.json` all work headlessly, while Claude's `/model` selector does not.
 
-6. **Widen the `callerAgentName` pattern** - `server/shared/coordination.js` hard-codes the client list twice, once in the advertised schema `pattern` and once in the runtime check. Change both or they diverge.
+6. **Add your client to `CALLER_CLIENTS`** - one array in `server/shared/coordination.js`; the advertised schema `pattern` and the runtime check are both derived from it. This used to be two hard-coded literals with a note asking you to remember both, and grok shipped with neither updated — so `test/coordination.test.js` now walks `server/*` and fails if a bridge directory is not a routable client. You will be told rather than trusted.
 
 7. **Update the hard-coded provider lists in `test/`** - `result-format.test.js`, `model-catalog.test.js` and `provider-config.test.js` each enumerate bridges by name. A new bridge that is not added there is silently untested.
 

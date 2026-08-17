@@ -119,3 +119,41 @@ test("coordination defaults the checkpoint interval without requiring a caller i
     checkpointIntervalSeconds: 300
   });
 });
+
+test("every bridge is a routable Agent Mail client, and none is only half-registered", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { CALLER_CLIENTS, coordinationSchema, validateCoordination } =
+    require("../server/shared/coordination");
+
+  // CONTRIBUTING step 6 asked whoever adds a provider to widen a hard-coded list
+  // written out twice. grok shipped in 1.7.0 with neither copy updated, so the
+  // instruction was not enough on its own. The list is now derived once; this
+  // test is what makes the derivation obligatory.
+  const bridges = fs.readdirSync(path.resolve(__dirname, "../server"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "shared" && entry.name !== "codex")
+    .map((entry) => entry.name);
+
+  assert.ok(bridges.length >= 5, `expected the bridge directories, saw ${bridges.join(", ")}`);
+  for (const bridge of bridges) {
+    assert.ok(
+      CALLER_CLIENTS.includes(bridge),
+      `server/${bridge} exists but ${bridge} is not a routable caller client`
+    );
+    // Both uses must accept it, which is the divergence the single definition removes:
+    // the advertised schema pattern and the runtime check were separate literals.
+    const name = `${bridge}-wsl-host-1`;
+    assert.match(name, new RegExp(coordinationSchema.properties.callerAgentName.pattern),
+      `${bridge} rejected by the advertised schema pattern`);
+    assert.equal(
+      validateCoordination({ projectKey: "/o/p", callerAgentName: name }).callerAgentName,
+      name,
+      `${bridge} rejected by the runtime check`
+    );
+  }
+
+  // codex has no bridge directory of its own (it runs through the transparent
+  // launcher) but is still a caller, so the list is a superset, not a mirror.
+  assert.ok(CALLER_CLIENTS.includes("codex"));
+  assert.throws(() => validateCoordination({ projectKey: "/o/p", callerAgentName: "notaclient-wsl-host-1" }));
+});
