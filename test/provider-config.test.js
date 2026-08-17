@@ -212,3 +212,38 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
     "/usr/local/bin/cli"
   );
 });
+
+test("the plugin declares its MCP servers, so no version-stamped path is ever stored", () => {
+  const manifest = require("../.claude-plugin/plugin.json");
+  const servers = manifest.mcpServers;
+  assert.ok(servers, "plugin.json must declare mcpServers");
+
+  // Registering by hand with `claude mcp add ... ${CLAUDE_PLUGIN_ROOT}/...` let the
+  // SHELL expand the variable at setup time, writing a path like
+  // .../claude-delegator/1.6.5/server/agy/index.js into ~/.claude.json. That entry
+  // died the moment the version directory did: three bridges failed with
+  // CONNECTION_CLOSED after a routine cache cleanup, with nothing explaining why.
+  // Declared here instead, Claude Code resolves the variable on every launch.
+  const expected = ["codex", "agy", "kimi", "copilot", "grok", "cursor"];
+  assert.deepEqual(Object.keys(servers).sort(), [...expected].sort());
+
+  for (const [name, server] of Object.entries(servers)) {
+    assert.equal(server.type, "stdio", name);
+    assert.equal(server.command, "node", name);
+    const script = server.args[0];
+    assert.ok(script.startsWith("${CLAUDE_PLUGIN_ROOT}/"), `${name} must stay relative to the plugin root`);
+    assert.doesNotMatch(script, /\d+\.\d+\.\d+/, `${name} must not carry a version in its path`);
+    assert.doesNotMatch(script, /plugins[\\/]cache/, `${name} must not point into the version cache`);
+  }
+
+  // The Claude bridge is deliberately absent: registering it here would make
+  // Claude Code a target of itself (decision 9).
+  assert.equal(Object.hasOwn(servers, "claude"), false);
+
+  // Codex keeps the same launcher invocation the other distributed configs use.
+  assert.deepEqual(servers.codex.args.slice(1), EXPECTED_CODEX_ARGS);
+
+  // setup.md must not grow the hand-registration block back.
+  const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
+  assert.doesNotMatch(setup, /^claude mcp add /m);
+});

@@ -75,51 +75,40 @@ Then authenticate: copilot login
 
 ## Step 2: Configure MCP Servers
 
-Register your preferred provider(s) as MCP servers using Claude Code's native command:
+The MCP servers are **declared by the plugin**, in `.claude-plugin/plugin.json`. You
+do not register them by hand and there is nothing to run here — installing or
+updating the plugin is enough, and they appear as `plugin:claude-delegator:<name>`.
 
-### Codex (GPT)
+That is deliberate, and it replaces a `claude mcp add` block that used to live in
+this file. Those commands passed `${CLAUDE_PLUGIN_ROOT}` to a **shell**, which
+expanded it at setup time and wrote a version-stamped cache path into
+`~/.claude.json` — for example
+`…/plugins/cache/…/claude-delegator/1.6.5/server/agy/index.js`. The registration
+then survived exactly until that version directory went away, at which point the
+bridges failed with `CONNECTION_CLOSED` and nothing said why. Measured: it took
+out agy, kimi and copilot on one machine after a routine cache cleanup. Declared
+in the manifest instead, `${CLAUDE_PLUGIN_ROOT}` is resolved by Claude Code on
+every launch, so the path cannot go stale.
+
+The declaration also drops the `--env=PATH` pinning the old commands carried.
+That was there because an MCP server inherits a minimal PATH, and it is no longer
+load-bearing: every bridge now resolves its CLI through absolute install-location
+fallbacks (`cliFallbacks()`), covering `~/.local/bin` and kimi's `~/.kimi-code/bin`.
+`test/provider-config.test.js` holds that guarantee.
+
+### Clearing registrations from an older install
+
+If you ran a previous setup, you still have hand-added entries that will now
+duplicate the plugin-provided ones. Remove them once:
+
 ```bash
-# Idempotent: safe to rerun setup
-claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js -m gpt-5.6-sol -s danger-full-access -a never -c model_reasoning_effort=ultra -c mcp_servers.codex.enabled=false mcp-server
+for s in codex agy kimi copilot grok cursor gemini; do
+  claude mcp remove "$s" >/dev/null 2>&1 || true
+done
 ```
 
-### Agy (Antigravity)
-```bash
-# Idempotent: safe to rerun setup. agy needs no API-key variable — it authenticates
-# through the Antigravity OAuth token in its own user configuration.
-# ~/.local/bin is frequently missing from the PATH an MCP server inherits, so pin it.
-claude mcp remove agy >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" agy -- node ${CLAUDE_PLUGIN_ROOT}/server/agy/index.js
-
-# Gemini was removed in 1.5.0; clear any stale registration left by an older install.
-claude mcp remove gemini >/dev/null 2>&1 || true
-```
-
-### Kimi (Moonshot)
-```bash
-# Idempotent: safe to rerun setup. kimi installs to ~/.kimi-code/bin rather than
-# ~/.local/bin, and that directory is the bridge's only POSIX fallback, so pin it.
-claude mcp remove kimi >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.kimi-code/bin:$HOME/.local/bin:$PATH" kimi -- node ${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js
-```
-
-### Grok (xAI)
-```bash
-# Idempotent: safe to rerun setup. ~/.local/bin (Unix) and ~/.grok/bin (Windows)
-# are frequently missing from the PATH an MCP server inherits, so pin the Unix one.
-claude mcp remove grok >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" grok -- node ${CLAUDE_PLUGIN_ROOT}/server/grok/index.js
-claude mcp remove cursor >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" cursor -- node ${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js
-```
-
-### Copilot (GPT)
-```bash
-# Idempotent: safe to rerun setup
-claude mcp remove copilot >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user copilot -- node ${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js
-```
+`gemini` is in the list because that bridge was removed in 1.5.0 and an old
+registration may still be sitting there.
 
 This registers the MCP servers at user scope (available across all projects).
 

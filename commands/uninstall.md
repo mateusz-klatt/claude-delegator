@@ -21,13 +21,12 @@ If cancelled, stop here.
 ## Remove MCP Configuration
 
 ```bash
-claude mcp remove --scope user codex
-claude mcp remove --scope user agy
-claude mcp remove --scope user kimi
-claude mcp remove --scope user grok
-claude mcp remove --scope user cursor
-claude mcp remove --scope user gemini  # removed in 1.5.0; clears a stale registration
-claude mcp remove --scope user copilot
+# The MCP servers are declared by the plugin, so uninstalling it removes them.
+# These lines only clear hand-added registrations from a setup before 1.8.0,
+# which wrote a version-stamped cache path and would otherwise linger.
+for s in codex agy kimi copilot grok cursor gemini; do
+  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
+done
 ```
 
 ## Remove Installed Rules

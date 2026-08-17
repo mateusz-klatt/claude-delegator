@@ -157,32 +157,21 @@ The discovery sources, account-visible rosters, CLI versions, effort ceilings, l
 
 If `/setup` doesn't work, register the MCP server(s) manually:
 
-```bash
-# For Codex (GPT)
-# Idempotent: safe to rerun
-claude mcp remove codex >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js -m gpt-5.6-sol -s danger-full-access -a never -c model_reasoning_effort=ultra -c mcp_servers.codex.enabled=false mcp-server
+```text
+Nothing to register by hand. The plugin declares its MCP servers in
+.claude-plugin/plugin.json, so installing or updating it is enough and they
+appear as plugin:claude-delegator:<name>.
 
-# For Agy (Antigravity)
-# Idempotent: safe to rerun. ~/.local/bin is often missing from an MCP server's PATH.
-claude mcp remove agy >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" agy -- node ${CLAUDE_PLUGIN_ROOT}/server/agy/index.js
+Earlier versions told you to run `claude mcp add ... ${CLAUDE_PLUGIN_ROOT}/...`.
+The shell expanded that variable at setup time and stored a version-stamped
+cache path, which stopped working as soon as that version directory was removed.
+Declared in the manifest, Claude Code resolves it on every launch instead.
 
-# For Kimi
-# Idempotent: safe to rerun. ~/.local/bin is often missing from an MCP server's PATH.
-claude mcp remove grok >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" grok -- node ${CLAUDE_PLUGIN_ROOT}/server/grok/index.js
-claude mcp remove cursor >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" cursor -- node ${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js
+If you set up before 1.8.0, clear the stale entries once:
 
-# Idempotent: safe to rerun. ~/.kimi-code/bin is often missing from an MCP server's PATH.
-claude mcp remove kimi >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user --env=PATH="$HOME/.kimi-code/bin:$PATH" kimi -- node ${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js
-
-# For Copilot (GPT)
-# Idempotent: safe to rerun
-claude mcp remove copilot >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user copilot -- node ${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js
+  for s in codex agy kimi copilot grok cursor gemini; do
+    claude mcp remove "$s" >/dev/null 2>&1 || true
+  done
 ```
 
 Verify with:
