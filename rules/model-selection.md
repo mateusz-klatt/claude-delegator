@@ -217,9 +217,9 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 `kimi-reply` accepts the same `timeout` bounds as the start tool. The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
-### Local models through the Kimi bridge
+### Ollama through the Kimi bridge — local and cloud
 
-Ollama is a **model server, not an agent**: it has no tool loop and no sessions, so it gets no bridge of its own — wrapping it would mean writing an agent, not adapting one. Instead it rides behind the Kimi bridge as an extra provider, which costs no code at all. Add to `~/.kimi-code/config.toml` without touching `default_model`:
+Ollama is a **model server, not an agent**: it has no tool loop and no sessions, so it gets no bridge of its own — wrapping it would mean writing an agent, not adapting one. Instead it rides behind the Kimi bridge as an extra provider, which costs no code at all. The same provider reaches both locally-run weights and Ollama's hosted models, so one config block buys both. Add to `~/.kimi-code/config.toml` without touching `default_model`:
 
 ```toml
 [providers.ollama-local]
@@ -243,6 +243,12 @@ Worth setting on the Ollama service: `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACH
 **Capability, honestly.** Verified on `ornith:9b` (5.6 GB, tools, RTX 3060): correct tool selection with correct arguments, correct use of the returned tool result, the requested output format respected, no files touched under an advisory instruction, and about 49 tok/s steady state using 5.9 GB of VRAM at 32k. On a planted-vulnerability review it found four of six issues including every critical one — but it also misread GET as POST, left its own mid-answer self-correction in the text, garbled the exploitation mechanism it had correctly identified, and proposed a fix with an inverted condition that would have broken the code it was reviewing.
 
 Treat local models as **advisory only**. They are a genuine first pass when the work will be read before it is used, and the obvious choice when code must not leave the machine. Do not give them implementation mode: the failure that matters is not slowness, it is a plausible-looking wrong edit applied without anyone reading it.
+
+**Cloud models through the same provider.** Ollama also serves hosted models, addressed by appending `:cloud` to the name (`deepseek-v4-pro:cloud`). They need `ollama signin`, consume no VRAM, and reach the delegator through an identical `[providers.*]` block — only the model entries differ. Declare `max_output_size` explicitly on every cloud entry: the bridge derives `max_tokens` from `max_context_size`, and a million-token context produces a request the backend rejects with `max_tokens exceeds model's maximum output tokens` before any work happens.
+
+Access is tiered, and the tiers do not follow model size. `gpt-oss:20b`/`:120b`, `gemma4:31b`, `nemotron-3-nano` and `minimax-m3` answer on a free account; a Pro plan adds `deepseek-v4-pro`, `glm-5.1`/`5.2`, `qwen3.5:397b`, `mistral-large-3:675b`, `minimax-m2.7`, `nemotron-3-super`/`-ultra` and `kimi-k2.6`/`k2.7-code`. `kimi-k3` sits outside the plan allowance entirely and bills against separately purchased "extra usage" — and since Copilot carries the same model inside its flat subscription, route K3 through Copilot rather than here unless there is a reason not to.
+
+**How the tiers actually compare.** On one planted-vulnerability review, identical prompt and file: the local 9B found four of six issues and proposed one fix with an inverted condition; a local 8B found three and missed plaintext password storage; `deepseek-v4-pro:cloud` found all six, added a rate-limiting issue nobody planted, mapped each to an OWASP category, and made no errors. Local weights are for the case where code must not leave the machine. When that is not the constraint, a hosted model on the same bridge is better work at no marginal cost.
 
 ## Copilot Parameters Reference
 
