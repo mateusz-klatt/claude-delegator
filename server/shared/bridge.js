@@ -141,60 +141,79 @@ function resolveWindowsShim(candidate, command, readShim = (p) => fs.readFileSyn
     : path.win32.resolve(path.win32.dirname(candidate), expanded);
 }
 
+const WINDOWS_EXTENSIONS = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs", ""];
+
+/**
+ * Pick the first usable candidate, honouring group order above extension order.
+ *
+ * `groups` is ordered by *provenance*: each PATH directory in PATH order, then
+ * each fallback guess. Extension preference applies only **within** a group.
+ *
+ * That distinction is the whole point. Preferring `.exe` across the flattened
+ * list let a hard-coded fallback that happens to exist outrank a real PATH hit
+ * that happens to be a `.cmd` — measured on Windows, where it silently ran the
+ * user's installed kimi.exe instead of the kimi.cmd first on PATH, then hung
+ * with no stderr, no child process and no exit until the timeout. In production
+ * it means a stale install beats a current one, and a deliberately shimmed PATH
+ * is ignored without a word.
+ */
+function selectCandidate(groups, isUsable, isWindows = IS_WINDOWS) {
+  for (const group of groups) {
+    const present = group.filter(isUsable);
+    if (present.length === 0) continue;
+    if (!isWindows) return present[0];
+    const byExtension = (extension) => present.find((c) => c.toLowerCase().endsWith(extension));
+    return byExtension(".exe") || byExtension(".cmd") || byExtension(".bat") || present[0];
+  }
+  return undefined;
+}
+
 /**
  * Locate a provider CLI. `fallbacks` are guesses for install locations that are
  * often missing from the minimal PATH an MCP server inherits; they are only ever
- * a last resort, because a guess that does not exist must never outrank a real
- * hit from `where`/`which`.
+ * a last resort, because a guess must never outrank a real hit from
+ * `where`/`which` — neither by not existing, nor by carrying a better extension.
  */
 function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
-  const candidates = [];
+  const groups = [];
   if (IS_WINDOWS) {
     // Walk PATH directly rather than shelling out to where.exe: this depends on
-    // neither that binary nor on PATHEXT being set as expected, and it is the
-    // approach the Claude bridge already used.
-    const extensions = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs", ""];
+    // neither that binary nor on PATHEXT being set as expected. One group per
+    // directory, so the user's PATH order decides before extension preference.
     for (const rawDirectory of (process.env.PATH || "").split(path.delimiter)) {
       const directory = rawDirectory.trim().replace(/^"|"$/g, "");
       if (!directory) continue;
-      for (const extension of extensions) {
-        candidates.push(path.join(directory, `${command}${extension}`));
-      }
+      groups.push(WINDOWS_EXTENSIONS.map((extension) => path.join(directory, `${command}${extension}`)));
     }
   } else {
     try {
       const listed = execFileSync("which", [command], { encoding: "utf8" });
-      candidates.push(...listed.trim().split(/\r?\n/).filter(Boolean));
+      groups.push(...listed.trim().split(/\r?\n/).filter(Boolean).map((hit) => [hit]));
     } catch {
       // Not on PATH; fall through to the explicit candidates below.
     }
   }
-  candidates.push(...fallbacks);
+  groups.push(...fallbacks.map((fallback) => [fallback]));
 
-  const present = candidates.filter((candidate) => {
+  const isUsable = (candidate) => {
     try {
-      return fs.statSync(candidate).isFile();
+      if (!fs.statSync(candidate).isFile()) return false;
+      if (IS_WINDOWS) return true;
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return true;
     } catch {
       return false;
     }
-  });
+  };
 
-  let resolved = IS_WINDOWS
-    ? (present.find((c) => c.toLowerCase().endsWith(".exe"))
-        || present.find((c) => c.toLowerCase().endsWith(".cmd"))
-        || present.find((c) => c.toLowerCase().endsWith(".bat"))
-        || present[0])
-    : present.find((candidate) => {
-        try {
-          fs.accessSync(candidate, fs.constants.X_OK);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+  let resolved = selectCandidate(groups, isUsable);
 
   if (!resolved) throw new Error(`${command} not found`);
   if (IS_WINDOWS) resolved = resolveWindowsShim(resolved, command, readShim, aliases);
+
+  // Say which binary won. Choosing the wrong one produced no stderr, no exit and
+  // no clue at all — the same silent class the Copilot error path was fixed for.
+  console.error(`[claude-delegator] ${command} resolved to ${resolved}`);
 
   const validation = spawnTarget(resolved, ["--version"]);
   execFileSync(validation.command, validation.args, { stdio: "pipe" });
@@ -440,6 +459,7 @@ module.exports = {
   resolveCli,
   resolveWindowsShim,
   runStdioLoop,
+  selectCandidate,
   sendError,
   sendResponse,
   spawnTarget,

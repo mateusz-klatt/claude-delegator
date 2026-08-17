@@ -107,6 +107,53 @@ test("runs .js loaders under node and executables directly", () => {
   assert.deepEqual(direct.args, ["--print"]);
 });
 
+test("a hard-coded fallback never outranks a real PATH hit", () => {
+  // claude-win-home-1's scenario, reproduced exactly and confirmed there by a
+  // positive control: kimi.cmd is first on PATH, and the fallback guess
+  // %USERPROFILE%\.kimi-code\bin\kimi.exe also exists on that machine. Preferring
+  // .exe across the flattened candidate list ran the user's real CLI instead of
+  // the stub, which then waited forever — 30s of silence, no child process, no
+  // stderr, no exit. Emptying only USERPROFILE flipped it to a 0.2s success.
+  const stubDirectory = ["C:\\stub\\kimi.exe", "C:\\stub\\kimi.cmd", "C:\\stub\\kimi"];
+  const fallback = ["C:\\Users\\dev\\.kimi-code\\bin\\kimi.exe"];
+  const onDisk = new Set(["C:\\stub\\kimi.cmd", ...fallback]);
+  const exists = (candidate) => onDisk.has(candidate);
+
+  assert.equal(
+    core.selectCandidate([stubDirectory, fallback], exists, true),
+    "C:\\stub\\kimi.cmd",
+    "PATH must win over a fallback that merely has a better extension"
+  );
+
+  // The fallback is still what it is for: PATH turning up nothing at all.
+  assert.equal(core.selectCandidate([[], fallback], exists, true), fallback[0]);
+  assert.equal(core.selectCandidate([["C:\\stub\\absent.exe"], fallback], exists, true), fallback[0]);
+});
+
+test("PATH order decides before extension preference, directory by directory", () => {
+  // A user who deliberately puts a wrapper earlier on PATH must get the wrapper.
+  // Flattening every directory into one list made .exe win from anywhere,
+  // silently ignoring the ordering the user chose.
+  const first = ["C:\\wrapper\\cli.exe", "C:\\wrapper\\cli.cmd"];
+  const second = ["C:\\vendor\\cli.exe", "C:\\vendor\\cli.cmd"];
+  const onDisk = new Set(["C:\\wrapper\\cli.cmd", "C:\\vendor\\cli.exe"]);
+  const exists = (candidate) => onDisk.has(candidate);
+
+  assert.equal(core.selectCandidate([first, second], exists, true), "C:\\wrapper\\cli.cmd");
+  // Within one directory, the extension preference still applies.
+  const both = new Set(["C:\\wrapper\\cli.exe", "C:\\wrapper\\cli.cmd"]);
+  assert.equal(core.selectCandidate([first], (c) => both.has(c), true), "C:\\wrapper\\cli.exe");
+});
+
+test("POSIX selection keeps which-order and never applies extension preference", () => {
+  const exists = (candidate) => candidate !== "/usr/bin/cli";
+  assert.equal(
+    core.selectCandidate([["/usr/bin/cli"], ["/usr/local/bin/cli"], ["/opt/cli"]], exists, false),
+    "/usr/local/bin/cli"
+  );
+  assert.equal(core.selectCandidate([[], []], exists, false), undefined);
+});
+
 test("clamps a timeout into the house bounds and defaults anything unusable", () => {
   assert.equal(core.clampTimeout(60_000), 60_000);
   assert.equal(core.clampTimeout(1), core.MIN_TIMEOUT_MS);
