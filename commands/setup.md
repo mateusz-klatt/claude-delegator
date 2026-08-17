@@ -1,13 +1,13 @@
 ---
 name: setup
-description: Configure claude-delegator with Codex (GPT), Gemini, or Copilot MCP servers
+description: Configure claude-delegator with Codex (GPT), Agy, or Copilot MCP servers
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
 
 # Setup
 
-Configure GPT (via Codex or Copilot) or Gemini as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
+Configure GPT (via Codex or Copilot) or Agy (Google Antigravity) as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
 
@@ -16,9 +16,9 @@ Configure GPT (via Codex or Copilot) or Gemini as specialized expert subagents v
 which codex 2>/dev/null && codex --version 2>&1 | head -1 || echo "CODEX_MISSING"
 ```
 
-### Gemini
+### Agy (Antigravity)
 ```bash
-which gemini 2>/dev/null && gemini --version 2>&1 | head -1 || echo "GEMINI_MISSING"
+which agy 2>/dev/null || [ -x "$HOME/.local/bin/agy" ] && agy --version 2>&1 | head -1 || echo "AGY_MISSING"
 ```
 
 ### Copilot (GPT)
@@ -35,11 +35,14 @@ Install with: npm install -g @openai/codex
 Then authenticate: codex login
 ```
 
-**Gemini Missing:**
+**Agy Missing:**
 ```
-Gemini CLI not found.
-Install with: npm install -g @google/gemini-cli
-Then authenticate: launch `gemini` once and complete sign-in (or set `GOOGLE_API_KEY`)
+Agy (Google Antigravity) CLI not found.
+Install the Antigravity CLI; it lands as a native binary, typically ~/.local/bin/agy.
+Then authenticate: launch `agy` once and complete the Antigravity OAuth flow.
+Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
+If registration succeeds but the bridge cannot start, re-register with
+`--env=PATH=$HOME/.local/bin:$PATH`.
 ```
 
 **Copilot Missing:**
@@ -62,23 +65,16 @@ claude mcp remove codex >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js -m gpt-5.6-sol -s danger-full-access -a never -c model_reasoning_effort=ultra -c mcp_servers.codex.enabled=false mcp-server
 ```
 
-### Gemini
+### Agy (Antigravity)
 ```bash
-# Idempotent: safe to rerun setup. Preserve either supported API-key variable;
-# OAuth/user login remains in the Gemini CLI's own user configuration.
-EXISTING_GEMINI_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GEMINI_API_KEY=\S+' | head -1 | cut -d= -f2-)
-EXISTING_GOOGLE_KEY=$(claude mcp get gemini 2>/dev/null | grep -oE 'GOOGLE_API_KEY=\S+' | head -1 | cut -d= -f2-)
-EFFECTIVE_GEMINI_KEY="${EXISTING_GEMINI_KEY:-${GEMINI_API_KEY:-}}"
-EFFECTIVE_GOOGLE_KEY="${EXISTING_GOOGLE_KEY:-${GOOGLE_API_KEY:-}}"
-GEMINI_ENV_ARGS=()
-if [ -n "$EFFECTIVE_GEMINI_KEY" ]; then
-  GEMINI_ENV_ARGS+=("--env=GEMINI_API_KEY=$EFFECTIVE_GEMINI_KEY")
-fi
-if [ -n "$EFFECTIVE_GOOGLE_KEY" ]; then
-  GEMINI_ENV_ARGS+=("--env=GOOGLE_API_KEY=$EFFECTIVE_GOOGLE_KEY")
-fi
+# Idempotent: safe to rerun setup. agy needs no API-key variable — it authenticates
+# through the Antigravity OAuth token in its own user configuration.
+# ~/.local/bin is frequently missing from the PATH an MCP server inherits, so pin it.
+claude mcp remove agy >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" agy -- node ${CLAUDE_PLUGIN_ROOT}/server/agy/index.js
+
+# Gemini was removed in 1.5.0; clear any stale registration left by an older install.
 claude mcp remove gemini >/dev/null 2>&1 || true
-claude mcp add --transport stdio --scope user "${GEMINI_ENV_ARGS[@]}" gemini -- node ${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js
 ```
 
 ### Copilot (GPT)
@@ -103,7 +99,7 @@ Run these checks and report results:
 ```bash
 # Check 1: CLI versions
 codex --version 2>&1 | head -1 || echo "Not installed"
-gemini --version 2>&1 | head -1 || echo "Not installed"
+agy --version 2>&1 | head -1 || echo "Not installed"
 copilot --version 2>&1 | head -1 || echo "Not installed"
 
 # Check 2: Codex MCP server
@@ -115,26 +111,22 @@ else
   echo "Codex: NOT CONFIGURED"
 fi
 
-# Check 3: Gemini MCP server (authentication can be OAuth or an API key)
-GEMINI_CONFIG=$(claude mcp get gemini 2>/dev/null)
-if echo "$GEMINI_CONFIG" | grep -q "server/gemini/index.js"; then
-  if echo "$GEMINI_CONFIG" | grep -qE "(GEMINI|GOOGLE)_API_KEY="; then
-    echo "Gemini: OK (API key configured)"
-  else
-    echo "Gemini: OK (using Gemini CLI user/OAuth configuration; verify with a live call)"
-  fi
+# Check 3: Agy MCP server (authentication is the Antigravity OAuth token, not an env var)
+AGY_CONFIG=$(claude mcp get agy 2>/dev/null)
+if echo "$AGY_CONFIG" | grep -q "server/agy/index.js"; then
+  echo "Agy: OK (using the Antigravity CLI OAuth configuration; verify with a live call)"
 else
-  echo "Gemini: NOT CONFIGURED"
+  echo "Agy: NOT CONFIGURED"
 fi
 
-# Check 4: Gemini bridge health (initialize handshake)
-if echo "$GEMINI_CONFIG" | grep -q "server/gemini/index.js"; then
+# Check 4: Agy bridge health (initialize handshake)
+if echo "$AGY_CONFIG" | grep -q "server/agy/index.js"; then
   BRIDGE_HEALTH=$(printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
-    | node "${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js" 2>/dev/null \
-    | grep -q '"id":"health"' && echo "Gemini Bridge: HEALTHY" || echo "Gemini Bridge: UNHEALTHY")
+    | node "${CLAUDE_PLUGIN_ROOT}/server/agy/index.js" 2>/dev/null \
+    | grep -q '"id":"health"' && echo "Agy Bridge: HEALTHY" || echo "Agy Bridge: UNHEALTHY")
   echo "$BRIDGE_HEALTH"
 else
-  echo "Gemini Bridge: SKIPPED (Gemini MCP not configured)"
+  echo "Agy Bridge: SKIPPED (Agy MCP not configured)"
 fi
 
 # Check 5: Copilot MCP server
@@ -170,11 +162,11 @@ Display actual values from the checks above:
 claude-delegator Status
 ───────────────────────────────────────────────────
 Codex CLI:      [version from check 1]
-Gemini CLI:     [version from check 1]
+Agy CLI:        [version from check 1]
 Copilot CLI:    [version from check 1]
 Codex MCP:      [status from check 2]
-Gemini MCP:     [status from check 3]
-Gemini Bridge:  [status from check 4]
+Agy MCP:        [status from check 3]
+Agy Bridge:     [status from check 4]
 Copilot MCP:    [status from check 5]
 Copilot Bridge: [status from check 6]
 Rules:          ✓ [N] files in ~/.claude/rules/delegator/
@@ -193,7 +185,7 @@ Next steps:
 1. Restart Claude Code to load MCP server(s)
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
-   - Gemini: Run `gemini` once to complete OAuth/user login, or set `GEMINI_API_KEY` / `GOOGLE_API_KEY`. Re-running `/claude-delegator:setup` preserves either key already stored in the MCP config.
+   - Agy: Run `agy` once to complete the Antigravity OAuth flow. There is no API-key variable; the token lives in the CLI's own user configuration.
    - Copilot: Run `copilot login`
 
 Five experts available:
@@ -222,7 +214,7 @@ Five experts available:
 
 Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is enforced by a clear "do not modify" instruction, while `read-only` is an explicit opt-in.
 Expert is auto-detected based on your request.
-Explicit: "Ask GPT to...", "Ask Gemini to...", or "Ask Copilot to..."
+Explicit: "Ask GPT to...", "Ask Agy to...", or "Ask Copilot to..."
 ```
 
 ## Step 7: Ask About Starring

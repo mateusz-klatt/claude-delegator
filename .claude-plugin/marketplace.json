@@ -8,8 +8,8 @@
     {
       "name": "claude-delegator",
       "source": "./",
-      "description": "Claude, GPT, and Gemini expert subagents over MCP via Claude, Codex, Gemini, or Copilot CLI. Five specialized experts with optional Agent Mail progress reporting.",
-      "version": "1.4.6",
+      "description": "Claude, GPT, and Gemini expert subagents over MCP via Claude, Codex, Agy, or Copilot CLI. Five specialized experts with optional Agent Mail progress reporting.",
+      "version": "1.5.0",
       "author": {
         "name": "Jarrod Watts",
         "url": "https://github.com/jarrodwatts"
@@ -25,7 +25,8 @@
         "codex",
         "gpt",
         "openai",
-        "gemini",
+        "agy",
+        "antigravity",
         "copilot",
         "github",
         "experts",

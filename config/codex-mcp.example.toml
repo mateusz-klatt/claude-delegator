@@ -19,10 +19,10 @@ startup_timeout_sec = 20
 tool_timeout_sec = 3600
 required = false
 
-[mcp_servers.gemini]
+[mcp_servers.agy]
 command = "node"
-args = ["/absolute/path/to/claude-delegator/server/gemini/index.js"]
-enabled_tools = ["gemini", "gemini-reply"]
+args = ["/absolute/path/to/claude-delegator/server/agy/index.js"]
+enabled_tools = ["agy", "agy-reply"]
 startup_timeout_sec = 20
 tool_timeout_sec = 3600
 required = false

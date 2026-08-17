@@ -1,14 +1,22 @@
 {
   "schemaVersion": 1,
   "verifiedAt": "2026-08-10",
+  "cliVersionsCheckedAt": "2026-08-17",
+  "cliVersionNote": "cliVersion reflects `<cli> --version` on cliVersionsCheckedAt. Rosters re-read the same day: agy via `agy models`, copilot via `copilot help config`, codex via ~/.codex/models_cache.json. Only claude's roster still dates from verifiedAt \u2014 its /model selector is interactive, so the ids are corroborated against the CLI bundle rather than enumerated. Note that an invalid --model is a cheap roster probe on agy only; copilot, codex and claude reject it without listing alternatives.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
-      "cliVersion": "2.1.226",
-      "discoverySource": "Models visible in this account's /model selector; full ids corroborated by the installed CLI bundle.",
+      "cliVersion": "2.1.233",
+      "discoverySource": "Models visible in this account's /model selector; full ids corroborated by the installed CLI bundle. Re-corroborated against the 2.1.233 bundle on 2026-08-17: unchanged. The selector itself is interactive and cannot be re-enumerated headlessly.",
       "defaultModel": "claude-opus-5",
       "defaultEffort": "xhigh",
-      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "models": [
         "claude-opus-5",
         "claude-fable-5",
@@ -26,44 +34,87 @@
           "model": "claude-haiku-4-5",
           "effort": "low",
           "transport": "uniform bridge",
-          "operations": ["start", "reply"],
+          "operations": [
+            "start",
+            "reply"
+          ],
           "result": "success"
         }
       ]
     },
     "codex": {
-      "cliVersion": "0.147.0-alpha.6.5",
-      "discoverySource": "Visible entries in this account's models_cache.json; hidden/internal entries are intentionally excluded.",
+      "cliVersion": "0.147.0",
+      "discoverySource": "Visible entries in this account's models_cache.json; hidden/internal entries are intentionally excluded. Re-read on 2026-08-17: unchanged, plus an internal codex-auto-review entry that stays excluded.",
       "defaultModel": "gpt-5.6-sol",
       "defaultEffort": "ultra",
       "models": [
         {
           "id": "gpt-5.6-sol",
-          "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
         },
         {
           "id": "gpt-5.6-terra",
-          "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
         },
         {
           "id": "gpt-5.6-luna",
-          "efforts": ["low", "medium", "high", "xhigh", "max"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
         },
         {
           "id": "gpt-5.5",
-          "efforts": ["low", "medium", "high", "xhigh"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
         },
         {
           "id": "gpt-5.4",
-          "efforts": ["low", "medium", "high", "xhigh"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
         },
         {
           "id": "gpt-5.4-mini",
-          "efforts": ["low", "medium", "high", "xhigh"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
         },
         {
           "id": "gpt-5.3-codex-spark",
-          "efforts": ["low", "medium", "high", "xhigh"]
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
         }
       ],
       "liveCalls": [
@@ -71,83 +122,99 @@
           "model": "gpt-5.6-sol",
           "effort": "ultra",
           "transport": "native codex mcp-server",
-          "operations": ["start", "reply"],
+          "operations": [
+            "start",
+            "reply"
+          ],
           "result": "success"
         },
         {
           "model": "gpt-5.4-mini",
           "effort": "xhigh",
           "transport": "native codex mcp-server",
-          "operations": ["start"],
+          "operations": [
+            "start"
+          ],
           "result": "success"
         }
       ]
     },
-    "gemini": {
-      "cliVersion": "0.54.4",
-      "discoverySource": "Installed CLI registry and aliases. --model remains free-form and backend entitlement is account-specific.",
-      "defaultModel": "gemini-3.1-pro-preview",
-      "freeFormModel": true,
+    "agy": {
+      "cliVersion": "1.1.13",
+      "discoverySource": "`agy models` on 2026-08-17. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
+      "defaultModel": "gemini-3.1-pro-high",
+      "freeFormModel": false,
+      "emitsEffortFlag": false,
+      "effortNote": "Most ids bake the reasoning tier into the name, so the bridge never emits --effort: combining it with a suffixed id fails pre-flight, and the two Claude ids reject it outright.",
       "models": [
-        "auto",
-        "gemini-3.1-pro-preview",
-        "gemini-3.5-flash",
-        "gemini-3-pro-preview",
-        "gemini-3-flash-preview",
-        "gemini-3.1-flash-lite",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemma-4-31b-it",
-        "gemma-4-26b-a4b-it"
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-medium",
+        "gemini-3.7-flash-low",
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium"
       ],
-      "aliases": {
-        "pro": "gemini-2.5-pro",
-        "flash": "gemini-2.5-flash",
-        "flash-lite": "gemini-2.5-flash-lite",
-        "auto-gemini-3": "auto-gemini-3",
-        "auto-gemini-2.5": "auto-gemini-2.5"
-      },
       "liveCalls": [
         {
-          "model": "gemini-2.5-flash",
+          "model": "gemini-3.5-flash-low",
           "transport": "uniform bridge",
-          "operations": ["start", "reply"],
+          "operations": [
+            "start",
+            "reply"
+          ],
           "result": "success"
         }
       ]
     },
     "copilot": {
-      "cliVersion": "1.0.78",
-      "discoverySource": "Model and effort values advertised by copilot help config. Effort support is model-specific and parser acceptance is not backend acceptance.",
+      "cliVersion": "1.0.80",
+      "discoverySource": "`copilot help config` on 2026-08-17 (27 ids, up from 25 on 2026-08-10: gemini-3.7-flash and kimi-k3 are new). This is the CLI parser allowlist, not account entitlement: the interactive /model picker on the same day additionally offered auto, MAI-Code-1.1-Flash and Grok 4.6, and listed claude-opus-4.6 and claude-opus-4.5 under Unavailable. Effort support is model-specific and parser acceptance is not backend acceptance.",
       "defaultModel": "gpt-5.6-sol",
       "defaultEffort": "max",
-      "efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      "efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "models": [
         "claude-sonnet-5",
-        "claude-sonnet-4.6",
-        "claude-sonnet-4.5",
-        "claude-haiku-4.5",
         "claude-fable-5",
         "claude-opus-5",
         "claude-opus-4.8",
         "claude-opus-4.8-fast",
         "claude-opus-4.7",
+        "claude-sonnet-4.6",
         "claude-opus-4.6",
+        "claude-sonnet-4.5",
         "claude-opus-4.5",
+        "claude-haiku-4.5",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.4",
-        "gpt-5.3-codex",
         "gpt-5.4-mini",
+        "gpt-5.3-codex",
         "gpt-5-mini",
         "mai-code-1-flash-picker",
-        "gemini-3.1-pro-preview",
+        "gemini-3.7-flash",
         "gemini-3.6-flash",
         "gemini-3.5-flash",
+        "gemini-3.1-pro-preview",
         "grok-4.5",
+        "kimi-k3",
         "kimi-k2.7-code"
       ],
       "maxEffortByModel": {
@@ -162,24 +229,40 @@
           "model": "gpt-5-mini",
           "effort": "low",
           "transport": "uniform bridge",
-          "operations": ["start"],
+          "operations": [
+            "start"
+          ],
           "result": "success"
         },
         {
           "model": "gpt-5-mini",
           "effort": "minimal",
           "transport": "uniform bridge",
-          "operations": ["start"],
+          "operations": [
+            "start"
+          ],
           "result": "backend-rejected"
         },
         {
           "model": "gpt-5-mini",
           "effort": "none",
           "transport": "uniform bridge",
-          "operations": ["start"],
+          "operations": [
+            "start"
+          ],
           "result": "backend-rejected"
         }
-      ]
+      ],
+      "accountUnavailable": [
+        "claude-opus-4.6",
+        "claude-opus-4.5"
+      ],
+      "pickerOnly": [
+        "auto",
+        "MAI-Code-1.1-Flash",
+        "Grok 4.6"
+      ],
+      "pickerNote": "Observed in the interactive /model picker on 2026-08-17. accountUnavailable ids are still in the CLI allowlist but the picker marks them Unavailable for this account, so a call would be backend-rejected. pickerOnly entries are display names the picker offers but `copilot help config` does not list; their CLI ids are unconfirmed."
     }
   }
 }

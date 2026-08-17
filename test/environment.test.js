@@ -10,7 +10,6 @@ test("callee environment keeps provider auth but scrubs caller Agent Mail identi
     PATH: "/bin",
     HOME: "/home/callee",
     ANTHROPIC_API_KEY: "provider-auth",
-    GEMINI_API_KEY: "provider-auth",
     GITHUB_TOKEN: "provider-auth",
     AGENT_NAME: "CallerAgent",
     AGENT_MAIL_AGENT: "CallerAgent",
@@ -27,7 +26,6 @@ test("callee environment keeps provider auth but scrubs caller Agent Mail identi
     PATH: "/bin",
     HOME: "/home/callee",
     ANTHROPIC_API_KEY: "provider-auth",
-    GEMINI_API_KEY: "provider-auth",
     GITHUB_TOKEN: "provider-auth"
   });
   assert.equal(source.AGENT_MAIL_AGENT, "CallerAgent");

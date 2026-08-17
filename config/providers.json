@@ -35,21 +35,39 @@
       "strengths": ["architecture", "code-review", "security", "requirements-analysis", "plan-validation"],
       "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
     },
-    "gemini": {
-      "name": "Gemini",
-      "description": "Google Gemini models via Gemini CLI - specialized expert subagents",
-      "cli": "gemini",
-      "install": "npm install -g @google/gemini-cli",
-      "auth": "run gemini once (or set GOOGLE_API_KEY)",
+    "agy": {
+      "name": "Agy",
+      "description": "Google Antigravity CLI - Gemini, Claude and GPT-OSS models as specialized expert subagents",
+      "cli": "agy",
+      "install": "install the Google Antigravity CLI (native binary, typically ~/.local/bin/agy)",
+      "auth": "run agy once to complete the Antigravity OAuth flow",
       "mcp": {
         "type": "stdio",
         "command": "node",
-        "args": ["${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"]
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/agy/index.js"
+        ]
       },
-      "modelCatalogKey": "gemini",
-      "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
-      "strengths": ["reasoning", "large context", "code generation", "multimodal analysis"],
-      "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
+      "modelCatalogKey": "agy",
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "reasoning",
+        "large context",
+        "code generation",
+        "cross-family model choice"
+      ],
+      "avoid": [
+        "provider-enforced read-only review",
+        "simple-operations",
+        "trivial-decisions",
+        "first-attempt-fixes"
+      ]
     },
     "copilot": {
       "name": "Copilot (GPT, Claude & Gemini)",

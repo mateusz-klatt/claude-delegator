@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A multi-provider MCP delegator. Claude Code can route to Codex, Gemini, or Copilot, while Codex and other MCP clients can also route to Claude through a symmetric `claude` / `claude-reply` bridge. Five domain experts can advise OR implement: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, and Security Analyst.
+A multi-provider MCP delegator. Claude Code can route to Codex, Agy (Google Antigravity), or Copilot, while Codex and other MCP clients can also route to Claude through a symmetric `claude` / `claude-reply` bridge. Five domain experts can advise OR implement: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, and Security Analyst.
 
 ## Development Commands
 
@@ -23,7 +23,7 @@ npm test
 npm run test:coverage
 ```
 
-No build step and no runtime dependencies. Codex supplies its native MCP server through a transparent environment-boundary launcher; zero-dependency bridges adapt Claude, Gemini, and Copilot CLIs to the same start/reply contract. Tests use Node's built-in test runner.
+No build step and no runtime dependencies. Codex supplies its native MCP server through a transparent environment-boundary launcher; zero-dependency bridges adapt Claude, Agy, and Copilot CLIs to the same start/reply contract. Tests use Node's built-in test runner.
 
 ## Architecture
 
@@ -48,7 +48,7 @@ User Request → Claude Code → [Match trigger → Select expert & provider]
 1. **Match trigger** - Check `rules/triggers.md` for semantic patterns
 2. **Read expert prompt** - Load from `prompts/[expert].md`
 3. **Build 7-section prompt** - Use format from `rules/delegation-format.md`
-4. **Call provider tool** - `mcp__claude__claude`, `mcp__codex__codex`, `mcp__gemini__gemini`, or `mcp__copilot__copilot`
+4. **Call provider tool** - `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, or `mcp__copilot__copilot`
 5. **Synthesize response** - Never show raw output; interpret and verify
 
 ### The 7-Section Delegation Format
@@ -74,7 +74,7 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 | `config/model-catalog.json` | Empirically discovered per-CLI model roster | Consumed by bridges and documentation |
 | `server/claude/index.js` | Claude MCP bridge | Wraps Claude CLI as `claude` / `claude-reply` |
 | `server/codex/launcher.js` | Transparent Codex launcher | Preserves native MCP/model handling while isolating env and supervising the process tree |
-| `server/gemini/index.js` | Gemini MCP bridge | Wraps Gemini CLI as MCP server |
+| `server/agy/index.js` | Agy MCP bridge | Wraps the Google Antigravity CLI as MCP server |
 | `server/copilot/index.js` | Copilot MCP bridge | Wraps Copilot CLI as MCP server |
 
 > Expert prompts adapted from [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
@@ -89,11 +89,11 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 | **Code Reviewer** | `prompts/code-reviewer.md` | Code quality, bugs | "review this code", "find issues" |
 | **Security Analyst** | `prompts/security-analyst.md` | Vulnerabilities | "is this secure", "harden this" |
 
-Every expert can operate in **advisory** or **implementation** mode. Delegated CLIs default to non-interactive full access so nested approval prompts cannot block the parent; advisory mode is carried by an explicit "do not modify" instruction. The custom bridges expose `workspace-write` as that default full-tool mode and retain `read-only` only as an explicit opt-in.
+Every expert can operate in **advisory** or **implementation** mode. Delegated CLIs default to non-interactive full access so nested approval prompts cannot block the parent; advisory mode is carried by an explicit "do not modify" instruction. The custom bridges expose `workspace-write` as that default full-tool mode and retain `read-only` only as an explicit opt-in — except on Agy, where `read-only` denies shell but not writes (decision 11).
 
 ## Key Design Decisions
 
-1. **Native & Bridge MCP** - Codex already exposes `codex` / `codex-reply` through `mcp-server`. Claude's native `mcp serve` exposes internal tools rather than the provider contract, so a thin bridge supplies `claude` / `claude-reply`; Gemini and Copilot use equivalent bridges.
+1. **Native & Bridge MCP** - Codex already exposes `codex` / `codex-reply` through `mcp-server`. Claude's native `mcp serve` exposes internal tools rather than the provider contract, so a thin bridge supplies `claude` / `claude-reply`; Agy and Copilot use equivalent bridges.
 2. **Single-shot + multi-turn** - Single-shot for advisory (full context per call), multi-turn via `threadId` for chained implementation and retries
 3. **Dual mode** - Any expert can advise or implement based on task
 4. **Synthesize, don't passthrough** - Claude interprets expert output, applies judgment
@@ -102,7 +102,11 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
 7. **Copilot disk persistence** - Unlike Codex (in-memory), Copilot persists session state to `~/.copilot/session-state/`, surviving process restarts
 8. **Conditional Agent Mail progress** - Callers pass `{projectKey, callerAgentName, mailTopic?, checkpointIntervalSeconds?}` without credentials or caller-provided mail thread ids. The callee replies to its own first checkpoint so Agent Mail maintains the thread internally; the provider session `threadId` remains separate. A target uses MCP Agent Mail only when already available and otherwise completes normally.
 9. **No Claude self-target** - Configure the Claude bridge in Codex or another external orchestrator, not in Claude Code itself. Native subagents already cover in-family fan-out, and a self-target adds no model diversity while drawing on the same Anthropic quota.
-10. **Delegation-depth guard** - The Claude bridge stamps `CLAUDE_DELEGATOR_CLAUDE_DEPTH` into every child environment and refuses both tools when it is already set. Because the variable survives each further hop, this closes indirect loops too — a delegated Claude that calls Codex cannot have that Codex call back into another Claude. The guard is defence in depth, not a security boundary: under `workspace-write` the child can still invoke any CLI itself.
+10. **Delegation-depth guard** - The Claude bridge stamps `CLAUDE_DELEGATOR_CLAUDE_DEPTH` into every child environment and refuses both tools when it is already set. Because the variable survives each further hop, this closes indirect loops too — a delegated Claude that calls Codex cannot have that Codex call back into another Claude. The guard is defence in depth, not a security boundary: under `workspace-write` the child can still invoke any CLI itself. The Agy bridge applies the same guard through `CLAUDE_DELEGATOR_AGY_DEPTH`.
+11. **Agy replaces Gemini, with three deviations** - The Antigravity CLI covers Gemini, Claude and GPT-OSS models from one provider, so it supersedes the Gemini bridge removed in 1.5.0. Three seams do not fit the generic pattern, each verified against the live CLI rather than inferred:
+    - **No enforced read-only.** `--mode plan` is a slash-command expansion, inert under the `--disable-slash-commands` the bridge must always pass, and even with slash commands enabled it let a write through under an insistent prompt. `read-only` omits `--dangerously-skip-permissions`, which soft-denies `run_command` only; `write_to_file`, `search_web` and `read_url_content` remain, and writes are not workspace-confined. The enum value is kept for cross-bridge uniformity and documented for exactly what it is.
+    - **Reply must re-pin the model.** A resumed conversation inherits neither its model nor its workspace, so `agy-reply` requires `model` instead of defaulting it — omitting it silently falls back to the user's `settings.json` default. This deliberately inverts the house rule that a reply drops model-ish knobs.
+    - **Success is not exit-code shaped.** A rejected model exits 1 with well-formed JSON and `status: "ERROR"`; an auto-denied tool exits 0 with `status: "SUCCESS"` and an empty response. The bridge parses stdout first and uses the exit code only to pick a message. `--effort` is never emitted because most model ids bake the reasoning tier into the name, and `--add-dir` is never passed because it is what switches on repo-supplied rules injection.
 
 ## When NOT to Delegate
 

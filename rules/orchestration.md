@@ -1,6 +1,6 @@
 # Model Orchestration
 
-You have access to Claude, GPT, Gemini, and Copilot experts via MCP tools. Use them strategically based on these guidelines. The Claude target is for external orchestrators such as Codex; Claude Code must not target itself.
+You have access to Claude, GPT, Agy, and Copilot experts via MCP tools. Use them strategically based on these guidelines. The Claude target is for external orchestrators such as Codex; Claude Code must not target itself.
 
 ## Available Tools
 
@@ -10,8 +10,8 @@ You have access to Claude, GPT, Gemini, and Copilot experts via MCP tools. Use t
 | `mcp__claude__claude-reply` | Claude | Continue an existing Claude session (multi-turn) |
 | `mcp__codex__codex` | GPT (Codex) | Start a new expert session |
 | `mcp__codex__codex-reply` | GPT (Codex) | Continue an existing session (multi-turn) |
-| `mcp__gemini__gemini` | Gemini | Start a new expert session |
-| `mcp__gemini__gemini-reply` | Gemini | Continue an existing session (multi-turn) |
+| `mcp__agy__agy` | Agy (Antigravity) | Start a new expert session |
+| `mcp__agy__agy-reply` | Agy (Antigravity) | Continue an existing session (multi-turn) |
 | `mcp__copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
 | `mcp__copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
@@ -33,7 +33,7 @@ All four provider targets support both single-shot and multi-turn delegation.
 
 ### Single-Shot (Default)
 
-Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__gemini__gemini`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
+Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
 
 **Best for:** Advisory reviews, one-off analysis, independent implementation tasks.
 
@@ -61,7 +61,7 @@ mcp__codex__codex-reply({
 
 | Pattern | Tool | Context | Use When |
 |---------|------|---------|----------|
-| Single-shot | `claude` / `codex` / `gemini` / `copilot` | Fresh each call | Advisory, one-off tasks |
+| Single-shot | `claude` / `codex` / `agy` / `copilot` | Fresh each call | Advisory, one-off tasks |
 | Multi-turn | `*-reply` | Preserved via threadId | Chained steps, retries |
 
 ---
@@ -91,10 +91,10 @@ When user explicitly requests a specific provider:
 |-----------|--------|
 | "ask Claude", "consult Claude" | From a non-Claude orchestrator, identify task type → route to the appropriate expert prompt |
 | "ask GPT", "consult GPT", "ask codex" | Identify task type → route to appropriate expert |
-| "ask Gemini", "consult Gemini", "ask gemini" | Identify task type → route to appropriate expert |
+| "ask Agy", "consult Agy", "ask agy" | Identify task type → route to appropriate expert |
 | "ask Copilot", "consult Copilot", "ask copilot" | Identify task type → route to appropriate expert |
 | "ask GPT to review the architecture" | Delegate to Architect |
-| "have Gemini review this code" | Delegate to Code Reviewer |
+| "have Agy review this code" | Delegate to Code Reviewer |
 | "have Copilot review this code" | Delegate to Code Reviewer |
 | "GPT security review" | Delegate to Security Analyst |
 
@@ -118,14 +118,14 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-For the Claude, Gemini, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
+For the Claude, Agy, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
 
 ### Step 3: Determine Mode
 | Provider | Advisory | Implementation |
 |----------|----------|----------------|
 | Codex native MCP | Default `danger-full-access` + `never`; state "do not modify" in developer instructions | Same non-interactive policy; edits are authorized in developer instructions |
 | Claude bridge | Default `workspace-write` (permission bypass); state "do not modify" | Default `workspace-write` |
-| Gemini bridge | Default `workspace-write` (`yolo`); state "do not modify" | Default `workspace-write` |
+| Agy bridge | Default `workspace-write` (`--dangerously-skip-permissions`); state "do not modify". `read-only` denies shell only, never writes | Default `workspace-write` |
 | Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify" | Default `workspace-write` |
 
 The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. The explicit bridge `read-only` option is available for provider-enforced denial; it may also prevent Agent Mail writes, which must fail open.
@@ -159,9 +159,9 @@ When MCP Agent Mail is already available to the caller, resolve the caller's bou
 
 `callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
 
-The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `gemini`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, or `copilot` and consumed only by the corresponding `*-reply` tool.
 
-For the Claude, Gemini, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
+For the Claude, Agy, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
 
 ### Step 6: Call the Expert
 ```typescript
@@ -182,8 +182,8 @@ mcp__claude__claude({
   cwd: "[current working directory]"
 })
 
-// OR Using Gemini
-mcp__gemini__gemini({
+// OR Using Agy
+mcp__agy__agy({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
   coordination: { /* optional caller envelope */ },
@@ -227,11 +227,11 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 (Claude, Codex, Gemini, or Copilot)
-const result = mcp__codex__codex({ ... }) // or mcp__claude__claude / mcp__gemini__gemini / mcp__copilot__copilot
+// Attempt 1 (Claude, Codex, Agy, or Copilot)
+const result = mcp__codex__codex({ ... }) // or mcp__claude__claude / mcp__agy__agy / mcp__copilot__copilot
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
-mcp__codex__codex-reply({ // or mcp__claude__claude-reply / mcp__gemini__gemini-reply / mcp__copilot__copilot-reply
+mcp__codex__codex-reply({ // or mcp__claude__claude-reply / mcp__agy__agy-reply / mcp__copilot__copilot-reply
   threadId: result.threadId,
   prompt: `The previous implementation failed verification.
 Error: [exact error message]

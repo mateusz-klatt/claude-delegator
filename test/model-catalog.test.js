@@ -5,7 +5,7 @@ const test = require("node:test");
 
 const catalog = require("../config/model-catalog.json");
 const copilotBridge = require("../server/copilot");
-const geminiBridge = require("../server/gemini");
+const agyBridge = require("../server/agy");
 
 async function captureJsonRpcResponse(action) {
   const originalWrite = process.stdout.write;
@@ -24,23 +24,29 @@ async function captureJsonRpcResponse(action) {
 
 test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.verifiedAt, "2026-08-10");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.226");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-08-17");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.233");
   assert.equal(catalog.providers.claude.models.length, 4);
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5");
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.147.0-alpha.6.5");
+  assert.equal(catalog.providers.codex.cliVersion, "0.147.0");
   assert.equal(catalog.providers.codex.models.length, 7);
   assert.deepEqual(
     catalog.providers.codex.models.find((model) => model.id === "gpt-5.6-sol").efforts,
     ["low", "medium", "high", "xhigh", "max", "ultra"]
   );
 
-  assert.equal(catalog.providers.gemini.cliVersion, "0.54.4");
-  assert.equal(catalog.providers.gemini.models.length, 11);
-  assert.equal(catalog.providers.gemini.freeFormModel, true);
+  assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
+  assert.equal(catalog.providers.agy.cliVersion, "1.1.13");
+  assert.equal(catalog.providers.agy.models.length, 14);
+  // A hard allowlist, unlike the free-form roster gemini exposed: agy validates
+  // --model itself and an unknown id fails pre-flight before any work happens.
+  assert.equal(catalog.providers.agy.freeFormModel, false);
+  // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
+  assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.78");
-  assert.equal(catalog.providers.copilot.models.length, 25);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.80");
+  assert.equal(catalog.providers.copilot.models.length, 27);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -59,7 +65,7 @@ test("catalog defaults, aliases, and effort overrides reference unique advertise
   assert.ok(codexIds.includes(codex.defaultModel));
   for (const model of codex.models) assert.equal(new Set(model.efforts).size, model.efforts.length);
 
-  for (const providerName of ["gemini", "copilot"]) {
+  for (const providerName of ["agy", "copilot"]) {
     const provider = catalog.providers[providerName];
     assert.equal(new Set(provider.models).size, provider.models.length);
     assert.ok(provider.models.includes(provider.defaultModel));
@@ -86,22 +92,23 @@ test("Copilot tool schema is sourced from the catalog and applies effort ceiling
   assert.equal(copilotBridge.resolveEffort("gpt-5-mini", "none"), "low");
 });
 
-test("Gemini tool schema advertises registry examples without restricting free-form models", () => {
-  const start = geminiBridge.toolDefinitions.find((tool) => tool.name === "gemini");
-  const model = start.inputSchema.properties.model;
+test("Agy tool schema is sourced from the catalog and exposes no effort knob", () => {
+  const start = agyBridge.toolDefinitions.find((tool) => tool.name === "agy");
+  const reply = agyBridge.toolDefinitions.find((tool) => tool.name === "agy-reply");
 
-  assert.equal(model.default, catalog.providers.gemini.defaultModel);
-  assert.equal(model.enum, undefined);
-  assert.ok(model.examples.includes("gemma-4-31b-it"));
-  assert.ok(model.examples.includes("pro"));
-  assert.ok(model.examples.includes("auto-gemini-3"));
-  assert.deepEqual(geminiBridge.sandboxArguments(), ["--approval-mode", "yolo"]);
-  assert.deepEqual(geminiBridge.sandboxArguments("read-only"), ["--approval-mode", "plan"]);
-  assert.deepEqual(geminiBridge.sandboxArguments("workspace-write"), ["--approval-mode", "yolo"]);
+  assert.deepEqual(start.inputSchema.properties.model.enum, catalog.providers.agy.models);
+  assert.equal(start.inputSchema.properties.model.default, catalog.providers.agy.defaultModel);
+  assert.equal(start.inputSchema.properties.effort, undefined);
+  assert.equal(reply.inputSchema.properties.effort, undefined);
+
+  // Deviation from every sibling bridge: a resumed agy conversation inherits neither
+  // its model nor its workspace, so reply requires the model instead of defaulting it.
+  assert.deepEqual(reply.inputSchema.required, ["threadId", "prompt", "model"]);
+  assert.equal(reply.inputSchema.properties.model.default, undefined);
 });
 
 test("all bridge tools expose the strict optional coordination object", () => {
-  for (const tool of [...copilotBridge.toolDefinitions, ...geminiBridge.toolDefinitions]) {
+  for (const tool of [...copilotBridge.toolDefinitions, ...agyBridge.toolDefinitions]) {
     const coordination = tool.inputSchema.properties.coordination;
     assert.equal(coordination.additionalProperties, false);
     assert.deepEqual(
@@ -112,7 +119,7 @@ test("all bridge tools expose the strict optional coordination object", () => {
 });
 
 test("tools/list handlers return the exported catalog-backed schemas", async () => {
-  for (const bridge of [copilotBridge, geminiBridge]) {
+  for (const bridge of [copilotBridge, agyBridge]) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/list"](17, {}, true)
     );
@@ -125,7 +132,7 @@ test("tools/list handlers return the exported catalog-backed schemas", async () 
 test("bridge validation rejects token-bearing coordination before invoking a CLI", async () => {
   for (const [bridge, toolName] of [
     [copilotBridge, "copilot"],
-    [geminiBridge, "gemini"]
+    [agyBridge, "agy"]
   ]) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/call"](23, {

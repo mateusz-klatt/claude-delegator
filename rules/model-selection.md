@@ -1,6 +1,6 @@
 # Model Selection Guidelines
 
-Claude, GPT (Codex), Copilot, and Gemini experts serve as specialized consultants for complex problems.
+Claude, GPT (Codex), Copilot, and Agy experts serve as specialized consultants for complex problems.
 
 ## Provider Selection
 
@@ -8,14 +8,15 @@ Before delegating, check which MCP tools are available in the current environmen
 
 1. **If multiple are available**:
    - Use **Claude** when the user explicitly asks for Claude. Do not register Claude as a target inside Claude Code itself.
-   - Use **Gemini** for tasks requiring large context or multimodal analysis.
+   - Use **Agy** for tasks requiring large context, or when you want a Gemini, Claude or GPT-OSS model from a single provider.
    - Use **GPT (Codex)** for tasks where the user explicitly asked for "GPT" or "Codex".
    - Use **Copilot** for tasks where the user explicitly asked for "Copilot".
-   - Default to **Gemini** for general reasoning.
+   - Default to **Agy** for general reasoning.
+   - Do **not** use Agy when the caller genuinely needs provider-enforced read-only; it has no such tier. Use Claude or Codex for that.
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster discovered on 2026-08-10, use `config/model-catalog.json` as the source of truth. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters and CLI versions were refreshed on 2026-08-17 (agy via `agy models`, copilot via `copilot help config`, codex via its models cache); Claude's roster is corroborated against the CLI bundle because its selector is interactive. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -31,7 +32,7 @@ For the account-specific roster discovered on 2026-08-10, use `config/model-cata
 
 Every expert can operate in two modes:
 
-The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The three custom bridges expose only `read-only` and `workspace-write`; unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Use `read-only` only when the caller explicitly wants provider-enforced write denial and accepts that unavailable operations will be refused. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
+The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The three custom bridges expose only `read-only` and `workspace-write`; unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Use `read-only` only when the caller explicitly wants provider-enforced write denial and accepts that unavailable operations will be refused — but see **Sandbox honesty** below, because Agy cannot deliver that guarantee and only soft-denies shell. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
 
 ## Expert Details
 
@@ -137,33 +138,45 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `threadId` | string | **Required.** Thread ID from previous `codex` call |
 | `prompt` | string | **Required.** Follow-up instruction |
 
-## Gemini Parameters Reference
+## Agy Parameters Reference
 
-### `mcp__gemini__gemini` (Start Session)
+### `mcp__agy__agy` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
-| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
-| `sandbox` | `read-only`, `workspace-write` | `read-only` maps to `plan`; `workspace-write` maps to non-interactive `yolo`. Default: `workspace-write`. |
-| `model` | e.g. `gemini-3.1-pro-preview` | Override the default model (free-form string, any model the Gemini CLI accepts) |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
+| `sandbox` | `read-only`, `workspace-write` | `workspace-write` passes `--dangerously-skip-permissions`; `read-only` omits it. Default: `workspace-write`. See **Sandbox honesty**. |
+| `model` | one of the 14 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-3.1-pro-high` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `cwd` | path | Working directory for the task |
+| `cwd` | path | Working directory; it becomes the session workspace |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: The default `gemini-3.1-pro-preview` is the right choice for expert work (architecture, security, plan review). Pass `model: "gemini-3.5-flash"` for quick, low-stakes checks where speed matters more than depth.
+**Model guidance**: `gemini-3.1-pro-high` (default) for expert work. The reasoning tier is baked into most ids — `-low`, `-medium`, `-high` — so pick the tier by picking the model. Use `gemini-3.5-flash-low` for quick low-stakes checks, `claude-sonnet-4-6` or `claude-opus-4-6-thinking` for a cross-family second opinion, and `gpt-oss-120b-medium` for an open-weights perspective.
 
-**Timeout guidance**: Advisory consults finish well inside the 15-minute default, so leave `timeout` unset for them. Raise it explicitly — up to `3600000` (1 hour, the ceiling) — for implementation-mode delegations that refactor across files, run builds, or execute a test suite. On expiry the bridge SIGTERMs the process group and returns an error, and recovery is poor: Gemini runs `--approval-mode yolo`, so edits already written to disk are **not** rolled back, and `gemini-reply` cannot resume the killed run because the bridge rejects `threadId: "latest"`. The result is a half-applied change with no resumable session, so estimate generously rather than retrying after a kill.
+**No effort parameter**: the bridge never emits `--effort` and the tools do not expose it. Combining `--effort` with a tier-suffixed id fails pre-flight (`conflicts with --effort=high`), the two Claude ids reject the flag outright, and a bare family id would require it. Selecting the tier through `model` makes all of those unreachable. This is the opposite of the Codex trap documented above: there, a `model` override without a matching effort override fails; here, effort simply is not a separate knob.
 
-**Workspace trust**: Gemini gates every run behind folder trust. In a directory it does not trust, it overrides the requested approval mode back to `default` and then fails, because a headless child cannot answer the interactive trust prompt. That breaks `read-only` and `workspace-write` alike, so the bridge sets `GEMINI_CLI_TRUST_WORKSPACE=true` in the child environment by default. The cost is real: a trusted workspace lets repository-supplied context such as `GEMINI.md` and workspace settings reach the model, which is a prompt-injection surface when the delegation target is code you did not write. To restore the gate, set `GEMINI_CLI_TRUST_WORKSPACE=false` in the MCP server env — the bridge preserves an explicit value — and keep delegation `cwd` inside folders trusted through the Gemini CLI itself.
+**Timeout guidance**: Advisory consults finish well inside the 15-minute default, so leave `timeout` unset for them. Raise it explicitly — up to `3600000` (1 hour, the ceiling) — for implementation runs that refactor across files or execute a test suite. The bridge also passes agy's own `--print-timeout`, set to the requested timeout minus a 30-second startup budget, so agy gives up fractionally before our hard kill. That ordering matters: on its own timeout agy still persists the conversation and returns its id, so the run is resumable via `agy-reply`, and the bridge surfaces that id in the error text as `(resumable threadId: …)`. Edits already written to disk are **not** rolled back either way, so estimate generously.
 
-The locally discovered registry also includes `auto`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemma-4-31b-it`, and `gemma-4-26b-a4b-it`. Gemini keeps `--model` free-form; catalog presence is not a guarantee of backend entitlement.
+**Sandbox honesty**: agy has no provider-enforced read-only tier in headless print mode. `--mode plan` is delivered as a slash-command expansion, so it is inert under the `--disable-slash-commands` the bridge must always pass; with slash commands enabled it is only a behavioural nudge and was verified letting a write through under an insistent prompt. `read-only` therefore omits `--dangerously-skip-permissions`, which soft-denies `run_command` and nothing else — `write_to_file`, `search_web` and `read_url_content` all remain available, and writes are not confined to the workspace. It is strictly more restrictive than the default and nothing more. Carry advisory intent in `developer-instructions`, exactly as for every other provider. An operator who needs real denial must add `permissions.deny` entries to `~/.gemini/antigravity-cli/settings.json`; the bridge never writes that file.
 
-### `mcp__gemini__gemini-reply` (Continue Session)
+**Workspace context**: the bridge deliberately does not pass `--add-dir`. The `cwd` alone becomes the session workspace and already grants file access, whereas `--add-dir` additionally triggers agy's rules discovery and injects repository-supplied `AGENTS.md` / `GEMINI.md` into the session — a prompt-injection surface when the delegation target is code you did not write. Verified: with `cwd` only, the agent read workspace files while a planted `AGENTS.md` sentinel never reached the model. Repo-supplied `.agents/plugins/*/mcp_config.json` likewise did not execute without `--add-dir`. Note that outbound HTTP (`search_web`, `read_url_content`) is always available regardless of `sandbox`, so a delegation into untrusted code retains an exfiltration path; deny those tools in `settings.json` if that matters.
+
+**Prompt paths**: state the absolute workspace path in the prompt body. Relative phrasing such as "the current directory" was observed making agy target `~/.gemini/antigravity-cli/scratch` instead, while still reporting `status: SUCCESS`.
+
+**Reply re-pins the model**: unlike every sibling bridge, `agy-reply` **requires** `model`. A resumed agy conversation inherits neither its model nor its workspace — omitting the flag silently falls back to the user's `settings.json` default, which was observed switching a Flash-tier session to Gemini 3.7 Flash (High) mid-conversation. Echo back the model the start call used, and pass the same `cwd`.
+
+### `mcp__agy__agy-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
-| `threadId` | string | **Required.** Thread ID from previous `gemini` call |
+| `threadId` | string | **Required.** `conversation_id` from the previous `agy` call. The bridge fails loudly if agy resumes a different conversation. |
 | `prompt` | string | **Required.** Follow-up instruction |
+| `model` | same allowlist | **Required.** A resume does not inherit the model |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
+| `cwd` | path | Repeat the original value; a resume does not inherit the workspace |
+
+`agy-reply` accepts the same `timeout` bounds as the start tool.
 
 ## Copilot Parameters Reference
 
@@ -179,7 +192,7 @@ The locally discovered registry also includes `auto`, `gemini-3-pro-preview`, `g
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 
-**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; `gpt-5.6-terra` for everyday tasks; `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`); Gemini models only when the Gemini MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; `gpt-5.6-terra` for everyday tasks; `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`); Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
 ## Claude Parameters Reference (external orchestrators)
 
@@ -218,7 +231,7 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `threadId` | string | Session ID for multi-turn follow-ups |
 | `content` | MCP content array | Text is normally in `content[0].text`; native Codex also returns `structuredContent.content` |
 
-The bridges (Claude, Gemini, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
+The bridges (Claude, Agy, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
 
 ## When NOT to Delegate
 

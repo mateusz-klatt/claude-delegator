@@ -39,10 +39,10 @@ test("CI analyzes the canonical Sonar project without dependency lifecycle scrip
 });
 
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {
-  const geminiBridge = require("../server/gemini");
+  const agyBridge = require("../server/agy");
   const copilotBridge = require("../server/copilot");
 
-  for (const tool of [...geminiBridge.toolDefinitions, ...copilotBridge.toolDefinitions]) {
+  for (const tool of [...agyBridge.toolDefinitions, ...copilotBridge.toolDefinitions]) {
     const { timeout } = tool.inputSchema.properties;
     assert.equal(timeout.default, 900_000, `${tool.name} default timeout`);
     assert.equal(timeout.minimum, 10_000, `${tool.name} minimum timeout`);
@@ -60,7 +60,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 3, "expected a timeout row for Gemini, Copilot and Claude");
+  assert.equal(timeoutRows.length, 3, "expected a timeout row for Agy, Copilot and Claude");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);
@@ -102,28 +102,28 @@ test("rules document the Codex effort ceiling a per-call model override must res
   }
 });
 
-test("the Gemini bridge defaults the workspace-trust hatch on, and preserves an explicit value", () => {
-  const { buildGeminiEnv } = require("../server/gemini");
+test("the Agy bridge never claims a read-only guarantee agy cannot enforce", () => {
+  const { sandboxArguments } = require("../server/agy");
 
-  // Gemini fails outright in an untrusted folder — it overrides the approval mode
-  // back to "default" and a headless child cannot answer the trust prompt — so both
-  // sandbox modes depend on this default being applied.
-  assert.equal(buildGeminiEnv({ PATH: "/usr/bin" }).GEMINI_CLI_TRUST_WORKSPACE, "true");
+  // agy has no provider-enforced read-only tier in headless print mode. --mode plan
+  // is a slash-command expansion, inert under the --disable-slash-commands the bridge
+  // must always pass, and even with slash commands enabled it let a write through
+  // under an insistent prompt. Omitting --dangerously-skip-permissions soft-denies
+  // run_command and nothing else.
+  assert.deepEqual(sandboxArguments("read-only"), []);
+  assert.deepEqual(sandboxArguments("workspace-write"), ["--dangerously-skip-permissions"]);
 
-  // An operator restoring the gate must not have it silently re-enabled.
-  assert.equal(
-    buildGeminiEnv({ GEMINI_CLI_TRUST_WORKSPACE: "false" }).GEMINI_CLI_TRUST_WORKSPACE,
-    "false"
-  );
-
-  // The caller's Agent Mail identity stays scrubbed regardless of the trust default.
-  assert.equal(buildGeminiEnv({ agent_name: "gemini-mac-host-1" }).agent_name, undefined);
-
-  // Documenting the tradeoff is the point: silently trusting every workspace without
-  // saying so in the rules is how the prompt-injection surface goes unnoticed.
+  // Saying "read-only" without saying what it does not cover is how an advisory
+  // delegation quietly rewrites the workspace.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
-  assert.match(rules, /\*\*Workspace trust\*\*/);
-  assert.match(rules, /GEMINI_CLI_TRUST_WORKSPACE=true/);
-  assert.match(rules, /GEMINI_CLI_TRUST_WORKSPACE=false/);
+  assert.match(rules, /\*\*Sandbox honesty\*\*/);
   assert.match(rules, /prompt-injection surface/);
+
+  const agySource = fs.readFileSync(path.resolve(__dirname, "../server/agy/index.js"), "utf8");
+  // --add-dir is what switches on repo-supplied AGENTS.md/GEMINI.md rules injection;
+  // cwd alone already grants file access, so passing it would buy nothing.
+  assert.doesNotMatch(agySource, /"--add-dir"/);
+  // --effort conflicts with the reasoning tier baked into most agy model ids.
+  assert.doesNotMatch(agySource, /"--effort"/);
+  assert.match(agySource, /"--disable-slash-commands"/);
 });

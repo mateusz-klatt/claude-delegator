@@ -5,10 +5,10 @@
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
     },
-    "gemini": {
+    "agy": {
       "type": "stdio",
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/gemini/index.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/agy/index.js"]
     },
     "copilot": {
       "type": "stdio",
