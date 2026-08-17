@@ -139,14 +139,24 @@ async function runGrok(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
 
       const { response, sessionId, stopReason } = parseGrokOutput(stdout);
 
-      // `cancelled` is what enforced denial looks like: the model tried, the
-      // permission layer stopped it. Reporting it as an ordinary empty answer
-      // would tell an advisory caller that nothing was attempted.
+      // `cancelled` means the run was CUT SHORT, which is not the same as "a tool
+      // was denied" — an earlier version of this message asserted the latter and
+      // was wrong. Three hosts ran an identical denied prompt: two returned
+      // `end_turn` with num_turns 2 and a complete answer that reported both tool
+      // errors verbatim, one returned `cancelled` with the text stopping
+      // mid-word. The denial is visible in the text either way; `cancelled`
+      // tracks the model persisting past a limit, not the permission layer.
+      //
+      // So the throw stays — a truncated answer must not be handed back as if it
+      // were a considered reply — but it now describes what is known and offers
+      // the likely cause instead of asserting it.
       if (stopReason === "cancelled") {
         throw new Error(
-          "Grok stopped with stopReason 'cancelled' — a tool call was denied by the permission mode. " +
-          "Under sandbox 'read-only' this is expected for any attempt to write or run a command; " +
-          `use 'workspace-write' if the task genuinely needs to make changes.${response ? `\nPartial response: ${response}` : ""}`
+          "Grok stopped with stopReason 'cancelled': the run was cut short and the answer below, if any, " +
+          "is incomplete. Under sandbox 'read-only' this most often means the model kept retrying tools " +
+          "the permission mode denies; the denials themselves are reported in the text when the run is " +
+          "allowed to finish. Use 'workspace-write' if the task genuinely needs to make changes." +
+          `${response ? `\nPartial response: ${response}` : ""}`
         );
       }
       if (!response) {

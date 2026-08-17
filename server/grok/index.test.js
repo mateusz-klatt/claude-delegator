@@ -77,8 +77,10 @@ if (prompt.includes("CLI_FAILURE")) {
   process.exit(1);
 }
 if (prompt.includes("DENIED")) {
-  // What an enforced denial looks like: the model tried, the permission layer
-  // stopped it, and grok still exits 0.
+  // A run cut short: text stops mid-action, stopReason is cancelled, exit is 0.
+  // Measured on one of three hosts running an identical denied prompt; the other
+  // two finished with end_turn and reported the tool errors in full. So this is
+  // the truncation shape, not the denial shape.
   process.stdout.write(JSON.stringify({
     text: "I'll write the file now.", stopReason: "cancelled", sessionId: "01a0-start"
   }) + "\\n");
@@ -395,12 +397,18 @@ test("reports an enforced denial instead of an empty answer", async () => {
     arguments: { prompt: "DENIED please write the file", sandbox: "read-only" }
   });
 
-  // grok exits 0 for a denial, so a bridge that only watched the exit code would
-  // hand back a truncated answer as if the work had been considered and declined.
+  // grok exits 0 here, so a bridge that only watched the exit code would hand
+  // back a truncated answer as if the work had been considered and declined.
   assert.equal(response.result.isError, true);
   assert.match(response.result.content[0].text, /cancelled/);
-  assert.match(response.result.content[0].text, /denied by the permission mode/);
+  assert.match(response.result.content[0].text, /cut short/);
   assert.match(response.result.content[0].text, /workspace-write/);
+
+  // It must NOT claim a tool was denied. `cancelled` means truncated, and the
+  // two are separable: three hosts ran an identical denied prompt and two of
+  // them returned `end_turn` with the denials reported in full text. Asserting
+  // denial here would make the bridge state a cause it cannot observe.
+  assert.doesNotMatch(response.result.content[0].text, /denied by the permission mode/);
 });
 
 test("reports CLI failures and missing text", async () => {
