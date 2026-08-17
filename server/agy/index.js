@@ -641,11 +641,15 @@ if (require.main === module) {
 
     // On Windows prefer a real .exe, then a .cmd shim. A .cmd cannot be spawned
     // with shell: false, so follow the shim to the loader it points at.
+    // Only consider candidates that exist: the platform fallbacks below are
+    // guesses, and an absent .exe guess would otherwise be preferred over the
+    // real .cmd that `where` just found.
+    const present = candidates.filter((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } });
     let resolved = IS_WINDOWS
-      ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
-          || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
-          || candidates[0])
-      : candidates.find(c => { try { fs.accessSync(c, fs.constants.X_OK); return true; } catch { return false; } });
+      ? (present.find(c => c.toLowerCase().endsWith(".exe"))
+          || present.find(c => c.toLowerCase().endsWith(".cmd"))
+          || present[0])
+      : present.find(c => { try { fs.accessSync(c, fs.constants.X_OK); return true; } catch { return false; } });
 
     if (!resolved) throw new Error("agy not found");
 
@@ -656,8 +660,8 @@ if (require.main === module) {
       ? `"${process.execPath}" "${AGY_BIN}" --version`
       : `"${AGY_BIN}" --version`;
     execSync(validate, { stdio: "pipe" });
-  } catch {
-    console.error("Agy CLI not found. Install the Google Antigravity CLI and ensure 'agy' is on PATH.");
+  } catch (error) {
+    console.error(`Agy CLI not found. Install the Google Antigravity CLI and ensure 'agy' is on PATH. (${error.message})`);
     process.exit(1);
   }
 }

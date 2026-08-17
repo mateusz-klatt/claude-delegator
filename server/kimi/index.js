@@ -551,11 +551,15 @@ if (require.main === module) {
 
     // On Windows prefer a real .exe, then a .cmd shim. A .cmd cannot be spawned
     // with shell: false, so follow the shim to the loader it points at.
+    // Only consider candidates that exist: the platform fallbacks below are
+    // guesses, and an absent .exe guess would otherwise be preferred over the
+    // real .cmd that `where` just found.
+    const present = candidates.filter((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } });
     let resolved = IS_WINDOWS
-      ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
-          || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
-          || candidates[0])
-      : candidates.find((candidate) => {
+      ? (present.find(c => c.toLowerCase().endsWith(".exe"))
+          || present.find(c => c.toLowerCase().endsWith(".cmd"))
+          || present[0])
+      : present.find((candidate) => {
           try {
             fs.accessSync(candidate, fs.constants.X_OK);
             return true;
@@ -573,8 +577,8 @@ if (require.main === module) {
       ? `"${process.execPath}" "${KIMI_BIN}" --version`
       : `"${KIMI_BIN}" --version`;
     execSync(validate, { stdio: "pipe" });
-  } catch {
-    console.error("Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH.");
+  } catch (error) {
+    console.error(`Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`);
     process.exit(1);
   }
 }
