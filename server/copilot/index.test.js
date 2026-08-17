@@ -7,6 +7,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { afterEach, test } = require("node:test");
 
+const bridge = require("./index.js");
+
 const catalog = require("../../config/model-catalog.json");
 const { resolveEffort } = require("./index.js");
 
@@ -59,6 +61,21 @@ fs.appendFileSync(process.env.COPILOT_STUB_CAPTURE, JSON.stringify({
 if (process.env.COPILOT_STUB_PROCESS_ERROR === "1") {
   process.stderr.write("stub process failed\\n");
   process.exit(17);
+}
+
+if (process.env.COPILOT_STUB_QUOTA === "1") {
+  // Real shape measured on macOS and Linux: the reason is a session.error event
+  // on STDOUT, stderr is empty (0 bytes), and the process exits non-zero.
+  process.stdout.write(JSON.stringify({
+    type: "session.error",
+    data: {
+      errorType: "quota",
+      errorCode: "quota_exceeded",
+      statusCode: 402,
+      message: "You have exceeded your monthly quota"
+    }
+  }) + "\\n");
+  process.exit(1);
 }
 
 if (process.env.COPILOT_STUB_HANG === "1") {
@@ -654,4 +671,68 @@ test("warns when a successful start does not return a session id", async () => {
   assert.match(warned.content, /^start result/);
   assert.match(warned.content, /Warning: no session ID returned/);
   await server.close();
+});
+
+test("surfaces a provider error that Copilot reports on stdout with an empty stderr", async () => {
+  // Measured independently on macOS and Linux: stderr is 0 bytes and the whole
+  // reason (402 / quota_exceeded) is a session.error event on stdout. The old
+  // code returned "Copilot exited with code 1" and dropped it, which made a
+  // spent quota indistinguishable from a broken bridge.
+  const server = startServer({ COPILOT_STUB_QUOTA: "1" });
+  const response = await server.request("tools/call", {
+    name: "copilot",
+    arguments: { prompt: "anything" }
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.match(response.result.content[0].text, /exceeded your monthly quota/);
+  assert.match(response.result.content[0].text, /quota_exceeded/);
+  assert.match(response.result.content[0].text, /402/);
+  assert.doesNotMatch(response.result.content[0].text, /exited with code/);
+  await server.close();
+});
+
+test("parses assistant chunks, session id and provider errors from one JSONL stream", () => {
+  const stream = [
+    JSON.stringify({ type: "assistant.message", data: { content: "one " } }),
+    "terminal noise",
+    JSON.stringify({ type: "assistant.message", data: { content: "two" } }),
+    JSON.stringify({ type: "result", sessionId: "s-1", exitCode: 0 })
+  ].join("\n");
+
+  assert.deepEqual(bridge.parseCopilotOutput(stream), {
+    chunks: ["one ", "two"],
+    sessionId: "s-1",
+    resultExitCode: 0,
+    errorMessage: ""
+  });
+
+  const failure = bridge.parseCopilotOutput(JSON.stringify({
+    type: "session.error",
+    data: { message: "Boom", errorCode: "quota_exceeded", statusCode: 402 }
+  }));
+  assert.equal(failure.errorMessage, "Boom (quota_exceeded 402)");
+
+  assert.equal(bridge.parseCopilotOutput("").sessionId, "unknown");
+});
+
+test("follows a Windows .cmd shim to the loader it wraps", () => {
+  // Previously inline in the startup block, so it could only be exercised by
+  // running on real Windows. Injecting the reader makes it testable anywhere.
+  const dir = "C:\\Users\\dev\\AppData\\Roaming\\npm";
+  const shimPath = dir + "\\copilot.cmd";
+  const script = dir + "\\node_modules\\@github\\copilot\\index.js";
+  const node = "C:\\Program Files\\nodejs\\node.exe";
+
+  assert.equal(
+    bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "${script}" %*\r\n`),
+    script
+  );
+
+  const dp0 = `@echo off\r\n@SET "dp0=%~dp0"\r\n"${node}" "%dp0%\\node_modules\\@github\\copilot\\index.js" %*\r\n`;
+  assert.equal(bridge.resolveWindowsShim(shimPath, () => dp0).includes("%dp0%"), false);
+  assert.match(bridge.resolveWindowsShim(shimPath, () => dp0), /index\.js$/);
+
+  assert.equal(bridge.resolveWindowsShim(dir + "\\copilot.exe", () => { throw new Error("must not read"); }), dir + "\\copilot.exe");
+  assert.throws(() => bridge.resolveWindowsShim(shimPath, () => "@echo off\r\nrem nothing\r\n"), /could not resolve copilot/);
 });

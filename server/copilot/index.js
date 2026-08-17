@@ -7,6 +7,8 @@
  * Speaks JSON-RPC 2.0 over stdio.
  */
 
+const fs = require("node:fs");
+const path = require("node:path");
 const { spawn, execSync } = require("node:child_process");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
@@ -78,6 +80,63 @@ function hasRequestId(request) {
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+// Copilot --output-format json emits JSONL events. Key events:
+//   {type:"assistant.message", data:{content:"..."}}     → response text (may repeat)
+//   {type:"result", sessionId:"uuid", exitCode:0}        → session id at top level
+//   {type:"session.error", data:{message, errorCode, statusCode}} → provider failure
+// The error event lands on STDOUT while stderr stays empty, so both the success
+// and the failure branch have to read this.
+function parseCopilotOutput(stdout) {
+  const chunks = [];
+  let sessionId = "unknown";
+  let resultExitCode = 0;
+  let errorMessage = "";
+
+  for (const line of stdout.trim().split("\n")) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue; // Not JSON — ignore terminal noise.
+    }
+    if (!isObject(event)) continue;
+
+    if (event.type === "assistant.message" && event.data?.content) {
+      chunks.push(event.data.content);
+    }
+    if (event.type === "result") {
+      if (event.sessionId) sessionId = event.sessionId;
+      if (event.exitCode !== undefined) resultExitCode = event.exitCode;
+    }
+    if (event.type === "session.error" && isObject(event.data) && !errorMessage) {
+      const { message, errorCode, statusCode } = event.data;
+      const detail = [errorCode, statusCode].filter(Boolean).join(" ");
+      errorMessage = [message || "Copilot session error", detail && `(${detail})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+
+  return { chunks, sessionId, resultExitCode, errorMessage };
+}
+
+// A Windows .cmd shim cannot be spawned with shell: false, so follow it to the
+// loader it wraps. readShim is injectable so the logic is testable on a platform
+// that has no .cmd at all — this previously lived inline and could only be
+// exercised by running on real Windows.
+function resolveWindowsShim(candidate, readShim = (p) => fs.readFileSync(p, "utf8")) {
+  if (!candidate.toLowerCase().endsWith(".cmd")) return candidate;
+  const shim = readShim(candidate);
+  const match = /"([^"]+copilot[^"]*\.js)"/i.exec(shim) || /"([^"]+copilot[^"]*\.exe)"/i.exec(shim);
+  if (!match) throw new Error("could not resolve copilot from its .cmd shim");
+  // %dp0% is the cmd-shell variable for the shim's own directory, with a trailing
+  // separator. Use the win32 parser explicitly: posix dirname returns "." for a
+  // backslash path and would silently resolve the loader to the wrong place.
+  const dp0 = path.win32.dirname(candidate) + path.win32.sep;
+  return match[1].replace(/%dp0%\\?/gi, dp0);
 }
 
 // --- Copilot CLI Wrapper ---
@@ -186,36 +245,22 @@ async function runCopilot(args, cwd, timeoutMs, abortSignal) {
       clearTimeout(timer);
       removeAbortListener();
 
+      const parsed = parseCopilotOutput(stdout);
+
       if (code !== 0) {
-        return reject(new Error(stderr.trim() || `Copilot exited with code ${code}`));
+        // Copilot reports provider-side failures as a session.error event on
+        // STDOUT and leaves stderr empty — measured at zero bytes on macOS and
+        // Linux for a 402 quota_exceeded. Falling straight back to the exit code
+        // discarded a fully machine-readable reason and made every failure look
+        // identical, so read stdout before giving up on it.
+        return reject(new Error(parsed.errorMessage || stderr.trim() || `Copilot exited with code ${code}`));
       }
 
       try {
-        // Copilot --output-format json emits JSONL events. Key events:
-        //   {type:"assistant.message", data:{content:"..."}} → response text (may repeat)
-        //   {type:"result", sessionId:"uuid", exitCode:0}   → session ID at top level
-        const lines = stdout.trim().split("\n").filter(l => l.trim());
-        const chunks = [];
-        let sessionId = "unknown";
-        let resultExitCode = 0;
-
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.type === "assistant.message" && data.data?.content) {
-              chunks.push(data.data.content);
-            }
-            if (data.type === "result") {
-              if (data.sessionId) sessionId = data.sessionId;
-              if (data.exitCode !== undefined) resultExitCode = data.exitCode;
-            }
-          } catch {
-            // Not JSON — ignore terminal noise
-          }
-        }
+        const { chunks, sessionId, resultExitCode } = parsed;
 
         if (resultExitCode !== 0) {
-          return reject(new Error(`Copilot session failed with exitCode ${resultExitCode}`));
+          return reject(new Error(parsed.errorMessage || `Copilot session failed with exitCode ${resultExitCode}`));
         }
 
         const response = chunks.join("") || "(No output)";
@@ -513,35 +558,26 @@ try {
         || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
         || candidates[0])
     : candidates[0];
-  if (IS_WINDOWS && resolved.toLowerCase().endsWith(".cmd")) {
-    const fs = require("node:fs");
-    const path = require("node:path");
-    const shimContent = fs.readFileSync(resolved, "utf8");
-    const match = shimContent.match(/"([^"]+copilot[^"]*\.js)"/i) ||
-                  shimContent.match(/"([^"]+copilot[^"]*\.exe)"/i);
-    if (match) {
-      // Expand %dp0% (cmd-shell variable for .cmd's directory, with trailing slash)
-      const dp0 = path.dirname(resolved) + path.sep;
-      resolved = match[1].replace(/%dp0%\\?/gi, dp0);
-    } else {
-      console.error("Could not resolve copilot binary from .cmd shim. Falling back to shell mode.");
-      process.exit(1);
-    }
-  }
+  if (IS_WINDOWS) resolved = resolveWindowsShim(resolved);
   COPILOT_BIN = resolved;
   // stdio: "pipe" (not "ignore") — winget copilot.exe crashes with stdio:ignore.
   const validateCmd = COPILOT_BIN.toLowerCase().endsWith(".js")
     ? `"${process.execPath}" "${COPILOT_BIN}" --version`
     : `"${COPILOT_BIN}" --version`;
   execSync(validateCmd, { stdio: "pipe" });
-} catch {
-  console.error("Copilot CLI not found. Please install it first.");
+} catch (error) {
+  // The bare catch reported "not found, please install" for every failure —
+  // including a resolved binary whose --version exits non-zero, and an
+  // unrecognised shim. Keep the cause.
+  console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
   process.exit(1);
 }
 }
 
 module.exports = {
   handlers,
+  parseCopilotOutput,
   resolveEffort,
+  resolveWindowsShim,
   toolDefinitions: COPILOT_TOOLS
 };
