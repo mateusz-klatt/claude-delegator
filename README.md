@@ -146,12 +146,14 @@ The native Codex target is launched with Codex's own `danger-full-access` sandbo
 | **Claude** | `opus` / `claude-opus-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases and their full IDs. |
 | **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
 | **Agy** | `gemini-3.1-pro-high` | Fourteen ids across Gemini, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
-| **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. |
+| **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.6` | One model on this account. The only bridge whose `read-only` denies rather than advises. |
 | **Cursor** | `auto` | 204 ids listed, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
 | **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; efforts `none` through `max`. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
+
+**Kimi as a bridge to Ollama.** The Kimi bridge reaches more than Moonshot: the same `kimi` / `kimi-reply` tools route to locally-run Ollama weights (VRAM, no cloud spend, code stays on the machine) and to Ollama's hosted models (a `:cloud` suffix, no VRAM). One `[providers.*]` block in `~/.kimi-code/config.toml` buys both; pass `model: "ollama-local/ornith-9b"` for a local model or `model: "ollama-cloud/deepseek-v4-pro"` for a hosted one. Local models are **advisory only** — a plausible-looking wrong edit is the failure that matters, not slowness, so read the work before using it. The full recipe, VRAM sizing arithmetic, and a tier-by-tier comparison live in [`rules/model-selection.md`](rules/model-selection.md) → "Ollama through the Kimi bridge".
 
 ### Manual MCP Setup
 

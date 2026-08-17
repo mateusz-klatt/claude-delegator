@@ -427,7 +427,16 @@ if (require.main === module) {
   try {
     CURSOR_BIN = resolveCli("cursor-agent", { fallbacks: cliFallbacks(), aliases: ["agent"] });
   } catch (error) {
-    console.error(`Cursor Agent CLI not found. Install it and ensure 'cursor-agent' is on PATH. (${error.message})`);
+    // The message names the CLI, but on macOS the cause can be a locked login
+    // keychain instead: cursor-agent --version touches it, and resolveCli runs
+    // exactly that to validate the binary at startup. A locked keychain makes
+    // the validation throw, so the bridge exits before serving and the MCP
+    // client sees CONNECTION_CLOSED — the same false-negative shape as a missing
+    // --trust. Name the second cause so it is not debugged as the first.
+    console.error(
+      `Cursor Agent CLI not found. Install it and ensure 'cursor-agent' is on PATH. (${error.message})` +
+        " On macOS a locked login keychain produces this same message: cursor-agent --version touches the keychain and the bridge runs that to validate the CLI at startup — unlock the login keychain and retry."
+    );
     process.exit(1);
   }
 }

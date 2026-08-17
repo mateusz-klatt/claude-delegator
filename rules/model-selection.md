@@ -213,9 +213,11 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `threadId` | string | **Required.** `session_id` from the previous `kimi` call. The bridge fails loudly if kimi resumes a different session. |
 | `prompt` | string | **Required.** Follow-up instruction |
 | `model` | alias | Optional; omit to keep the resumed session's model |
-| `cwd` | path | Working directory |
+| `cwd` | path | Working directory. **Match the start call's `cwd`** when it was non-default — see below |
 
 `kimi-reply` accepts the same `timeout` bounds as the start tool. The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
+
+**`cwd` must match the start call's `cwd`** when the start used a non-default working directory. The kimi CLI binds a session to the directory it was created under, and resuming from a different one fails with `Session was created under a different directory`. The bridge passes `cwd` through unchanged and so preserves this binding faithfully; the table marks `cwd` optional only because a start that used the default cwd needs no `cwd` on reply either. Verified cross-host: a reply that omitted `cwd` after a non-default-cwd start failed on the first retry and succeeded once `cwd` was repeated. Repeat the start call's `cwd` on every reply to be safe.
 
 ### Ollama through the Kimi bridge — local and cloud
 
@@ -316,6 +318,8 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 `--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Grok or Claude when the caller needs provider-enforced denial.**
 
 **Workspace trust**: the bridge always passes `--trust`, and this is load-bearing. Without it a headless run prints `Workspace Trust Required` and exits **0** having executed nothing — indistinguishable from a permission mode successfully denying the task. That false negative already cost one measurement here.
+
+**macOS keychain**: on macOS the bridge can fail to start at all, with a message that names the wrong cause. `cursor-agent --version` touches the login keychain, and the bridge runs exactly that to validate the CLI at startup. With the keychain locked — after a reboot before the first unlock, over SSH, or in any headless context — the touch fails, validation throws, and the bridge exits before serving, surfacing as `CONNECTION_CLOSED` with a "Cursor Agent CLI not found" message that points at the CLI rather than the keychain. Unlocking the login keychain once clears it; this is a platform property, not a regression (it blocked 1.8.0 too). Linux and Windows touch no keychain, so the bridge starts there without it.
 
 **Output and failure**: `--output-format json` emits one single-line object (`result`, `session_id`, `is_error`). The **exit code does not classify the run** — a transient backend failure returned code 0 with plain-text "Connection lost, reconnecting…" and no JSON, while a rejected model returned code 1, also without JSON. The bridge parses stdout first and uses the code only to pick a message, the same rule as Agy.
 

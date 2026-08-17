@@ -111,8 +111,21 @@ claude plugin install   claude-delegator@jarrodwatts-claude-delegator
 # 1b. Confirm the reinstall actually delivered what step 2 depends on. Ordering
 #     protects against a known mistake; this protects against the reinstall
 #     quietly not having worked. Must print all six names before you continue.
-python3 -c "import json,sys;print(sorted(json.load(open(sys.argv[1])).get('mcpServers',{})))" \
-  ~/.claude/plugins/cache/*/claude-delegator/*/.claude-plugin/plugin.json
+#
+#     The cache can hold several versions side by side, and a bare glob expands
+#     to all of them — taking sys.argv[1] would inspect the alphabetically-first,
+#     which is the OLDEST copy (a pre-1.9.0 one has no mcpServers block), so the
+#     check would print [] and falsely fail after a successful reinstall. Inspect
+#     the newest version explicitly.
+python3 - <<'PY'
+import json, glob, os
+paths = glob.glob(os.path.expanduser("~/.claude/plugins/cache/*/claude-delegator/*/.claude-plugin/plugin.json"))
+def version(p):
+    return [int(x) for x in os.path.basename(os.path.dirname(os.path.dirname(p))).split(".") if x.isdigit()]
+newest = sorted(paths, key=version)[-1] if paths else None
+print(newest)
+print(sorted(json.load(open(newest)).get("mcpServers", {})) if newest else [])
+PY
 #     expected: ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
 
 # 2. Only now drop the hand-added entries.
