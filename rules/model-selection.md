@@ -273,7 +273,7 @@ That inherited-permission coupling is also why the denials are not optional: it 
 
 The deny rules also make refusal **legible**, not merely reliable: without them a blocked run ends with `stopReason: cancelled` and an answer truncated mid-action, while with them it ends `end_turn` and the model reports each tool error verbatim.
 
-Still one host. A shared free-tier limit blocked the team's reproduction all day; a SuperGrok subscription lifted it, but propagation lags per host — a CLI that has not re-authenticated returns "no file" for **every** case including the control, which is precisely the result that looks like success. Check a positive control before reading any refusal as enforcement.
+Verified on **two hosts** (Linux/WSL and macOS), identical verbatim denial strings; the macOS run put control and test in the same directory, so the written control file sat beside the absent target. Reproduction took all day because a shared free-tier limit blocked it; a SuperGrok subscription lifts it per account, but propagation lags per host — a CLI that has not re-authenticated returns "no file" for **every** case including the control, which is precisely the result that looks like success. Check a positive control before reading any refusal as enforcement.
 
 **Workspace context**: project instruction files in `cwd` are auto-loaded with no known off switch — `CLAUDE.md` was measured loading on Linux, macOS, WSL and Windows, and a planted `AGENTS.md` loaded too. Delegating grok into this repository injects its own `CLAUDE.md`. This is the same prompt-injection surface as Kimi's, so prefer another provider when delegating into code you do not control. `--no-memory` disables cross-session memory, not project instructions.
 
