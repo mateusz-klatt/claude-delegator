@@ -342,6 +342,11 @@ test("the depth guard survives a hop through an unrelated provider", () => {
   }
 });
 
+// Skipped on Windows by design, so a run there reports 132 passed / 1 skipped
+// rather than 133. That is the correct outcome, not a hole: this exercises the
+// realpath branch through a POSIX symlink, which the runner cannot create.
+// Recorded because a skipped count is easy to misread as a missing test the next
+// time CI goes red.
 test("names the link target when the resolved CLI is a version symlink", { skip: process.platform === "win32" }, () => {
   // Version-managed CLIs point one stable name at the current version:
   // ~/.local/bin/cursor-agent -> .../versions/<v>/cursor-agent, and grok's own
