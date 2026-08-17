@@ -21,6 +21,16 @@ You have access to Claude, GPT, Agy, Kimi, Grok, Cursor, and Copilot experts via
 | `mcp__plugin_claude-delegator_copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
 | `mcp__plugin_claude-delegator_copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
+**`mcp__claude__claude` is deliberately not in that form, and making the table look consistent would
+break the one row that is currently right.** The six others carry the `plugin_claude-delegator_`
+prefix because Claude Code namespaces manifest-declared servers that way — that is why the old
+`mcp__<name>__<tool>` handles stopped resolving when registration moved into `plugin.json`, and the
+environment reports them as no longer available rather than aliasing them. The Claude target is
+never registered in Claude Code at all (decision 9), so it has no plugin namespace to take: measured,
+`claude mcp list` shows six plugin-declared entries and no `claude`, while `server/claude/` still
+ships. Its name belongs to whichever external orchestrator configures it, where `claude` is simply
+the conventional server name.
+
 ## Available Experts
 
 | Expert | Specialty | Prompt File |
