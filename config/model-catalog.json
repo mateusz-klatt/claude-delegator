@@ -291,7 +291,8 @@
         }
       ],
       "authNote": "Kimi Code supports both a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17, so the API key is the practical path. The key can live as `api_key` under [providers.*] in ~/.kimi-code/config.toml, or come from KIMI_API_KEY / MOONSHOT_API_KEY in the environment, which the bridge passes through untouched.",
-      "envNote": "The CLI also recognises a large models.dev catalog of third-party provider key variables (ANTHROPIC_API_KEY, AZURE_API_KEY, CEREBRAS_API_KEY and many more). buildCalleeEnv forwards the caller environment except Agent Mail identity, so any such key already exported in the parent shell is visible to the delegated kimi process."
+      "envNote": "The CLI also recognises a large models.dev catalog of third-party provider key variables (ANTHROPIC_API_KEY, AZURE_API_KEY, CEREBRAS_API_KEY and many more). buildCalleeEnv forwards the caller environment except Agent Mail identity, so any such key already exported in the parent shell is visible to the delegated kimi process.",
+      "rateLimitNote": "Concurrency is capped PER ORGANISATION, not per host: kimi returned 429 provider.rate_limit at roughly 3 concurrent tasks. Measured while four machines shared one account, and the failure landed on the host that happened to start second — so a run can be rejected by someone else's work on a different machine entirely. Sequencing calls locally does not help, because the budget is not local. When several people verify at once, say so before starting, or the resulting 429 reads as a kimi defect rather than as contention."
     },
     "ollama": {
       "cliVersion": "0.32.14",
