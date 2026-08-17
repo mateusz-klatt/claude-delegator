@@ -83,13 +83,23 @@ function parseGrokOutput(stdout) {
 // the bridge cannot see or control what the caller has granted; it can only
 // deny loudly enough that the grant does not matter.
 //
-// Single-sourced: measured once on one host before a shared account usage limit
-// blocked every other attempt team-wide. Three colleagues tried to reproduce it
-// and all four of their runs — including the positive control — returned "no
-// file" because the model never executed, which is precisely the result that
-// looks like success. The rules are safe regardless (a denial can only deny),
-// but the CLAIM that read-only holds against a permissive caller allow list
-// rests on one measurement until someone can re-run it.
+// Verified in five cases with a live positive control, under a permissive caller
+// allow list (6 rules loaded, checked against a 0-rule control): bypassPermissions
+// wrote the file; plan ALONE wrote it too; plan+deny refused an insistent prompt
+// and also an ADVERSARIAL one claiming the mode label was a display artifact —
+// the same prompt that defeated cursor-agent's --mode ask. The model attempted
+// both tools and the permission layer refused them, which is the whole
+// difference between a gate and a label.
+//
+// The rules also make the denial LEGIBLE. Without them the run ends
+// stopReason "cancelled" with the answer cut off mid-action; with them it ends
+// "end_turn" and the model reports each tool error verbatim. Both paths are
+// live — see the cancelled branch in runGrok, which handles the first.
+//
+// Still ONE host. The team's reproduction was blocked all day by a shared
+// free-tier limit; a subscription lifted it, but propagation lags per host, and
+// a CLI that has not re-authenticated returns "no file" for every case
+// INCLUDING the control — the result that looks like success.
 const READ_ONLY_DENY_RULES = ["Write", "Write(*)", "Edit", "Edit(*)", "Bash", "Bash(*)"];
 
 /**
