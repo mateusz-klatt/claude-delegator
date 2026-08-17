@@ -252,6 +252,33 @@ Access is tiered, and the tiers do not follow model size. `gpt-oss:20b`/`:120b`,
 
 **How the tiers actually compare.** On one planted-vulnerability review, identical prompt and file: the local 9B found four of six issues and proposed one fix with an inverted condition; a local 8B found three and missed plaintext password storage; `deepseek-v4-pro:cloud` found all six, added a rate-limiting issue nobody planted, mapped each to an OWASP category, and made no errors. Local weights are for the case where code must not leave the machine. When that is not the constraint, a hosted model on the same bridge is better work at no marginal cost.
 
+### Claude through the Kimi bridge — Anthropic direct
+
+The same bridge reaches Anthropic's own API as another `[providers.*]` entry, so a host that already runs kimi can route to real Claude without a separate Claude installation. `type = "anthropic"` is one of kimi's built-in provider types, so this costs no code at all — only a config block. Verified end-to-end through the MCP bridge on four hosts (macOS, Windows, WSL, Linux): a start/reply canary returned a genuine Claude self-identification on a stable `threadId`, not a false-success from the bridge.
+
+```toml
+[providers.anthropic-via-kimi]
+base_url = "https://api.anthropic.com"
+type = "anthropic"
+api_key = "<ANTHROPIC_API_KEY>"
+
+[models."anthropic-via-kimi/claude-haiku-4-5"]
+provider = "anthropic-via-kimi"
+model = "claude-haiku-4-5-20251001"
+max_context_size = 200000
+capabilities = [ "tool_use" ]
+```
+
+Leave `default_model` untouched (still `moonshot-ai/kimi-k3`). The key lives in the provider block, which kimi reads from config on every invocation — the bridge spawns `kimi -p` per call and re-reads `config.toml` each time, so a new provider is picked up without restarting the bridge. Delegate normally and pass `model: "anthropic-via-kimi/claude-haiku-4-5"`.
+
+Three things are easy to get wrong, each measured:
+
+- **`base_url` has no `/v1`.** kimi's `type = "anthropic"` provider appends `/v1/messages` itself, following the Anthropic SDK convention. Writing `https://api.anthropic.com/v1` would double the prefix and the call would not land. This is the opposite of the Ollama entries above, whose `type = "openai"` expects `/v1` already in `base_url`.
+- **`max_output_size` is not needed for the anthropic provider.** The Ollama-cloud footgun — where the bridge derives `max_tokens` from `max_context_size` and a million-token context produces a request the backend rejects with `max_tokens exceeds model's maximum output tokens` — does **not** apply to `type = "anthropic"`. The recipe above has no `max_output_size` and ran identically to one that set it. Do not transfer the Ollama-cloud conclusion here; the anthropic recipe is the simpler of the two.
+- **Config wins over environment.** A provider block's `base_url` and `api_key` override `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` from the environment. Measured on a WSL host whose `ANTHROPIC_BASE_URL` points at a local non-Anthropic proxy: with the proxy set in the env and the real endpoint in the config block, kimi connected to `api.anthropic.com` and ignored the env. So the recipe works on hosts with a conflicting `ANTHROPIC_BASE_URL` (a corporate proxy, a local glm shim) without unsetting anything — and the bridge, which forwards the caller's env through `buildCalleeEnv`, is safe to use here for the same reason. The env vars are a fallback for providers that do not name their own, not an override.
+
+**Cleanup.** A key generated for a verification burn (the 3-hour, $5 throwaway used to measure this) should be removed from `config.toml` afterward — do not leave a credential at rest in a config file once the test is over. `kimi provider list` confirms the provider is gone.
+
 ## Grok Parameters Reference
 
 ### `mcp__plugin_claude-delegator_grok__grok` (Start Session)
