@@ -10,14 +10,37 @@
       "mcp": {
         "type": "stdio",
         "command": "node",
-        "args": ["${CLAUDE_PLUGIN_ROOT}/server/claude/index.js"]
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/claude/index.js"
+        ]
       },
-      "orchestrators": ["codex", "other-mcp-clients"],
+      "orchestrators": [
+        "codex",
+        "other-mcp-clients"
+      ],
       "selfTarget": false,
       "modelCatalogKey": "claude",
-      "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
-      "strengths": ["architecture", "code-review", "security", "large-context-reasoning", "independent-review"],
-      "avoid": ["self-delegation-from-claude-code", "simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "architecture",
+        "code-review",
+        "security",
+        "large-context-reasoning",
+        "independent-review"
+      ],
+      "avoid": [
+        "self-delegation-from-claude-code",
+        "simple-operations",
+        "trivial-decisions",
+        "research",
+        "first-attempt-fixes"
+      ]
     },
     "codex": {
       "name": "Codex (GPT)",
@@ -28,12 +51,42 @@
       "mcp": {
         "type": "stdio",
         "command": "node",
-        "args": ["${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js",
+          "-m",
+          "gpt-5.6-sol",
+          "-s",
+          "danger-full-access",
+          "-a",
+          "never",
+          "-c",
+          "model_reasoning_effort=ultra",
+          "-c",
+          "mcp_servers.codex.enabled=false",
+          "mcp-server"
+        ]
       },
       "modelCatalogKey": "codex",
-      "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
-      "strengths": ["architecture", "code-review", "security", "requirements-analysis", "plan-validation"],
-      "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "architecture",
+        "code-review",
+        "security",
+        "requirements-analysis",
+        "plan-validation"
+      ],
+      "avoid": [
+        "simple-operations",
+        "trivial-decisions",
+        "research",
+        "first-attempt-fixes"
+      ]
     },
     "agy": {
       "name": "Agy",
@@ -112,12 +165,60 @@
       "mcp": {
         "type": "stdio",
         "command": "node",
-        "args": ["${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js"]
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js"
+        ]
       },
       "modelCatalogKey": "copilot",
-      "experts": ["architect", "plan-reviewer", "scope-analyst", "code-reviewer", "security-analyst"],
-      "strengths": ["reasoning", "code generation", "configurable effort levels", "disk-persisted sessions"],
-      "avoid": ["simple-operations", "trivial-decisions", "research", "first-attempt-fixes"]
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "reasoning",
+        "code generation",
+        "configurable effort levels",
+        "disk-persisted sessions"
+      ],
+      "avoid": [
+        "simple-operations",
+        "trivial-decisions",
+        "research",
+        "first-attempt-fixes"
+      ]
+    },
+    "grok": {
+      "name": "Grok",
+      "description": "xAI Grok models via the Grok CLI - specialized expert subagents",
+      "cli": "grok",
+      "install": "install the Grok CLI; it lands in ~/.local/bin/grok on Unix and ~\\.grok\\bin\\grok.exe on Windows",
+      "auth": "`grok login` (grok.com account). A free account has a usage limit that returns a JSON error object rather than an exit code.",
+      "mcp": {
+        "type": "stdio",
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/grok/index.js"
+        ]
+      },
+      "modelCatalogKey": "grok",
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "reasoning",
+        "enforced read-only advisory work",
+        "cross-family second opinion"
+      ],
+      "avoid": [
+        "delegating into a repository you do not control: project instruction files in cwd are auto-loaded with no off switch"
+      ]
     }
   }
 }

@@ -55,6 +55,25 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Ollama has no bridge of its own: it is reached through the Kimi bridge as an
   // extra provider, so the catalog records it without an MCP server entry.
   assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
+  const grokBridge = require("../server/grok");
+  assert.equal(catalog.providers.grok.cliVersion, "1.0.4");
+  assert.deepEqual(catalog.providers.grok.models, ["grok-4.6"]);
+  assert.equal(catalog.providers.grok.freeFormModel, false);
+  assert.equal(catalog.providers.grok.emitsEffortFlag, true);
+  assert.deepEqual(
+    grokBridge.toolDefinitions[0].inputSchema.properties.model.enum,
+    catalog.providers.grok.models,
+    "the grok schema enum must come from the catalog"
+  );
+  // grok is the one bridged provider whose read-only denies rather than advises,
+  // and the note must say what actually does the enforcing. Naming --sandbox
+  // there would repeat the agy mistake: a flag whose name outruns its behaviour.
+  assert.match(catalog.providers.grok.permissionNote, /--deny/);
+  assert.match(catalog.providers.grok.permissionNote, /--sandbox read-only is accepted and did not stop a write/);
+  // Project instructions are inherited from cwd on every platform measured.
+  assert.match(catalog.providers.grok.contextNote, /CLAUDE\.md/);
+  assert.match(catalog.providers.grok.contextNote, /no known off switch/);
+
   assert.equal(catalog.providers.ollama.reachedThrough, "kimi bridge");
   assert.equal(catalog.providers.ollama.cloudSuffix, ":cloud");
   assert.ok(catalog.providers.ollama.localModels.includes("ornith:9b"));

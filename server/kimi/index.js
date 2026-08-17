@@ -347,10 +347,7 @@ if (require.main === module) {
   // Kimi Code installs to ~/.kimi-code/bin, frequently absent from the minimal
   // PATH an MCP server inherits.
   try {
-    const home = os.homedir();
-    KIMI_BIN = resolveCli("kimi", {
-      fallbacks: cliFallbacks()
-    });
+    KIMI_BIN = resolveCli("kimi", { fallbacks: cliFallbacks() });
   } catch (error) {
     console.error(`Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`);
     process.exit(1);
