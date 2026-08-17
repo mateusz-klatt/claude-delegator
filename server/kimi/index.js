@@ -10,7 +10,7 @@
 const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
-const { spawn, execFileSync } = require("node:child_process");
+const { spawn, execFileSync, execSync } = require("node:child_process");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
@@ -122,6 +122,22 @@ function parseKimiOutput(stdout) {
   }
 
   return { response: chunks.join("").trim(), sessionId };
+}
+
+// A Windows .cmd shim cannot be spawned with shell: false, so follow it to the
+// loader it wraps. Kept separate and exported because the failure only shows up
+// on Windows, where the rest of the suite cannot reach it.
+function resolveWindowsShim(candidate, readShim = (p) => fs.readFileSync(p, "utf8")) {
+  if (!candidate.toLowerCase().endsWith(".cmd")) return candidate;
+  const shim = readShim(candidate);
+  const match = /"([^"]+kimi[^"]*\.js)"/i.exec(shim) || /"([^"]+kimi[^"]*\.exe)"/i.exec(shim);
+  if (!match) throw new Error("could not resolve kimi from its .cmd shim");
+  // %dp0% is the cmd-shell variable for the shim's own directory, with a
+  // trailing separator. Use the win32 parser explicitly: this only ever handles
+  // Windows shims, and posix path.dirname returns "." for a backslash path,
+  // which would silently resolve the loader to the wrong place.
+  const dp0 = path.win32.dirname(candidate) + path.win32.sep;
+  return match[1].replace(/%dp0%\\?/gi, dp0);
 }
 
 function buildKimiEnv(source = process.env) {
@@ -533,18 +549,30 @@ if (require.main === module) {
       candidates.push(path.join(home, ".kimi-code", "bin", "kimi"));
     }
 
-    const resolved = candidates.find((candidate) => {
-      try {
-        fs.accessSync(candidate, fs.constants.X_OK);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    // On Windows prefer a real .exe, then a .cmd shim. A .cmd cannot be spawned
+    // with shell: false, so follow the shim to the loader it points at.
+    let resolved = IS_WINDOWS
+      ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
+          || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
+          || candidates[0])
+      : candidates.find((candidate) => {
+          try {
+            fs.accessSync(candidate, fs.constants.X_OK);
+            return true;
+          } catch {
+            return false;
+          }
+        });
 
     if (!resolved) throw new Error("kimi not found");
+
+    if (IS_WINDOWS) resolved = resolveWindowsShim(resolved);
+
     KIMI_BIN = resolved;
-    execFileSync(KIMI_BIN, ["--version"], { stdio: "pipe" });
+    const validate = KIMI_BIN.toLowerCase().endsWith(".js")
+      ? `"${process.execPath}" "${KIMI_BIN}" --version`
+      : `"${KIMI_BIN}" --version`;
+    execSync(validate, { stdio: "pipe" });
   } catch {
     console.error("Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH.");
     process.exit(1);
@@ -553,6 +581,7 @@ if (require.main === module) {
 
 module.exports = {
   buildKimiEnv,
+  resolveWindowsShim,
   handlers,
   parseKimiOutput,
   toolDefinitions: KIMI_TOOLS
