@@ -7,6 +7,7 @@
  * Speaks JSON-RPC 2.0 over stdio.
  */
 
+const path = require("node:path");
 const core = require("../shared/bridge");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
@@ -20,8 +21,9 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { resultText } = require("../shared/result");
 
 const {
-  clampTimeout, isNonEmptyString, isObject, resolveCli, runStdioLoop,
-  sendError, sendResponse, superviseChild, timeoutSchema, validateCommonArgs
+  IS_WINDOWS, clampTimeout, homedir, isNonEmptyString, isObject, resolveCli,
+  runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
+  validateCommonArgs
 } = core;
 
 const resolveWindowsShim = (candidate, readShim) => core.resolveWindowsShim(candidate, "copilot", readShim);
@@ -357,7 +359,20 @@ if (require.main === module) {
   runStdioLoop({ handlers, activeRequests, activeChildren });
 
   try {
-    COPILOT_BIN = resolveCli("copilot");
+    // An MCP server inherits a minimal PATH that frequently lacks ~/.local/bin,
+    // which is where the official installer puts the CLI — measured on Linux,
+    // macOS and WSL. agy and kimi already guard against that; copilot and claude
+    // did not, purely by omission.
+    COPILOT_BIN = resolveCli("copilot", {
+      fallbacks: IS_WINDOWS
+        ? [
+            ...(process.env.LOCALAPPDATA
+              ? [path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "copilot.exe")]
+              : []),
+            ...(process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [])
+          ]
+        : [path.join(homedir(), ".local", "bin", "copilot")]
+    });
   } catch (error) {
     console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
     process.exit(1);

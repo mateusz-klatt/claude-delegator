@@ -9,6 +9,7 @@
 
 "use strict";
 
+const path = require("node:path");
 const core = require("../shared/bridge");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
@@ -22,8 +23,8 @@ const { buildCalleeEnv } = require("../shared/environment.js");
 const { resultText } = require("../shared/result.js");
 
 const {
-  isNonEmptyString, isObject, resolveCli, runStdioLoop, sendError,
-  sendResponse, timeoutSchema, superviseChild, VALID_SANDBOX_VALUES,
+  IS_WINDOWS, homedir, isNonEmptyString, isObject, resolveCli, runStdioLoop,
+  sendError, sendResponse, superviseChild, timeoutSchema, VALID_SANDBOX_VALUES,
   validateCommonArgs
 } = core;
 
@@ -324,7 +325,14 @@ if (require.main === module) {
   runStdioLoop({ handlers, activeRequests, activeChildren });
 
   try {
-    CLAUDE_BIN = resolveCli("claude", { aliases: ["@anthropic-ai"] });
+    // See the note in the Copilot bridge: the official installer targets
+    // ~/.local/bin, and a minimal inherited PATH often does not include it.
+    CLAUDE_BIN = resolveCli("claude", {
+      aliases: ["@anthropic-ai"],
+      fallbacks: IS_WINDOWS
+        ? [path.join(homedir(), ".local", "bin", "claude.exe")]
+        : [path.join(homedir(), ".local", "bin", "claude")]
+    });
   } catch (error) {
     console.error(`Claude CLI not found. Please install Claude Code first. (${error.message})`);
     process.exit(1);
