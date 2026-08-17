@@ -158,6 +158,21 @@ test("an extensionless npm launcher is never selectable on Windows", () => {
   // .ps1 is a third launcher npm drops in the same place and no bridge handles.
   assert.equal(core.WINDOWS_RUNNABLE.test("C:\\Users\\dev\\AppData\\Roaming\\npm\\copilot.ps1"), false);
 
+  // claude-mac-laptop-1 narrowed the exposure by replaying all three layouts
+  // through this selector from macOS — possible only because it is exported.
+  // Both launchers in ONE directory is safe either way, because the extension
+  // preference settles it before order does. The genuine gap is the launcher
+  // sitting ALONE in a directory earlier on PATH: nothing to prefer over it, so
+  // only the hard rejection keeps it from winning against a real .exe further on.
+  const shOnly = ["C:\\npm\\cli.exe", "C:\\npm\\cli.cmd", "C:\\npm\\cli"];
+  const vendor = ["C:\\vendor\\cli.exe"];
+  const present = new Set(["C:\\npm\\cli", "C:\\vendor\\cli.exe"]);
+  assert.equal(
+    core.selectCandidate([shOnly, vendor], (c) => present.has(c) && core.WINDOWS_RUNNABLE.test(c), true),
+    "C:\\vendor\\cli.exe",
+    "an unrunnable launcher must not win on position alone"
+  );
+
   // End to end through the selector, with both launchers present in one
   // directory exactly as they are installed.
   const npmDirectory = ["C:\\npm\\copilot.exe", "C:\\npm\\copilot.cmd", "C:\\npm\\copilot"];
