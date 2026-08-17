@@ -40,6 +40,7 @@ claude-delegator/
 ├── rules/                  # Orchestration logic (installed to ~/.claude/rules/)
 ├── prompts/                # Five expert prompts + Agent Mail contract
 ├── server/                 # MCP bridges plus the transparent Codex launcher
+│   └── shared/             # bridge.js core, coordination, environment, result
 ├── test/                   # Shared contract and catalog tests
 ├── config/                 # Provider registry and model catalog
 ├── CLAUDE.md               # Development guidance for Claude Code
@@ -92,6 +93,22 @@ Examples:
    ├── index.js
    └── index.test.js
    ```
+
+   **Build on `server/shared/bridge.js`; do not restate it.** The core owns the
+   JSON-RPC stdio loop, `superviseChild()`, the process-group kill, the Windows
+   `.cmd` shim resolver, CLI lookup, common validation and the depth guard. Four
+   things are yours, and a bridge that needs a fifth is worth discussing first:
+
+   | Yours | Where |
+   |-------|-------|
+   | Tool schemas | `YOUR_TOOLS`, exported as `toolDefinitions` |
+   | The argv you build | your `run*` function, before it calls `superviseChild` |
+   | Parsing the CLI's output | your `parse*Output` |
+   | Classifying failure | `onClose({code, stdout, stderr})` — return the result or throw |
+
+   Guard the bootstrap with `require.main === module` and export
+   `toolDefinitions`, so the contract tests can require the module on a runner
+   where the CLI is absent instead of asserting over your source text.
 
 3. **Add to providers.json**:
    ```json
@@ -151,6 +168,8 @@ npm run test:coverage
 ```
 
 CI runs the suite on Ubuntu and Windows with Node 22 and 24. Add stub-CLI tests for command construction, validation, session resume, cancellation, timeouts, and environment boundaries whenever a bridge changes.
+
+Behaviour the core owns is tested once, in `server/shared/bridge.test.js`. Behaviour that *deviates* is tested per bridge, driving the spawned server and inspecting real argv — `server/agy` asserts `--model` is passed on reply, `server/copilot` asserts it is not, and a single test in the core could satisfy neither. When in doubt: if the assertion would read the same for every provider, it belongs to the core; if it only makes sense because this provider is odd, it stays where the oddity is.
 
 ### Manual Testing
 
