@@ -124,6 +124,8 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
 
     Two caveats travel with this. The enforcement result is **single-sourced**: a shared account usage limit blocked reproduction on three other hosts, where even the positive control returned "no file" because nothing executed. And project instruction files in `cwd` are auto-loaded with no off switch — `CLAUDE.md` on all four platforms, a planted `AGENTS.md` too — so delegating grok into this repository injects its own `CLAUDE.md`, the same surface as Kimi's.
 
+15. **`buildCalleeEnv` severs the caller's identity, not the caller's configuration** - four channels were measured reaching a delegated grok, none of them through the environment: Agent Mail hooks and permission rules from `~/.claude/settings.json`, project instructions from `cwd`, and **Claude Code plugin skills** — `grok inspect` listed 46, of which 26 were the caller's own plugins, `codex:rescue` and `codex:review` among them. Those two exist to delegate onward, so their mere visibility puts a further-delegation path within reach that `CLAUDE_DELEGATOR_*_DEPTH` cannot observe: the guard watches environment variables and every one of these channels is on disk. Invocability was not tested and testing it would cost a live session; the visibility is enough to state the limit. This is why decision 10 calls the depth guard defence in depth rather than a boundary — it now has a named second reason, not just the `workspace-write` one.
+
 ## When NOT to Delegate
 
 - Simple syntax questions (answer directly)

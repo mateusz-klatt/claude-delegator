@@ -43,12 +43,14 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   const kimiBridge = require("../server/kimi");
   const copilotBridge = require("../server/copilot");
   const claudeBridge = require("../server/claude");
+  const grokBridge = require("../server/grok");
 
   for (const tool of [
     ...agyBridge.toolDefinitions,
     ...kimiBridge.toolDefinitions,
     ...copilotBridge.toolDefinitions,
-    ...claudeBridge.toolDefinitions
+    ...claudeBridge.toolDefinitions,
+    ...grokBridge.toolDefinitions
   ]) {
     const { timeout } = tool.inputSchema.properties;
     assert.equal(timeout.default, 900_000, `${tool.name} default timeout`);
@@ -171,7 +173,8 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
     agy: require("../server/agy"),
     kimi: require("../server/kimi"),
     copilot: require("../server/copilot"),
-    claude: require("../server/claude")
+    claude: require("../server/claude"),
+    grok: require("../server/grok")
   };
 
   for (const [name, bridge] of Object.entries(bridges)) {

@@ -587,15 +587,25 @@ test("binds the shared shim resolver to its own CLI name", () => {
   );
 });
 
-test("falls back to the location the installer uses on this platform", () => {
+test("falls back to the install root, not only to the convenience symlink", () => {
   const { cliFallbacks } = require("./index.js");
   const fallbacks = cliFallbacks();
-  assert.equal(fallbacks.length, 1);
-  assert.ok(path.isAbsolute(fallbacks[0]));
-  // Windows is NOT ~/.local/bin here: claude-win-home-1 measured ~\.grok\bin\grok.exe.
-  // Carrying the POSIX path over would repeat the WinGet\Links miss fixed in 1.7.0.
-  const expected = process.platform === "win32"
+  assert.ok(fallbacks.length > 0);
+  for (const fallback of fallbacks) assert.ok(path.isAbsolute(fallback));
+
+  // ~/.grok/bin is the install root on every platform measured — ~/.grok/bin/grok
+  // on macOS, ~\.grok\bin\grok.exe on Windows — so it must be present on both
+  // branches. This test previously asserted ~/.local/bin as the *sole* POSIX
+  // entry, which was wrong: `command -v grok` answers ~/.local/bin/grok on WSL
+  // only because the installer left a symlink there pointing into ~/.grok/bin.
+  // A host without that link had no usable fallback at all, and the assertion
+  // hid it by demanding exactly the path that made the mistake.
+  const root = process.platform === "win32"
     ? path.join(".grok", "bin", "grok.exe")
-    : path.join(".local", "bin", "grok");
-  assert.ok(fallbacks[0].endsWith(expected), `${fallbacks[0]} should end with ${expected}`);
+    : path.join(".grok", "bin", "grok");
+  assert.ok(
+    fallbacks.some((f) => f.endsWith(root)),
+    `${fallbacks.join(", ")} should include one ending with ${root}`
+  );
+  assert.ok(fallbacks[0].endsWith(root), "the real install root must be tried first");
 });

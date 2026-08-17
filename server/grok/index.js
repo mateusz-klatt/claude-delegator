@@ -232,12 +232,17 @@ function cliFallbacks() {
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
   //
-  // The Windows location is NOT the POSIX one: claude-win-home-1 measured
-  // ~\.grok\bin\grok.exe there, while Linux, macOS and WSL all put it in
-  // ~/.local/bin. Carrying the POSIX path over would have been the same mistake
-  // as the WinGet\Links guess removed in 1.7.0 — a fallback that cannot exist.
+  // ~/.grok/bin is the install root on every platform measured, Windows
+  // included — claude-mac-laptop-1 has ~/.grok/bin/grok, claude-win-home-1 has
+  // ~\.grok\bin\grok.exe. It is listed first because ~/.local/bin/grok is not a
+  // second install: on WSL it is a symlink *into* ~/.grok/bin, so it exists only
+  // where the installer chose to add the convenience link. Ordering the real
+  // location first means the fallback still works where that link was skipped.
   if (IS_WINDOWS) return [path.join(homedir(), ".grok", "bin", "grok.exe")];
-  return [path.join(homedir(), ".local", "bin", "grok")];
+  return [
+    path.join(homedir(), ".grok", "bin", "grok"),
+    path.join(homedir(), ".local", "bin", "grok")
+  ];
 }
 
 // --- Request handlers ---
