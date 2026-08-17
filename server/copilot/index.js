@@ -200,12 +200,15 @@ function cliFallbacks() {
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
   if (!IS_WINDOWS) return [path.join(homedir(), ".local", "bin", "copilot")];
-  return [
-    ...(process.env.LOCALAPPDATA
-      ? [path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "copilot.exe")]
-      : []),
-    ...(process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [])
-  ];
+
+  // Windows is covered only for an npm install. A WinGet install of this package
+  // does NOT create a shim in WinGet\Links — measured on a Windows host, where
+  // Links held six other tools and no copilot; the binary lives under
+  // WinGet\Packages\GitHub.Copilot_Microsoft.Winget.Source_<hash>\, a path
+  // carrying a package id and source hash that would be a worse guess than none.
+  // So a WinGet-only install behind a stripped PATH is a known gap, stated rather
+  // than papered over with a path that does not exist.
+  return process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [];
 }
 
 const handlers = {
