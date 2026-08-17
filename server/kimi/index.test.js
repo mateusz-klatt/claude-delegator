@@ -23,6 +23,16 @@ afterEach(() => {
   }
 });
 
+// On Windows process.env carries `Path`, so a plain spread plus `PATH:` leaves the
+// object holding two keys that differ only in case. Node happens to keep the one
+// that sorts first — "PATH" < "Path" — so the restricted value does win today, but
+// nothing in this suite should depend on a sort order inside a Node internal.
+function withPath(source, value) {
+  const env = Object.fromEntries(Object.entries(source).filter(([key]) => !/^path$/i.test(key)));
+  env.PATH = value;
+  return env;
+}
+
 function createKimiStub() {
   // macOS reports /var for a directory the kernel resolves to /private/var, so the cwd
   // the child reports back would never equal the path we asked for. Resolve it up front.
@@ -110,8 +120,7 @@ process.stdout.write(JSON.stringify({
     capturePath,
     workspacePath,
     env: {
-      ...process.env,
-      PATH: [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter),
+      ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       KIMI_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
       AGENT_NAME: "CallerAgent",

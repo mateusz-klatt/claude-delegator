@@ -21,6 +21,16 @@ afterEach(() => {
   }
 });
 
+// On Windows process.env carries `Path`, so a plain spread plus `PATH:` leaves the
+// object holding two keys that differ only in case. Node happens to keep the one
+// that sorts first — "PATH" < "Path" — so the restricted value does win today, but
+// nothing in this suite should depend on a sort order inside a Node internal.
+function withPath(source, value) {
+  const env = Object.fromEntries(Object.entries(source).filter(([key]) => !/^path$/i.test(key)));
+  env.PATH = value;
+  return env;
+}
+
 function createClaudeStub() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "claude-bridge-test-"));
   temporaryDirectories.push(directory);
@@ -78,8 +88,7 @@ process.stdout.write(JSON.stringify(result) + "\\n");
   return {
     capturePath,
     env: {
-      ...process.env,
-      PATH: [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter),
+      ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       CLAUDE_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
       PRESERVED_VALUE: "keep-me",

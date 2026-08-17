@@ -26,6 +26,16 @@ afterEach(() => {
   }
 });
 
+// On Windows process.env carries `Path`, so a plain spread plus `PATH:` leaves the
+// object holding two keys that differ only in case. Node happens to keep the one
+// that sorts first — "PATH" < "Path" — so the restricted value does win today, but
+// nothing in this suite should depend on a sort order inside a Node internal.
+function withPath(source, value) {
+  const env = Object.fromEntries(Object.entries(source).filter(([key]) => !/^path$/i.test(key)));
+  env.PATH = value;
+  return env;
+}
+
 function createCopilotStub() {
   // macOS reports /var for a directory the kernel resolves to /private/var, so the cwd
   // the child reports back would never equal the path we asked for. Resolve it up front.
@@ -118,8 +128,7 @@ if (process.env.COPILOT_STUB_HANG === "1") {
     capturePath,
     directory,
     env: {
-      ...process.env,
-      PATH: [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter),
+      ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       COPILOT_STUB_CAPTURE: capturePath,
       PRESERVED_VALUE: "keep-me",
       GITHUB_TOKEN: "provider-auth",
