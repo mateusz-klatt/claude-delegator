@@ -125,6 +125,16 @@ function fail(error, code = 2) {
   process.exitCode = code;
 }
 
+// A bridge reports a provider-side failure as a well-formed result carrying
+// isError, not as a JSON-RPC error — so a probe that only watches for
+// message.error prints the failure and exits 0. That is the driver manufacturing
+// a pass instead of measuring one.
+function failIfToolError(result) {
+  if (!result || result.isError !== true) return;
+  const text = result.content?.[0]?.text;
+  fail(new Error(`Tool reported a failure: ${text || JSON.stringify(result)}`), 1);
+}
+
 function request(method, params = {}) {
   const id = nextId++;
   return new Promise((resolve, reject) => {
@@ -181,8 +191,14 @@ try {
       throw new Error(`Tool ${JSON.stringify(toolName)} not advertised; available: ${tools.map((tool) => tool.name).join(", ")}`);
     }
     const result = await request("tools/call", { name: toolName, arguments: toolArguments });
+    // Classify a failed start before the chaining preconditions below. A bridge
+    // that could not reach its provider returns isError and no threadId, so the
+    // threadId check would fire first and report a contract failure — measured
+    // against a real GitHub 503, which surfaced as "did not return a threadId".
+    failIfToolError(result);
+
     let reply = null;
-    if (replyTool) {
+    if (replyTool && !failed) {
       const threadId = result.threadId || result.structuredContent?.threadId;
       if (!threadId) throw new Error(`Tool ${JSON.stringify(toolName)} did not return a threadId`);
       if (!tools.some((tool) => tool.name === replyTool)) {
@@ -200,15 +216,7 @@ try {
       ...(replyTool ? { replyTool, reply } : {})
     }, null, 2));
 
-    // A bridge reports a provider-side failure as a well-formed result carrying
-    // isError, not as a JSON-RPC error — so a probe that only watches for
-    // message.error prints the failure and exits 0. That is the driver
-    // manufacturing a pass instead of measuring one.
-    const toolFailure = [result, reply].find((value) => value && value.isError === true);
-    if (toolFailure) {
-      const text = toolFailure.content?.[0]?.text;
-      fail(new Error(`Tool reported a failure: ${text || JSON.stringify(toolFailure)}`), 1);
-    }
+    failIfToolError(reply);
   }
 } catch (error) {
   fail(error);
