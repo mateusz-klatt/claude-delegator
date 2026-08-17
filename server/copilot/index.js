@@ -7,9 +7,7 @@
  * Speaks JSON-RPC 2.0 over stdio.
  */
 
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawn, execSync } = require("node:child_process");
+const core = require("../shared/bridge");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
@@ -20,6 +18,13 @@ const {
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
 const { resultText } = require("../shared/result");
+
+const {
+  clampTimeout, isNonEmptyString, isObject, resolveCli, runStdioLoop,
+  sendError, sendResponse, superviseChild, timeoutSchema, validateCommonArgs
+} = core;
+
+const resolveWindowsShim = (candidate, readShim) => core.resolveWindowsShim(candidate, "copilot", readShim);
 
 const COPILOT_CATALOG = modelCatalog.providers.copilot;
 const DEFAULT_MODEL = COPILOT_CATALOG.defaultModel;
@@ -54,33 +59,10 @@ function resolveEffort(model, requestedEffort) {
 
 // --- MCP Protocol Helpers ---
 
-function sendResponse(id, result) {
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    result
-  }) + "\n");
-}
 
-function sendError(id, code, message) {
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message }
-  }) + "\n");
-}
 
-function isObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
-function hasRequestId(request) {
-  return isObject(request) && Object.hasOwn(request, "id");
-}
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
 
 // Copilot --output-format json emits JSONL events. Key events:
 //   {type:"assistant.message", data:{content:"..."}}     → response text (may repeat)
@@ -123,128 +105,31 @@ function parseCopilotOutput(stdout) {
   return { chunks, sessionId, resultExitCode, errorMessage };
 }
 
-// A Windows .cmd shim cannot be spawned with shell: false, so follow it to the
-// loader it wraps. readShim is injectable so the logic is testable on a platform
-// that has no .cmd at all — this previously lived inline and could only be
-// exercised by running on real Windows.
-function resolveWindowsShim(candidate, readShim = (p) => fs.readFileSync(p, "utf8")) {
-  if (!candidate.toLowerCase().endsWith(".cmd")) return candidate;
-  const shim = readShim(candidate);
-  const match = /"([^"]+copilot[^"]*\.js)"/i.exec(shim) || /"([^"]+copilot[^"]*\.exe)"/i.exec(shim);
-  if (!match) throw new Error("could not resolve copilot from its .cmd shim");
-  // %dp0% is the cmd-shell variable for the shim's own directory, with a trailing
-  // separator. Use the win32 parser explicitly: posix dirname returns "." for a
-  // backslash path and would silently resolve the loader to the wrong place.
-  const dp0 = path.win32.dirname(candidate) + path.win32.sep;
-  return match[1].replace(/%dp0%\\?/gi, dp0);
-}
 
 // --- Copilot CLI Wrapper ---
 
-const DEFAULT_TIMEOUT_MS = 900_000; // 15 minutes
-const MAX_TIMEOUT_MS = 3_600_000; // 1 hour hard cap
 
-const IS_WINDOWS = process.platform === "win32";
 const activeChildren = new Set();
 const activeRequests = new Map();
 let COPILOT_BIN;
-let shuttingDown = false;
 
-function killProcessTree(child, signal) {
-  if (!child.pid) return;
-  if (IS_WINDOWS) {
-    try { execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: "ignore" }); } catch (_error) { /* already dead */ }
-    return;
-  }
-  try { process.kill(-child.pid, signal); } catch (_error) { /* already dead */ }
-}
 
 async function runCopilot(args, cwd, timeoutMs, abortSignal) {
-  const t = typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS;
-  const effectiveTimeout = Math.min(Math.max(t, 10_000), MAX_TIMEOUT_MS);
+  const effectiveTimeout = clampTimeout(timeoutMs);
   // Always force JSON output, non-interactive mode (no stdin approval prompts)
   const fullArgs = [...args, "--output-format", "json", "--silent", "--no-ask-user", "--no-custom-instructions"];
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const isJsFile = COPILOT_BIN.toLowerCase().endsWith(".js");
-    const spawnCmd = isJsFile ? process.execPath : COPILOT_BIN;
-    const spawnArgs = isJsFile ? [COPILOT_BIN, ...fullArgs] : fullArgs;
-    const copilotProcess = spawn(spawnCmd, spawnArgs, {
-      env: buildCalleeEnv(process.env),
-      shell: false,
-      cwd: cwd || process.cwd(),
-      detached: !IS_WINDOWS
-    });
-    activeChildren.add(copilotProcess);
-
-    function removeAbortListener() {
-      if (abortSignal) abortSignal.removeEventListener("abort", handleAbort);
-    }
-
-    function forceKillLater() {
-      const killTimer = setTimeout(() => {
-        if (!exited) killProcessTree(copilotProcess, "SIGKILL");
-      }, 3000);
-      killTimer.unref();
-    }
-
-    function handleAbort() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      killProcessTree(copilotProcess, "SIGTERM");
-      forceKillLater();
-      reject(new Error("Copilot CLI call cancelled"));
-    }
-
-    let exited = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        removeAbortListener();
-        killProcessTree(copilotProcess, "SIGTERM");
-        forceKillLater();
-        reject(new Error(`Copilot CLI timed out after ${effectiveTimeout / 1000}s`));
-      }
-    }, effectiveTimeout);
-
-    if (abortSignal) {
-      if (abortSignal.aborted) {
-        handleAbort();
-      } else {
-        abortSignal.addEventListener("abort", handleAbort, { once: true });
-      }
-    }
-
-    let stdout = "";
-    let stderr = "";
-
-    copilotProcess.on("error", (err) => {
-      activeChildren.delete(copilotProcess);
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-      if (err.code === "ENOENT") {
-        const cwdNote = cwd ? ` (cwd: ${cwd})` : "";
-        reject(new Error(`Copilot CLI not found or invalid working directory${cwdNote}. Install with 'npm install -g @github/copilot'.`));
-      } else {
-        reject(err);
-      }
-    });
-
-    copilotProcess.stdout.on("data", (data) => { stdout += data.toString(); });
-    copilotProcess.stderr.on("data", (data) => { stderr += data.toString(); });
-
-    copilotProcess.on("close", (code) => {
-      activeChildren.delete(copilotProcess);
-      exited = true;
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-
+  return superviseChild({
+    abortSignal,
+    activeChildren,
+    args: fullArgs,
+    binary: COPILOT_BIN,
+    cwd,
+    env: buildCalleeEnv(process.env),
+    label: "Copilot",
+    notFoundHint: "Install with 'npm install -g @github/copilot'.",
+    timeoutMs: effectiveTimeout,
+    onClose: ({ code, stderr, stdout }) => {
       const parsed = parseCopilotOutput(stdout);
 
       if (code !== 0) {
@@ -253,26 +138,16 @@ async function runCopilot(args, cwd, timeoutMs, abortSignal) {
         // Linux for a 402 quota_exceeded. Falling straight back to the exit code
         // discarded a fully machine-readable reason and made every failure look
         // identical, so read stdout before giving up on it.
-        return reject(new Error(parsed.errorMessage || stderr.trim() || `Copilot exited with code ${code}`));
+        throw new Error(parsed.errorMessage || stderr.trim() || `Copilot exited with code ${code}`);
       }
 
-      try {
-        const { chunks, sessionId, resultExitCode } = parsed;
-
-        if (resultExitCode !== 0) {
-          return reject(new Error(parsed.errorMessage || `Copilot session failed with exitCode ${resultExitCode}`));
-        }
-
-        const response = chunks.join("") || "(No output)";
-
-        resolve({
-          response: response.trim(),
-          threadId: sessionId
-        });
-      } catch (e) {
-        reject(new Error(`Parse error: ${e.message}\nRaw output was: ${stdout}`));
+      const { chunks, sessionId, resultExitCode } = parsed;
+      if (resultExitCode !== 0) {
+        throw new Error(parsed.errorMessage || `Copilot session failed with exitCode ${resultExitCode}`);
       }
-    });
+
+      return { response: (chunks.join("") || "(No output)").trim(), threadId: sessionId };
+    }
   });
 }
 
@@ -292,7 +167,7 @@ const COPILOT_TOOLS = [
         cwd: { type: "string", description: "Current working directory" },
         model: { type: "string", enum: COPILOT_CATALOG.models, default: DEFAULT_MODEL, description: "Model to use" },
         effort: { type: "string", enum: COPILOT_CATALOG.efforts, default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
-        timeout: { type: "number", minimum: 10_000, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        timeout: timeoutSchema(),
         coordination: coordinationSchema
       },
       required: ["prompt"]
@@ -310,7 +185,7 @@ const COPILOT_TOOLS = [
         sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only denies shell/write/edit; workspace-write enables all tools for unattended execution" },
         cwd: { type: "string" },
         effort: { type: "string", enum: COPILOT_CATALOG.efforts, description: "Optional reasoning effort override (max is capped to xhigh because a resumed session's model is unknown)" },
-        timeout: { type: "number", minimum: 10_000, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        timeout: timeoutSchema(),
         coordination: coordinationSchema
       },
       required: ["threadId", "prompt"]
@@ -350,20 +225,13 @@ const handlers = {
       if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
       return;
     }
-    if (args.sandbox !== undefined && !VALID_SANDBOX_VALUES.has(args.sandbox)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'sandbox' must be 'read-only' or 'workspace-write'");
-      return;
-    }
-    if (args.cwd !== undefined && !isNonEmptyString(args.cwd)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'cwd' must be a non-empty string when provided");
+    const commonError = validateCommonArgs(args);
+    if (commonError) {
+      if (shouldRespond) sendError(id, -32602, commonError);
       return;
     }
     if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
       if (shouldRespond) sendError(id, -32602, `Invalid params: 'effort' must be one of: ${COPILOT_CATALOG.efforts.join(", ")}`);
-      return;
-    }
-    if (args.timeout !== undefined && (typeof args.timeout !== "number" || !Number.isFinite(args.timeout) || args.timeout < 10_000 || args.timeout > MAX_TIMEOUT_MS)) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: 'timeout' must be from 10000 to ${MAX_TIMEOUT_MS} milliseconds`);
       return;
     }
 
@@ -486,92 +354,14 @@ const handlers = {
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
 if (require.main === module) {
-let buffer = "";
-process.stdin.on("data", (chunk) => {
-  buffer += chunk.toString();
-  let lines = buffer.split("\n");
-  buffer = lines.pop(); // Keep partial line in buffer
+  runStdioLoop({ handlers, activeRequests, activeChildren });
 
-  for (const line of lines) {
-    if (!line.trim()) continue;
-
-    let request;
-    try {
-      request = JSON.parse(line);
-    } catch (e) {
-      sendError(null, -32700, "Parse error");
-      continue;
-    }
-
-    const shouldRespond = hasRequestId(request);
-    if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
-      if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
-      continue;
-    }
-
-    const handler = handlers[request.method];
-    if (!handler) {
-      if (shouldRespond) sendError(request.id, -32601, `Method not found: ${request.method}`);
-      continue;
-    }
-
-    try {
-      Promise.resolve(handler(request.id, request.params, shouldRespond)).catch((e) => {
-        if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-      });
-    } catch (e) {
-      if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-    }
+  try {
+    COPILOT_BIN = resolveCli("copilot");
+  } catch (error) {
+    console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
+    process.exit(1);
   }
-});
-
-function shutdown(exitCode) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  for (const controller of activeRequests.values()) controller.abort();
-  for (const child of activeChildren) killProcessTree(child, "SIGTERM");
-  if (activeChildren.size === 0) {
-    process.exit(exitCode);
-    return;
-  }
-  setTimeout(() => {
-    for (const child of activeChildren) killProcessTree(child, "SIGKILL");
-    process.exit(exitCode);
-  }, 500);
-}
-
-process.once("SIGTERM", () => shutdown(0));
-process.once("SIGINT", () => shutdown(130));
-process.stdin.once("end", () => shutdown(0));
-
-// Startup: resolve copilot binary path
-// On Windows, npm shims are .cmd files that cannot be spawned with shell: false.
-// Follow the shim to find the real executable.
-try {
-  const cmd = IS_WINDOWS ? "where copilot" : "which copilot";
-  const candidates = execSync(cmd, { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-  // On Windows, prefer .exe (e.g. winget copilot.exe) over the npm .cmd shim — the
-  // shim points to a .js loader that triggers the "Open with..." dialog when spawned
-  // without shell. .cmd is the fallback.
-  let resolved = IS_WINDOWS
-    ? (candidates.find(c => c.toLowerCase().endsWith(".exe"))
-        || candidates.find(c => c.toLowerCase().endsWith(".cmd"))
-        || candidates[0])
-    : candidates[0];
-  if (IS_WINDOWS) resolved = resolveWindowsShim(resolved);
-  COPILOT_BIN = resolved;
-  // stdio: "pipe" (not "ignore") — winget copilot.exe crashes with stdio:ignore.
-  const validateCmd = COPILOT_BIN.toLowerCase().endsWith(".js")
-    ? `"${process.execPath}" "${COPILOT_BIN}" --version`
-    : `"${COPILOT_BIN}" --version`;
-  execSync(validateCmd, { stdio: "pipe" });
-} catch (error) {
-  // The bare catch reported "not found, please install" for every failure —
-  // including a resolved binary whose --version exits non-zero, and an
-  // unrecognised shim. Keep the cause.
-  console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
-  process.exit(1);
-}
 }
 
 module.exports = {

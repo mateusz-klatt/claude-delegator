@@ -9,8 +9,7 @@
 
 const os = require("node:os");
 const path = require("node:path");
-const fs = require("node:fs");
-const { spawn, execFileSync, execSync } = require("node:child_process");
+const core = require("../shared/bridge");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
@@ -22,78 +21,35 @@ const {
 const { buildCalleeEnv } = require("../shared/environment");
 const { resultText } = require("../shared/result");
 
+const {
+  IS_WINDOWS, clampTimeout, isNonEmptyString, isObject, resolveCli,
+  runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
+  validateCommonArgs
+} = core;
+
+const depth = core.createDepthGuard("CLAUDE_DELEGATOR_KIMI_DEPTH");
+const resolveWindowsShim = (candidate, readShim) => core.resolveWindowsShim(candidate, "kimi", readShim);
+
 const KIMI_CATALOG = modelCatalog.providers.kimi;
 const DEFAULT_MODEL = KIMI_CATALOG.defaultModel;
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 
-// Delegation-depth guard, mirroring the Claude and Agy bridges. Defence in
-// depth, not a security boundary: the child can still invoke any CLI itself.
-const DEPTH_ENV_VAR = "CLAUDE_DELEGATOR_KIMI_DEPTH";
-const MAX_DELEGATION_DEPTH = 1;
 
 // --- MCP Protocol Helpers ---
 
-function sendResponse(id, result) {
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    result
-  }) + "\n");
-}
 
-function sendError(id, code, message) {
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message }
-  }) + "\n");
-}
 
-function isObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
-function hasRequestId(request) {
-  return isObject(request) && Object.hasOwn(request, "id");
-}
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
 
-function currentDelegationDepth(source = process.env) {
-  const parsed = Number.parseInt(String(source[DEPTH_ENV_VAR] ?? "").trim(), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
 
 // --- Kimi CLI Wrapper ---
 
-const DEFAULT_TIMEOUT_MS = 900_000; // 15 minutes
-const MAX_TIMEOUT_MS = 3_600_000; // 1 hour hard cap
-const MIN_TIMEOUT_MS = 10_000;
 
-const IS_WINDOWS = process.platform === "win32";
 const activeChildren = new Set();
 const activeRequests = new Map();
 let KIMI_BIN;
-let shuttingDown = false;
 
-function killProcessTree(child, signal) {
-  if (!child.pid) return;
-  if (IS_WINDOWS) {
-    try {
-      execFileSync("taskkill.exe", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
-    } catch (_error) {
-      // The process may already have exited.
-    }
-    return;
-  }
-  try {
-    process.kill(-child.pid, signal);
-  } catch (_error) {
-    // The process group may already have exited.
-  }
-}
 
 function parseKimiOutput(stdout) {
   // kimi --output-format stream-json emits JSONL. Relevant events:
@@ -124,136 +80,43 @@ function parseKimiOutput(stdout) {
   return { response: chunks.join("").trim(), sessionId };
 }
 
-// A Windows .cmd shim cannot be spawned with shell: false, so follow it to the
-// loader it wraps. Kept separate and exported because the failure only shows up
-// on Windows, where the rest of the suite cannot reach it.
-function resolveWindowsShim(candidate, readShim = (p) => fs.readFileSync(p, "utf8")) {
-  if (!candidate.toLowerCase().endsWith(".cmd")) return candidate;
-  const shim = readShim(candidate);
-  const match = /"([^"]+kimi[^"]*\.js)"/i.exec(shim) || /"([^"]+kimi[^"]*\.exe)"/i.exec(shim);
-  if (!match) throw new Error("could not resolve kimi from its .cmd shim");
-  // %dp0% is the cmd-shell variable for the shim's own directory, with a
-  // trailing separator. Use the win32 parser explicitly: this only ever handles
-  // Windows shims, and posix path.dirname returns "." for a backslash path,
-  // which would silently resolve the loader to the wrong place.
-  const dp0 = path.win32.dirname(candidate) + path.win32.sep;
-  return match[1].replace(/%dp0%\\?/gi, dp0);
-}
 
 function buildKimiEnv(source = process.env) {
   const env = buildCalleeEnv(source);
-  env[DEPTH_ENV_VAR] = String(currentDelegationDepth(source) + 1);
-  return env;
+  return depth.stamp(env, source);
 }
 
 async function runKimi(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
-  const t = typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS;
-  const effectiveTimeout = Math.min(Math.max(t, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
+  const effectiveTimeout = clampTimeout(timeoutMs);
   // kimi has no timeout flag of its own, so the bridge deadline is the only one.
   const fullArgs = [...args, "--output-format", "stream-json"];
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let exited = false;
-    const isJsFile = KIMI_BIN.toLowerCase().endsWith(".js");
-    const spawnCmd = isJsFile ? process.execPath : KIMI_BIN;
-    const spawnArgs = isJsFile ? [KIMI_BIN, ...fullArgs] : fullArgs;
-    const kimiProcess = spawn(spawnCmd, spawnArgs, {
-      env: buildKimiEnv(process.env),
-      shell: false,
-      cwd: cwd || process.cwd(),
-      detached: !IS_WINDOWS,
-      // stdin is never written to; give the child nothing to block on.
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    activeChildren.add(kimiProcess);
-
-    function removeAbortListener() {
-      if (abortSignal) abortSignal.removeEventListener("abort", handleAbort);
-    }
-
-    function forceKillLater() {
-      const forceKillTimer = setTimeout(() => {
-        if (!exited) killProcessTree(kimiProcess, "SIGKILL");
-      }, 3_000);
-      forceKillTimer.unref();
-    }
-
-    function handleAbort() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-      killProcessTree(kimiProcess, "SIGTERM");
-      forceKillLater();
-      reject(new Error("Kimi CLI call cancelled"));
-    }
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      removeAbortListener();
-      killProcessTree(kimiProcess, "SIGTERM");
-      forceKillLater();
-      reject(new Error(`Kimi CLI timed out after ${effectiveTimeout / 1000}s`));
-    }, effectiveTimeout);
-
-    if (abortSignal) {
-      if (abortSignal.aborted) {
-        handleAbort();
-      } else {
-        abortSignal.addEventListener("abort", handleAbort, { once: true });
-      }
-    }
-
-    let stdout = "";
-    let stderr = "";
-
-    kimiProcess.on("error", (err) => {
-      activeChildren.delete(kimiProcess);
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-      if (err.code === "ENOENT") {
-        const cwdNote = cwd ? ` (cwd: ${cwd})` : "";
-        reject(new Error(`Kimi CLI not found or invalid working directory${cwdNote}. Install Kimi Code and ensure 'kimi' is on PATH.`));
-      } else {
-        reject(err);
-      }
-    });
-
-    kimiProcess.stdout.on("data", (data) => { stdout += data.toString(); });
-    kimiProcess.stderr.on("data", (data) => { stderr += data.toString(); });
-
-    kimiProcess.on("close", (code) => {
-      activeChildren.delete(kimiProcess);
-      exited = true;
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-
+  return superviseChild({
+    abortSignal,
+    activeChildren,
+    args: fullArgs,
+    binary: KIMI_BIN,
+    cwd,
+    env: buildKimiEnv(process.env),
+    label: "Kimi",
+    notFoundHint: "Install Kimi Code and ensure 'kimi' is on PATH.",
+    timeoutMs: effectiveTimeout,
+    onClose: ({ code, stderr, stdout }) => {
       // Unlike Agy, kimi failures are exit-code shaped: an unknown model exits 1
       // with the explanation on stderr and only the version banner on stdout.
-      if (code !== 0) {
-        return reject(new Error(stderr.trim() || `Kimi exited with code ${code}`));
-      }
+      if (code !== 0) throw new Error(stderr.trim() || `Kimi exited with code ${code}`);
 
       const { response, sessionId } = parseKimiOutput(stdout);
-
       if (!response) {
-        return reject(new Error(stderr.trim() || `Kimi produced no assistant output. Raw output was: ${stdout}`));
+        throw new Error(stderr.trim() || `Kimi produced no assistant output. Raw output was: ${stdout}`);
       }
-
       if (expectedThreadId && sessionId !== "unknown" && sessionId !== expectedThreadId) {
-        return reject(new Error(
+        throw new Error(
           `Kimi resumed a different session: requested ${expectedThreadId}, received ${sessionId}. The original session was not continued.`
-        ));
+        );
       }
-
-      resolve({ response, threadId: sessionId });
-    });
+      return { response, threadId: sessionId };
+    }
   });
 }
 
@@ -282,7 +145,7 @@ const KIMI_TOOLS = [
           examples: KIMI_CATALOG.models,
           description: "Model alias from ~/.kimi-code/config.toml. Free-form because the roster is user-extensible; kimi rejects an unknown alias before doing any work."
         },
-        timeout: { type: "number", minimum: MIN_TIMEOUT_MS, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        timeout: timeoutSchema(),
         coordination: coordinationSchema
       },
       required: ["prompt"]
@@ -299,7 +162,7 @@ const KIMI_TOOLS = [
         prompt: { type: "string", description: "Follow-up prompt" },
         sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: SANDBOX_DESCRIPTION },
         cwd: { type: "string", description: "Working directory" },
-        timeout: { type: "number", minimum: MIN_TIMEOUT_MS, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS, description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)" },
+        timeout: timeoutSchema(),
         coordination: coordinationSchema
       },
       required: ["threadId", "prompt"]
@@ -335,9 +198,9 @@ const handlers = {
       if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
       return;
     }
-    if ((name === "kimi" || name === "kimi-reply") && currentDelegationDepth() >= MAX_DELEGATION_DEPTH) {
+    if ((name === "kimi" || name === "kimi-reply") && depth.exceeded()) {
       if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Kimi session (${DEPTH_ENV_VAR}=${currentDelegationDepth()}). Complete the work here instead of delegating further.`);
+        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Kimi session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
       }
       return;
     }
@@ -359,16 +222,13 @@ const handlers = {
       }
       return;
     }
-    if (args.cwd !== undefined && !isNonEmptyString(args.cwd)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'cwd' must be a non-empty string when provided");
+    const commonError = validateCommonArgs(args);
+    if (commonError) {
+      if (shouldRespond) sendError(id, -32602, commonError);
       return;
     }
     if (args.model !== undefined && !isNonEmptyString(args.model)) {
       if (shouldRespond) sendError(id, -32602, "Invalid params: 'model' must be a non-empty string when provided");
-      return;
-    }
-    if (args.timeout !== undefined && (typeof args.timeout !== "number" || !Number.isFinite(args.timeout) || args.timeout < MIN_TIMEOUT_MS || args.timeout > MAX_TIMEOUT_MS)) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: 'timeout' must be from ${MIN_TIMEOUT_MS} to ${MAX_TIMEOUT_MS} milliseconds`);
       return;
     }
 
@@ -473,110 +333,17 @@ const handlers = {
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
 if (require.main === module) {
-  let buffer = "";
-  process.stdin.on("data", (chunk) => {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop(); // Keep partial line in buffer
+  runStdioLoop({ handlers, activeRequests, activeChildren });
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      let request;
-      try {
-        request = JSON.parse(line);
-      } catch {
-        sendError(null, -32700, "Parse error");
-        continue;
-      }
-
-      const shouldRespond = hasRequestId(request);
-      if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
-        if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
-        continue;
-      }
-
-      const handler = handlers[request.method];
-      if (!handler) {
-        if (shouldRespond) sendError(request.id, -32601, `Method not found: ${request.method}`);
-        continue;
-      }
-
-      try {
-        Promise.resolve(handler(request.id, request.params, shouldRespond)).catch((e) => {
-          if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-        });
-      } catch (e) {
-        if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-      }
-    }
-  });
-
-  const shutdown = (exitCode) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    for (const controller of activeRequests.values()) controller.abort();
-    for (const child of activeChildren) killProcessTree(child, "SIGTERM");
-    if (activeChildren.size === 0) {
-      process.exit(exitCode);
-      return;
-    }
-    setTimeout(() => {
-      for (const child of activeChildren) killProcessTree(child, "SIGKILL");
-      process.exit(exitCode);
-    }, 500);
-  };
-
-  process.once("SIGTERM", () => shutdown(0));
-  process.once("SIGINT", () => shutdown(130));
-  process.stdin.once("end", () => shutdown(0));
-
-  // Startup: resolve the kimi binary. Kimi Code installs to ~/.kimi-code/bin,
-  // which is frequently absent from the minimal PATH an MCP server inherits.
+  // Kimi Code installs to ~/.kimi-code/bin, frequently absent from the minimal
+  // PATH an MCP server inherits.
   try {
-    const candidates = [];
-    try {
-      const listed = execFileSync(IS_WINDOWS ? "where" : "which", ["kimi"], { encoding: "utf8" });
-      candidates.push(...listed.trim().split(/\r?\n/).filter(Boolean));
-    } catch {
-      // Not on PATH; fall through to the explicit candidates below.
-    }
     const home = os.homedir();
-    if (IS_WINDOWS) {
-      candidates.push(path.join(home, ".kimi-code", "bin", "kimi.exe"));
-      candidates.push(path.join(home, ".kimi-code", "bin", "kimi.cmd"));
-    } else {
-      candidates.push(path.join(home, ".kimi-code", "bin", "kimi"));
-    }
-
-    // On Windows prefer a real .exe, then a .cmd shim. A .cmd cannot be spawned
-    // with shell: false, so follow the shim to the loader it points at.
-    // Only consider candidates that exist: the platform fallbacks below are
-    // guesses, and an absent .exe guess would otherwise be preferred over the
-    // real .cmd that `where` just found.
-    const present = candidates.filter((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } });
-    let resolved = IS_WINDOWS
-      ? (present.find(c => c.toLowerCase().endsWith(".exe"))
-          || present.find(c => c.toLowerCase().endsWith(".cmd"))
-          || present[0])
-      : present.find((candidate) => {
-          try {
-            fs.accessSync(candidate, fs.constants.X_OK);
-            return true;
-          } catch {
-            return false;
-          }
-        });
-
-    if (!resolved) throw new Error("kimi not found");
-
-    if (IS_WINDOWS) resolved = resolveWindowsShim(resolved);
-
-    KIMI_BIN = resolved;
-    const validate = KIMI_BIN.toLowerCase().endsWith(".js")
-      ? `"${process.execPath}" "${KIMI_BIN}" --version`
-      : `"${KIMI_BIN}" --version`;
-    execSync(validate, { stdio: "pipe" });
+    KIMI_BIN = resolveCli("kimi", {
+      fallbacks: IS_WINDOWS
+        ? [path.join(home, ".kimi-code", "bin", "kimi.exe"), path.join(home, ".kimi-code", "bin", "kimi.cmd")]
+        : [path.join(home, ".kimi-code", "bin", "kimi")]
+    });
   } catch (error) {
     console.error(`Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`);
     process.exit(1);

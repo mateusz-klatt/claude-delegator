@@ -562,27 +562,21 @@ test("stamps the delegation depth while scrubbing caller Agent Mail identity", (
   assert.equal(nested.CLAUDE_DELEGATOR_KIMI_DEPTH, "2");
 });
 
-test("follows a Windows .cmd shim to the loader it wraps", () => {
-  // The suite fails on windows-latest and nowhere else, so the resolution that
-  // broke it is covered here directly rather than through a spawned server.
-  const dir = "C:\\Users\\dev\\AppData\\Local\\kimi-bridge-test-abc";
+test("binds the shared shim resolver to its own CLI name", () => {
+  // The shim shapes themselves are covered once, in server/shared/bridge.test.js.
+  // What is per-bridge is only which command name gets baked in, and that is what
+  // makes a mismatched shim fail loudly instead of resolving to another CLI.
+  const dir = "C:\\Users\\dev\\AppData\\Roaming\\npm";
   const shimPath = dir + "\\kimi.cmd";
-  const node = "C:\\hostedtoolcache\\windows\\node\\24.0.0\\x64\\node.exe";
   const script = dir + "\\kimi-stub.js";
+  const node = "C:\\Program Files\\nodejs\\node.exe";
 
-  // Exactly what createShim writes on win32.
-  const shim = `@echo off\r\n"${node}" "${script}" %*\r\n`;
-  assert.equal(bridge.resolveWindowsShim(shimPath, () => shim), script);
-
-  // npm-style shims reference their own directory through %dp0%.
-  const dp0Shim = `@echo off\r\n"${node}" "%dp0%\\kimi-stub.js" %*\r\n`;
-  assert.equal(bridge.resolveWindowsShim(shimPath, () => dp0Shim), script);
-  assert.equal(bridge.resolveWindowsShim(shimPath, () => dp0Shim).includes("%dp0%"), false);
-
-  // A real executable is returned untouched, on any platform.
-  assert.equal(bridge.resolveWindowsShim(dir + "\\kimi.exe", () => { throw new Error("must not read"); }), dir + "\\kimi.exe");
-  assert.equal(bridge.resolveWindowsShim("/home/dev/.local/bin/kimi", () => { throw new Error("must not read"); }), "/home/dev/.local/bin/kimi");
-
-  // An unrecognisable shim must fail loudly, not resolve to something wrong.
-  assert.throws(() => bridge.resolveWindowsShim(shimPath, () => "@echo off\r\nrem nothing here\r\n"), /could not resolve kimi/);
+  assert.equal(
+    bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "%dp0%\\kimi-stub.js" %*\r\n`),
+    script
+  );
+  assert.throws(
+    () => bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "%dp0%\\other-stub.js" %*\r\n`),
+    /could not resolve kimi/
+  );
 });

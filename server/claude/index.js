@@ -9,9 +9,7 @@
 
 "use strict";
 
-const fs = require("node:fs");
-const path = require("node:path");
-const { execFileSync, spawn } = require("node:child_process");
+const core = require("../shared/bridge");
 const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
@@ -23,107 +21,49 @@ const {
 const { buildCalleeEnv } = require("../shared/environment.js");
 const { resultText } = require("../shared/result.js");
 
+const {
+  isNonEmptyString, isObject, resolveCli, runStdioLoop, sendError,
+  sendResponse, timeoutSchema, superviseChild, VALID_SANDBOX_VALUES,
+  validateCommonArgs
+} = core;
+
+const depth = core.createDepthGuard("CLAUDE_DELEGATOR_CLAUDE_DEPTH");
+
 const CLAUDE_CATALOG = modelCatalog.providers.claude;
 const DEFAULT_MODEL = CLAUDE_CATALOG.defaultModel;
 const DEFAULT_EFFORT = CLAUDE_CATALOG.defaultEffort;
-const DEFAULT_TIMEOUT_MS = 900_000;
-const MAX_TIMEOUT_MS = 3_600_000;
-const MIN_TIMEOUT_MS = 10_000;
 const VALID_MODELS = new Set([
   ...CLAUDE_CATALOG.models,
   ...Object.keys(CLAUDE_CATALOG.aliases)
 ]);
 const VALID_EFFORT_VALUES = new Set(CLAUDE_CATALOG.efforts);
-const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
-const IS_WINDOWS = process.platform === "win32";
 // Delegation-loop guard. The bridge stamps this into every child environment, and the
 // variable survives each further hop (see server/shared/environment.js), so a Claude
 // session reached through this bridge cannot reach another one — directly, or via a
 // round trip through Codex or any other provider that is configured to call back here.
-const DEPTH_ENV_VAR = "CLAUDE_DELEGATOR_CLAUDE_DEPTH";
-const MAX_DELEGATION_DEPTH = 1;
 const activeChildren = new Set();
 const activeRequests = new Map();
-let shuttingDown = false;
 
 // --- MCP Protocol Helpers ---
 
-function sendResponse(id, result) {
-  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
-}
 
-function sendError(id, code, message) {
-  process.stdout.write(`${JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message }
-  })}\n`);
-}
 
-function isObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
-function hasRequestId(request) {
-  return isObject(request) && Object.hasOwn(request, "id");
-}
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
 
-function currentDelegationDepth(source = process.env) {
-  const parsed = Number.parseInt(String(source[DEPTH_ENV_VAR] ?? "").trim(), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
 
 function validateCommonArguments(args) {
-  if (args.sandbox !== undefined && !VALID_SANDBOX_VALUES.has(args.sandbox)) {
-    throw new TypeError("'sandbox' must be 'read-only' or 'workspace-write'");
-  }
-  if (args.cwd !== undefined && !isNonEmptyString(args.cwd)) {
-    throw new TypeError("'cwd' must be a non-empty string when provided");
-  }
+  const problem = validateCommonArgs(args);
+  if (problem) throw new TypeError(problem.replace(/^Invalid params: /, ""));
   if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
     throw new TypeError("'effort' must be 'low', 'medium', 'high', 'xhigh', or 'max'");
-  }
-  if (args.timeout !== undefined && (
-    typeof args.timeout !== "number" ||
-    !Number.isFinite(args.timeout) ||
-    args.timeout < MIN_TIMEOUT_MS ||
-    args.timeout > MAX_TIMEOUT_MS
-  )) {
-    throw new TypeError(`'timeout' must be from ${MIN_TIMEOUT_MS} to ${MAX_TIMEOUT_MS} milliseconds`);
   }
   return validateCoordination(args.coordination);
 }
 
 // --- Claude CLI Wrapper ---
 
-function commandForBinary(binary, args) {
-  if (/\.(?:c?m?js)$/i.test(binary)) {
-    return { command: process.execPath, args: [binary, ...args] };
-  }
-  return { command: binary, args };
-}
 
-function killProcessTree(child, signal) {
-  if (!child.pid) return;
-  if (IS_WINDOWS) {
-    try {
-      execFileSync("taskkill.exe", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
-    } catch (_error) {
-      // The process may already have exited.
-    }
-    return;
-  }
-
-  try {
-    process.kill(-child.pid, signal);
-  } catch (_error) {
-    // The process group may already have exited.
-  }
-}
 
 function parseClaudeOutput(stdout, fallbackThreadId) {
   const trimmed = stdout.trim();
@@ -166,100 +106,24 @@ function parseClaudeOutput(stdout, fallbackThreadId) {
 }
 
 async function runClaude(args, cwd, timeoutMs, fallbackThreadId, abortSignal) {
-  const requestedTimeout = timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : timeoutMs;
-  const effectiveTimeout = Math.max(requestedTimeout, MIN_TIMEOUT_MS);
-  const invocation = commandForBinary(CLAUDE_BIN, args);
-  const childEnv = buildCalleeEnv(process.env);
-  childEnv[DEPTH_ENV_VAR] = String(currentDelegationDepth() + 1);
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let exited = false;
-    let stdout = "";
-    let stderr = "";
-
-    const child = spawn(invocation.command, invocation.args, {
-      cwd: cwd || process.cwd(),
-      detached: !IS_WINDOWS,
-      env: childEnv,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    activeChildren.add(child);
-
-    function removeAbortListener() {
-      if (abortSignal) abortSignal.removeEventListener("abort", handleAbort);
-    }
-
-    function forceKillLater() {
-      const forceKillTimer = setTimeout(() => {
-        if (!exited) killProcessTree(child, "SIGKILL");
-      }, 3_000);
-      forceKillTimer.unref();
-    }
-
-    function handleAbort() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      killProcessTree(child, "SIGTERM");
-      forceKillLater();
-      reject(new Error("Claude CLI call cancelled"));
-    }
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      removeAbortListener();
-      killProcessTree(child, "SIGTERM");
-      forceKillLater();
-      reject(new Error(`Claude CLI timed out after ${effectiveTimeout / 1000}s`));
-    }, effectiveTimeout);
-
-    if (abortSignal) {
-      if (abortSignal.aborted) {
-        handleAbort();
-      } else {
-        abortSignal.addEventListener("abort", handleAbort, { once: true });
-      }
-    }
-
-    child.on("error", (error) => {
-      activeChildren.delete(child);
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-      if (error.code === "ENOENT") {
-        const cwdNote = cwd ? ` (cwd: ${cwd})` : "";
-        reject(new Error(`Claude CLI not found or invalid working directory${cwdNote}. Install Claude Code first.`));
-      } else {
-        reject(error);
-      }
-    });
-
-    child.stdout.on("data", (data) => { stdout += data.toString(); });
-    child.stderr.on("data", (data) => { stderr += data.toString(); });
-
-    child.on("close", (code) => {
-      activeChildren.delete(child);
-      exited = true;
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      removeAbortListener();
-
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `Claude exited with code ${code}`));
-        return;
-      }
-
+  return superviseChild({
+    abortSignal,
+    activeChildren,
+    args,
+    binary: CLAUDE_BIN,
+    cwd,
+    env: depth.stamp(buildCalleeEnv(process.env)),
+    label: "Claude",
+    notFoundHint: "Install Claude Code first.",
+    timeoutMs,
+    onClose: ({ code, stderr, stdout }) => {
+      if (code !== 0) throw new Error(stderr.trim() || `Claude exited with code ${code}`);
       try {
-        resolve(parseClaudeOutput(stdout, fallbackThreadId));
+        return parseClaudeOutput(stdout, fallbackThreadId);
       } catch (error) {
-        reject(new Error(`Parse error: ${error.message}`));
+        throw new Error(`Parse error: ${error.message}`);
       }
-    });
+    }
   });
 }
 
@@ -268,15 +132,49 @@ function sandboxArguments(sandbox) {
   return ["--dangerously-skip-permissions"];
 }
 
-// --- Request Handlers ---
+// --- Tool Definitions ---
 
-const timeoutSchema = {
-  type: "number",
-  minimum: MIN_TIMEOUT_MS,
-  maximum: MAX_TIMEOUT_MS,
-  default: DEFAULT_TIMEOUT_MS,
-  description: "Timeout in milliseconds (default: 900000 = 15 min, max: 3600000 = 1 hour)"
-};
+const CLAUDE_TOOLS = [
+    {
+      name: "claude",
+      description: "Start a new Claude Code expert session",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, description: "The delegation prompt" },
+          "developer-instructions": { type: "string", description: "Expert system instructions" },
+          sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only uses Claude plan mode; workspace-write bypasses prompts for unattended full-tool execution" },
+          cwd: { type: "string", minLength: 1, description: "Current working directory" },
+          model: { type: "string", enum: [...VALID_MODELS], default: DEFAULT_MODEL },
+          effort: { type: "string", enum: [...VALID_EFFORT_VALUES], default: DEFAULT_EFFORT },
+          timeout: timeoutSchema(),
+          coordination: coordinationSchema
+        },
+        required: ["prompt"]
+      }
+    },
+    {
+      name: "claude-reply",
+      description: "Continue an existing Claude Code session",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          threadId: { type: "string", minLength: 1, description: "Session ID returned by a previous claude call" },
+          prompt: { type: "string", minLength: 1, description: "Follow-up prompt" },
+          sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only uses Claude plan mode; workspace-write bypasses prompts for unattended full-tool execution" },
+          cwd: { type: "string", minLength: 1, description: "Current working directory" },
+          effort: { type: "string", enum: [...VALID_EFFORT_VALUES], description: "Optional effort override; omit to let the resumed session keep its current setting" },
+          timeout: timeoutSchema(),
+          coordination: coordinationSchema
+        },
+        required: ["threadId", "prompt"]
+      }
+    }
+  ];
+
+// --- Request Handlers ---
 
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
@@ -290,47 +188,7 @@ const handlers = {
 
   "tools/list": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
-    sendResponse(id, {
-      tools: [
-        {
-          name: "claude",
-          description: "Start a new Claude Code expert session",
-          inputSchema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              prompt: { type: "string", minLength: 1, description: "The delegation prompt" },
-              "developer-instructions": { type: "string", description: "Expert system instructions" },
-              sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only uses Claude plan mode; workspace-write bypasses prompts for unattended full-tool execution" },
-              cwd: { type: "string", minLength: 1, description: "Current working directory" },
-              model: { type: "string", enum: [...VALID_MODELS], default: DEFAULT_MODEL },
-              effort: { type: "string", enum: [...VALID_EFFORT_VALUES], default: DEFAULT_EFFORT },
-              timeout: timeoutSchema,
-              coordination: coordinationSchema
-            },
-            required: ["prompt"]
-          }
-        },
-        {
-          name: "claude-reply",
-          description: "Continue an existing Claude Code session",
-          inputSchema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              threadId: { type: "string", minLength: 1, description: "Session ID returned by a previous claude call" },
-              prompt: { type: "string", minLength: 1, description: "Follow-up prompt" },
-              sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only uses Claude plan mode; workspace-write bypasses prompts for unattended full-tool execution" },
-              cwd: { type: "string", minLength: 1, description: "Current working directory" },
-              effort: { type: "string", enum: [...VALID_EFFORT_VALUES], description: "Optional effort override; omit to let the resumed session keep its current setting" },
-              timeout: timeoutSchema,
-              coordination: coordinationSchema
-            },
-            required: ["threadId", "prompt"]
-          }
-        }
-      ]
-    });
+    sendResponse(id, { tools: CLAUDE_TOOLS });
   },
 
   "tools/call": async (id, params, shouldRespond) => {
@@ -350,9 +208,9 @@ const handlers = {
     }
 
     if ((name === "claude" || name === "claude-reply") &&
-        currentDelegationDepth() >= MAX_DELEGATION_DEPTH) {
+        depth.exceeded()) {
       if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Claude session (${DEPTH_ENV_VAR}=${currentDelegationDepth()}). Complete the work here instead of delegating further.`);
+        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Claude session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
       }
       return;
     }
@@ -460,129 +318,23 @@ const handlers = {
 
 // --- Main Loop ---
 
-async function dispatchRequest(request) {
-  const shouldRespond = hasRequestId(request);
-  if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
-    if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
-    return;
-  }
+let CLAUDE_BIN;
 
-  const handler = handlers[request.method];
-  if (!handler) {
-    if (shouldRespond) sendError(request.id, -32601, `Method not found: ${request.method}`);
-    return;
-  }
+if (require.main === module) {
+  runStdioLoop({ handlers, activeRequests, activeChildren });
 
   try {
-    await handler(request.id, request.params, shouldRespond);
+    CLAUDE_BIN = resolveCli("claude", { aliases: ["@anthropic-ai"] });
   } catch (error) {
-    if (shouldRespond) sendError(request.id, -32603, `Internal error: ${error.message}`);
+    console.error(`Claude CLI not found. Please install Claude Code first. (${error.message})`);
+    process.exit(1);
   }
 }
 
-let buffer = "";
-process.stdin.on("data", (chunk) => {
-  buffer += chunk.toString();
-  const lines = buffer.split("\n");
-  buffer = lines.pop();
+module.exports = {
+  handlers,
+  parseClaudeOutput,
+  sandboxArguments,
+  toolDefinitions: CLAUDE_TOOLS
+};
 
-  for (const line of lines) {
-    if (!line.trim()) continue;
-
-    let request;
-    try {
-      request = JSON.parse(line);
-    } catch (_error) {
-      sendError(null, -32700, "Parse error");
-      continue;
-    }
-    // Do not await here: a cancellation notification can share this stdin
-    // chunk with the long-running call it is cancelling.
-    void dispatchRequest(request);
-  }
-});
-
-function shutdown(exitCode) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  for (const controller of activeRequests.values()) controller.abort();
-  for (const child of activeChildren) killProcessTree(child, "SIGTERM");
-  if (activeChildren.size === 0) {
-    process.exit(exitCode);
-    return;
-  }
-  setTimeout(() => {
-    for (const child of activeChildren) killProcessTree(child, "SIGKILL");
-    process.exit(exitCode);
-  }, 500);
-}
-
-process.once("SIGTERM", () => shutdown(0));
-process.once("SIGINT", () => shutdown(130));
-process.stdin.once("end", () => shutdown(0));
-
-// --- Startup: resolve Claude binary path ---
-
-function resolveWindowsShim(shimPath) {
-  const shimContent = fs.readFileSync(shimPath, "utf8");
-  const match = shimContent.match(/["']([^"'\r\n]*(?:claude|@anthropic-ai)[^"'\r\n]*\.(?:c?m?js|exe))["']/i);
-  if (!match) {
-    throw new Error("Could not resolve Claude binary from .cmd shim");
-  }
-
-  const shimDirectory = `${path.dirname(shimPath)}${path.sep}`;
-  const expanded = match[1]
-    .replace(/%dp0%[\\/]?/gi, shimDirectory)
-    .replace(/%~dp0[\\/]?/gi, shimDirectory);
-  return path.isAbsolute(expanded) ? expanded : path.resolve(path.dirname(shimPath), expanded);
-}
-
-function findWindowsCommandCandidates(commandName) {
-  const candidates = [];
-  const extensions = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs", ""];
-  for (const rawDirectory of (process.env.PATH || "").split(path.delimiter)) {
-    const directory = rawDirectory.trim().replace(/^"|"$/g, "");
-    if (!directory) continue;
-    for (const extension of extensions) {
-      const candidate = path.join(directory, `${commandName}${extension}`);
-      try {
-        if (fs.statSync(candidate).isFile()) candidates.push(candidate);
-      } catch (_error) {
-        // Missing or inaccessible PATH entry.
-      }
-    }
-  }
-  return candidates;
-}
-
-function resolveClaudeBinary() {
-  const candidates = IS_WINDOWS
-    ? findWindowsCommandCandidates("claude")
-    : execFileSync("which", ["claude"], { encoding: "utf8" })
-      .trim()
-      .split(/\r?\n/)
-      .filter(Boolean);
-  if (candidates.length === 0) throw new Error("Claude CLI not found");
-
-  let resolved = IS_WINDOWS
-    ? (candidates.find((candidate) => candidate.toLowerCase().endsWith(".exe")) ||
-       candidates.find((candidate) => candidate.toLowerCase().endsWith(".cmd")) ||
-       candidates.find((candidate) => candidate.toLowerCase().endsWith(".bat")) ||
-       candidates[0])
-    : candidates[0];
-  if (IS_WINDOWS && /\.(?:cmd|bat)$/i.test(resolved)) {
-    resolved = resolveWindowsShim(resolved);
-  }
-
-  const validation = commandForBinary(resolved, ["--version"]);
-  execFileSync(validation.command, validation.args, { stdio: "pipe" });
-  return resolved;
-}
-
-let CLAUDE_BIN;
-try {
-  CLAUDE_BIN = resolveClaudeBinary();
-} catch (_error) {
-  console.error("Claude CLI not found. Please install Claude Code first.");
-  process.exit(1);
-}

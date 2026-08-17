@@ -42,20 +42,28 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   const agyBridge = require("../server/agy");
   const kimiBridge = require("../server/kimi");
   const copilotBridge = require("../server/copilot");
+  const claudeBridge = require("../server/claude");
 
-  for (const tool of [...agyBridge.toolDefinitions, ...kimiBridge.toolDefinitions, ...copilotBridge.toolDefinitions]) {
+  for (const tool of [
+    ...agyBridge.toolDefinitions,
+    ...kimiBridge.toolDefinitions,
+    ...copilotBridge.toolDefinitions,
+    ...claudeBridge.toolDefinitions
+  ]) {
     const { timeout } = tool.inputSchema.properties;
     assert.equal(timeout.default, 900_000, `${tool.name} default timeout`);
     assert.equal(timeout.minimum, 10_000, `${tool.name} minimum timeout`);
     assert.equal(timeout.maximum, 3_600_000, `${tool.name} maximum timeout`);
   }
 
-  // The Claude bridge resolves the Claude CLI at load and exits when it is absent,
-  // as it is on CI runners, so lock its bounds by source instead of requiring it.
-  const claudeSource = fs.readFileSync(path.resolve(__dirname, "../server/claude/index.js"), "utf8");
-  assert.match(claudeSource, /^const DEFAULT_TIMEOUT_MS = 900_000;$/m);
-  assert.match(claudeSource, /^const MAX_TIMEOUT_MS = 3_600_000;$/m);
-  assert.match(claudeSource, /^const MIN_TIMEOUT_MS = 10_000;$/m);
+  // All four bridges now take these bounds from the shared core rather than
+  // declaring their own, so lock the single definition too. Previously the Claude
+  // bridge could only be checked by regex over its source, because it resolved the
+  // CLI at load and exited when it was absent, as it is on CI runners.
+  const core = require("../server/shared/bridge");
+  assert.equal(core.DEFAULT_TIMEOUT_MS, 900_000);
+  assert.equal(core.MAX_TIMEOUT_MS, 3_600_000);
+  assert.equal(core.MIN_TIMEOUT_MS, 10_000);
 
   // Every provider reference table must advertise the parameter, or the orchestrator
   // never sets it and long implementation runs die at the 15-minute default.

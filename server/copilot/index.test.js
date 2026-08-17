@@ -716,23 +716,21 @@ test("parses assistant chunks, session id and provider errors from one JSONL str
   assert.equal(bridge.parseCopilotOutput("").sessionId, "unknown");
 });
 
-test("follows a Windows .cmd shim to the loader it wraps", () => {
-  // Previously inline in the startup block, so it could only be exercised by
-  // running on real Windows. Injecting the reader makes it testable anywhere.
+test("binds the shared shim resolver to its own CLI name", () => {
+  // The shim shapes themselves are covered once, in server/shared/bridge.test.js.
+  // What is per-bridge is only which command name gets baked in, and that is what
+  // makes a mismatched shim fail loudly instead of resolving to another CLI.
   const dir = "C:\\Users\\dev\\AppData\\Roaming\\npm";
   const shimPath = dir + "\\copilot.cmd";
-  const script = dir + "\\node_modules\\@github\\copilot\\index.js";
+  const script = dir + "\\copilot-stub.js";
   const node = "C:\\Program Files\\nodejs\\node.exe";
 
   assert.equal(
-    bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "${script}" %*\r\n`),
+    bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "%dp0%\\copilot-stub.js" %*\r\n`),
     script
   );
-
-  const dp0 = `@echo off\r\n@SET "dp0=%~dp0"\r\n"${node}" "%dp0%\\node_modules\\@github\\copilot\\index.js" %*\r\n`;
-  assert.equal(bridge.resolveWindowsShim(shimPath, () => dp0).includes("%dp0%"), false);
-  assert.match(bridge.resolveWindowsShim(shimPath, () => dp0), /index\.js$/);
-
-  assert.equal(bridge.resolveWindowsShim(dir + "\\copilot.exe", () => { throw new Error("must not read"); }), dir + "\\copilot.exe");
-  assert.throws(() => bridge.resolveWindowsShim(shimPath, () => "@echo off\r\nrem nothing\r\n"), /could not resolve copilot/);
+  assert.throws(
+    () => bridge.resolveWindowsShim(shimPath, () => `@echo off\r\n"${node}" "%dp0%\\other-stub.js" %*\r\n`),
+    /could not resolve copilot/
+  );
 });
