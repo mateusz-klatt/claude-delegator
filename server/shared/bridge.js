@@ -115,23 +115,38 @@ function resolveWindowsShim(candidate, command, readShim = (p) => fs.readFileSyn
   // copies this replaces: either quote style, .cjs/.mjs as well as .js/.exe, and
   // an alias list because npm shims name the package rather than the command
   // (@anthropic-ai/... for `claude`).
+  //
+  // .ps1 is here for cursor-agent, whose .cmd is a single call to
+  // powershell.exe -File on a sibling script. Expanding to it keeps the
+  // invariant that a .cmd never reaches spawn(); see spawnTarget for how it is
+  // then run, and why that is preferable to giving the core a shell.
   const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const names = [command, ...aliases].map(escape).join("|");
   const match = new RegExp(
-    `["']([^"'\\r\\n]*(?:${names})[^"'\\r\\n]*\\.(?:c?m?js|exe))["']`,
+    `["']([^"'\\r\\n]*(?:${names})[^"'\\r\\n]*\\.(?:c?m?js|exe|ps1))["']`,
     "i"
   ).exec(shim);
   if (!match) throw new Error(`could not resolve ${command} from its .cmd shim`);
 
-  // Both spellings occur in the wild: modern npm shims do `@SET "dp0=%~dp0"` and
-  // then use %dp0%, older ones use %~dp0 directly. Use the win32 parser
-  // explicitly — posix path.dirname returns "." for a backslash path, which
-  // would silently resolve the loader to the wrong place, and did until a test
-  // running on Linux caught it.
+  // A shim refers to its own directory either as %~dp0 directly, or through a
+  // variable it first assigns from %~dp0 — `@SET "dp0=%~dp0"` in modern npm
+  // shims, `SET SCRIPT_DIR=%~dp0` elsewhere. Rather than keep a list of the
+  // names that happen to be popular, read the assignments out of the shim: dp0
+  // was never special, it was just the first one we met. `dp0` stays seeded so
+  // a shim that sets it in a form this does not parse still behaves as before.
+  //
+  // Use the win32 parser explicitly — posix path.dirname returns "." for a
+  // backslash path, which would silently resolve the loader to the wrong place,
+  // and did until a test running on Linux caught it.
   const shimDirectory = path.win32.dirname(candidate) + path.win32.sep;
-  const expanded = match[1]
-    .replace(/%dp0%[\\/]?/gi, shimDirectory)
-    .replace(/%~dp0[\\/]?/gi, shimDirectory);
+  const directoryVariables = new Set(["dp0"]);
+  for (const [, name] of shim.matchAll(/\bset\s+"?([A-Za-z_]\w*)=%~dp0/gi)) {
+    directoryVariables.add(name.toLowerCase());
+  }
+  let expanded = match[1].replace(/%~dp0[\\/]?/gi, shimDirectory);
+  for (const name of directoryVariables) {
+    expanded = expanded.replace(new RegExp(`%${name}%[\\\\/]?`, "gi"), shimDirectory);
+  }
   // Normalise either way: %dp0% expansion makes the path absolute *before* any
   // "..\" in the shim has been collapsed, so the absolute branch would otherwise
   // return C:\...\npm\..\lib\cli.js. Windows spawns that happily, but it is not a
@@ -228,7 +243,21 @@ function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
 
   // Say which binary won. Choosing the wrong one produced no stderr, no exit and
   // no clue at all — the same silent class the Copilot error path was fixed for.
-  console.error(`[claude-delegator] ${command} resolved to ${resolved}`);
+  //
+  // Report the link target too when they differ. Version-managed CLIs install
+  // one launcher per version and point a stable name at the current one —
+  // ~/.local/bin/cursor-agent -> .../versions/<v>/cursor-agent, and grok's own
+  // ~/.local/bin/grok -> ~/.grok/bin/grok. Logging only the stable name makes
+  // two different versions look identical, which is exactly the "a stale
+  // install beats a current one" failure selectCandidate exists to prevent.
+  let reported = resolved;
+  try {
+    const real = fs.realpathSync(resolved);
+    if (real !== resolved) reported = `${resolved} -> ${real}`;
+  } catch {
+    // Not resolvable as a link; the plain path is still the useful thing to say.
+  }
+  console.error(`[claude-delegator] ${command} resolved to ${reported}`);
 
   const validation = spawnTarget(resolved, ["--version"]);
   execFileSync(validation.command, validation.args, { stdio: "pipe" });
@@ -242,6 +271,31 @@ function spawnTarget(binary, args) {
   if (/\.(?:c?m?js)$/i.test(binary)) {
     return { command: process.execPath, args: [binary, ...args] };
   }
+
+  // A PowerShell script cannot be spawned as an image either. These four flags
+  // are a QUOTATION from cursor-agent's own .cmd shim, which runs
+  //   %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe ^
+  //     -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\cursor-agent.ps1" %*
+  // and not a decision of ours to bypass execution policy: whoever installed
+  // that CLI already agreed to it. We reproduce the vendor's call rather than
+  // reading their .ps1, so their runtime choices stay theirs.
+  //
+  // The alternative was to let the core spawn with `shell: true`. That would be
+  // available to every bridge, not just the one that needs it, and it is what
+  // makes shell metacharacters in a caller's prompt stop being data — a wider
+  // surface for four providers to accommodate a fifth.
+  //
+  // Absolute, not "powershell" off PATH: the minimal PATH an MCP server inherits
+  // is the very problem cliFallbacks exists for, and %SystemRoot% is the path the
+  // vendor shim itself uses.
+  if (/\.ps1$/i.test(binary)) {
+    const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+    return {
+      command: path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", binary, ...args]
+    };
+  }
+
   return { command: binary, args };
 }
 

@@ -107,6 +107,83 @@ test("runs .js loaders under node and executables directly", () => {
   assert.deepEqual(direct.args, ["--print"]);
 });
 
+test("runs a .ps1 through the vendor's own PowerShell invocation, never a shell", () => {
+  const script = "C:\\Users\\dev\\.local\\bin\\cursor-agent.ps1";
+  const previous = process.env.SystemRoot;
+  process.env.SystemRoot = "D:\\Windows";
+  try {
+    const invocation = core.spawnTarget(script, ["--version"]);
+
+    // Absolute, from %SystemRoot%, exactly as cursor-agent's .cmd does it — not
+    // "powershell" off a PATH an MCP server may not have.
+    assert.equal(
+      invocation.command,
+      "D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    );
+    // The four flags are quoted from the vendor shim. -File must come last of
+    // the four, immediately before the script, or PowerShell reads the script
+    // path as an argument to the preceding switch.
+    assert.deepEqual(
+      invocation.args,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "--version"]
+    );
+  } finally {
+    if (previous === undefined) delete process.env.SystemRoot;
+    else process.env.SystemRoot = previous;
+  }
+
+  // No SystemRoot at all (a POSIX test host, or a stripped environment) must
+  // still produce a usable absolute path rather than an empty leading segment.
+  const saved = { root: process.env.SystemRoot, upper: process.env.SYSTEMROOT };
+  delete process.env.SystemRoot;
+  delete process.env.SYSTEMROOT;
+  try {
+    assert.equal(
+      core.spawnTarget(script, []).command,
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    );
+  } finally {
+    if (saved.root !== undefined) process.env.SystemRoot = saved.root;
+    if (saved.upper !== undefined) process.env.SYSTEMROOT = saved.upper;
+  }
+});
+
+test("expands whichever variable a shim assigns from %~dp0, not a fixed list", () => {
+  // cursor-agent's .cmd names its directory SCRIPT_DIR, not dp0. Hard-coding the
+  // popular spellings would have meant a new name every time a vendor picks one;
+  // dp0 was never special, it was only the first one we happened to meet.
+  const shim = [
+    "@echo off",
+    "SETLOCAL",
+    "SET SCRIPT_DIR=%~dp0",
+    "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe " +
+      '-NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\\cursor-agent.ps1" %*'
+  ].join("\r\n");
+
+  assert.equal(
+    core.resolveWindowsShim(`${DIR}\\cursor-agent.cmd`, "cursor-agent", () => shim),
+    `${DIR}\\cursor-agent.ps1`
+  );
+
+  // The quoted form npm uses for the same idea, under a different name again.
+  const quoted = [
+    "@echo off",
+    '@SET "basedir=%~dp0"',
+    '"%basedir%\\node.exe" "%basedir%\\cursor-agent.js" %*'
+  ].join("\r\n");
+  assert.equal(
+    core.resolveWindowsShim(`${DIR}\\cursor-agent.cmd`, "cursor-agent", () => quoted),
+    `${DIR}\\cursor-agent.js`
+  );
+
+  // An unassigned variable is left alone rather than silently dropped: the
+  // result must not look like a valid relative path, because a wrong path that
+  // parses is the failure mode this whole resolver exists to avoid.
+  const unknown = `@echo off\r\n"%MYSTERY_DIR%\\cursor-agent.ps1" %*`;
+  const resolved = core.resolveWindowsShim(`${DIR}\\cursor-agent.cmd`, "cursor-agent", () => unknown);
+  assert.ok(resolved.includes("%MYSTERY_DIR%"), `${resolved} should still carry the variable`);
+});
+
 test("a hard-coded fallback never outranks a real PATH hit", () => {
   // claude-win-home-1's scenario, reproduced exactly and confirmed there by a
   // positive control: kimi.cmd is first on PATH, and the fallback guess
@@ -263,4 +340,38 @@ test("the depth guard survives a hop through an unrelated provider", () => {
   for (const junk of ["", "   ", "abc", "-3", "0"]) {
     assert.equal(guard.current({ CLAUDE_DELEGATOR_TEST_DEPTH: junk }), 0, JSON.stringify(junk));
   }
+});
+
+test("names the link target when the resolved CLI is a version symlink", { skip: process.platform === "win32" }, () => {
+  // Version-managed CLIs point one stable name at the current version:
+  // ~/.local/bin/cursor-agent -> .../versions/<v>/cursor-agent, and grok's own
+  // ~/.local/bin/grok -> ~/.grok/bin/grok. Logging only the stable name makes
+  // two different versions read identically, which is the "a stale install beats
+  // a current one" failure this resolver was reworked to prevent — invisible in
+  // the one place someone would look for it.
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-realpath-"));
+  const versioned = path.join(base, "versions-2026.08.11");
+  fs.mkdirSync(versioned);
+  const real = path.join(versioned, "demo-cli");
+  fs.writeFileSync(real, "#!/bin/sh\necho 1.0.0\n");
+  fs.chmodSync(real, 0o755);
+  const link = path.join(base, "demo-cli");
+  fs.symlinkSync(real, link);
+
+  const lines = [];
+  const previous = console.error;
+  console.error = (line) => lines.push(String(line));
+  try {
+    assert.equal(core.resolveCli("demo-cli", { fallbacks: [link] }), link);
+  } finally {
+    console.error = previous;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+
+  const reported = lines.find((line) => line.includes("demo-cli resolved to"));
+  assert.ok(reported, `expected a resolution line, got ${JSON.stringify(lines)}`);
+  assert.ok(reported.includes(link), "the name that was resolved must still be named");
+  assert.ok(reported.includes(real), "the version the link points at must be named too");
 });
