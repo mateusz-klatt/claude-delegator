@@ -264,6 +264,16 @@ const AGY_TOOLS = [
   }
 ];
 
+function cliFallbacks() {
+  // The official installer targets these; an MCP server inherits a minimal PATH
+  // that frequently lacks them. Provenance outranks a fallback (see
+  // selectCandidate), so a guess can only add reach, never override PATH.
+  if (!IS_WINDOWS) return [path.join(os.homedir(), ".local", "bin", "agy")];
+  return process.env.LOCALAPPDATA
+    ? [path.join(process.env.LOCALAPPDATA, "agy", "bin", "agy.exe")]
+    : [];
+}
+
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
@@ -424,9 +434,7 @@ if (require.main === module) {
   // home is frequently absent from the minimal PATH an MCP server inherits.
   try {
     AGY_BIN = resolveCli("agy", {
-      fallbacks: IS_WINDOWS
-        ? (process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, "agy", "bin", "agy.exe")] : [])
-        : [path.join(os.homedir(), ".local", "bin", "agy")]
+      fallbacks: cliFallbacks()
     });
   } catch (error) {
     console.error(`Agy CLI not found. Install the Google Antigravity CLI and ensure 'agy' is on PATH. (${error.message})`);
@@ -436,6 +444,7 @@ if (require.main === module) {
 
 module.exports = {
   buildAgyEnv,
+  cliFallbacks,
   resolveWindowsShim,
   handlers,
   parseAgyOutput,

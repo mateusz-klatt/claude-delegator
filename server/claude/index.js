@@ -135,6 +135,14 @@ function sandboxArguments(sandbox) {
 
 // --- Tool Definitions ---
 
+function cliFallbacks() {
+  // The official installer targets these; an MCP server inherits a minimal PATH
+  // that frequently lacks them. Provenance outranks a fallback (see
+  // selectCandidate), so a guess can only add reach, never override PATH.
+  const binary = IS_WINDOWS ? "claude.exe" : "claude";
+  return [path.join(homedir(), ".local", "bin", binary)];
+}
+
 const CLAUDE_TOOLS = [
     {
       name: "claude",
@@ -329,9 +337,7 @@ if (require.main === module) {
     // ~/.local/bin, and a minimal inherited PATH often does not include it.
     CLAUDE_BIN = resolveCli("claude", {
       aliases: ["@anthropic-ai"],
-      fallbacks: IS_WINDOWS
-        ? [path.join(homedir(), ".local", "bin", "claude.exe")]
-        : [path.join(homedir(), ".local", "bin", "claude")]
+      fallbacks: cliFallbacks()
     });
   } catch (error) {
     console.error(`Claude CLI not found. Please install Claude Code first. (${error.message})`);
@@ -340,6 +346,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  cliFallbacks,
   handlers,
   parseClaudeOutput,
   sandboxArguments,

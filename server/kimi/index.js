@@ -170,6 +170,15 @@ const KIMI_TOOLS = [
   }
 ];
 
+function cliFallbacks() {
+  // The official installer targets these; an MCP server inherits a minimal PATH
+  // that frequently lacks them. Provenance outranks a fallback (see
+  // selectCandidate), so a guess can only add reach, never override PATH.
+  const home = os.homedir();
+  if (!IS_WINDOWS) return [path.join(home, ".kimi-code", "bin", "kimi")];
+  return [path.join(home, ".kimi-code", "bin", "kimi.exe"), path.join(home, ".kimi-code", "bin", "kimi.cmd")];
+}
+
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
@@ -340,9 +349,7 @@ if (require.main === module) {
   try {
     const home = os.homedir();
     KIMI_BIN = resolveCli("kimi", {
-      fallbacks: IS_WINDOWS
-        ? [path.join(home, ".kimi-code", "bin", "kimi.exe"), path.join(home, ".kimi-code", "bin", "kimi.cmd")]
-        : [path.join(home, ".kimi-code", "bin", "kimi")]
+      fallbacks: cliFallbacks()
     });
   } catch (error) {
     console.error(`Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`);
@@ -351,6 +358,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  cliFallbacks,
   buildKimiEnv,
   resolveWindowsShim,
   handlers,

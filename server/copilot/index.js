@@ -195,6 +195,19 @@ const COPILOT_TOOLS = [
   }
 ];
 
+function cliFallbacks() {
+  // The official installer targets these; an MCP server inherits a minimal PATH
+  // that frequently lacks them. Provenance outranks a fallback (see
+  // selectCandidate), so a guess can only add reach, never override PATH.
+  if (!IS_WINDOWS) return [path.join(homedir(), ".local", "bin", "copilot")];
+  return [
+    ...(process.env.LOCALAPPDATA
+      ? [path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "copilot.exe")]
+      : []),
+    ...(process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [])
+  ];
+}
+
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
@@ -364,14 +377,7 @@ if (require.main === module) {
     // macOS and WSL. agy and kimi already guard against that; copilot and claude
     // did not, purely by omission.
     COPILOT_BIN = resolveCli("copilot", {
-      fallbacks: IS_WINDOWS
-        ? [
-            ...(process.env.LOCALAPPDATA
-              ? [path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "copilot.exe")]
-              : []),
-            ...(process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [])
-          ]
-        : [path.join(homedir(), ".local", "bin", "copilot")]
+      fallbacks: cliFallbacks()
     });
   } catch (error) {
     console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
@@ -380,6 +386,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  cliFallbacks,
   handlers,
   parseCopilotOutput,
   resolveEffort,

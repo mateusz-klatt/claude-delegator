@@ -160,3 +160,40 @@ test("the Kimi bridge refuses a read-only tier kimi print mode cannot provide", 
   assert.match(rules, /\*\*Sandbox honesty\*\*/);
   assert.match(rules, /AGENTS\.md/);
 });
+
+test("every bridge guards against the minimal PATH an MCP server inherits", () => {
+  // Two bridges silently had no fallbacks at all, through many releases. The
+  // symptom appears only under a stripped PATH — the environment the bridges
+  // actually run in, not the one they are tested in — so nothing ever said so:
+  // measured on three hosts, claude and copilot would not start while their
+  // binaries sat in ~/.local/bin, the canonical install location.
+  const bridges = {
+    agy: require("../server/agy"),
+    kimi: require("../server/kimi"),
+    copilot: require("../server/copilot"),
+    claude: require("../server/claude")
+  };
+
+  for (const [name, bridge] of Object.entries(bridges)) {
+    const fallbacks = bridge.cliFallbacks();
+    assert.ok(Array.isArray(fallbacks), `${name} must expose its fallbacks`);
+    assert.ok(fallbacks.length > 0, `${name} has no install-location fallback`);
+    for (const fallback of fallbacks) {
+      assert.ok(path.isAbsolute(fallback), `${name}: ${fallback} must be absolute`);
+      assert.ok(
+        path.basename(fallback).startsWith(name),
+        `${name}: ${fallback} must name its own CLI`
+      );
+    }
+  }
+
+  // A fallback only ever adds reach. selectCandidate ranks provenance above
+  // extension, so a guess cannot displace what the user's PATH selects — the
+  // property that makes it safe to hand fallbacks to bridges that had none.
+  const core = require("../server/shared/bridge");
+  const onDisk = new Set(["/usr/local/bin/cli", "/home/dev/.local/bin/cli"]);
+  assert.equal(
+    core.selectCandidate([["/usr/local/bin/cli"], ["/home/dev/.local/bin/cli"]], (c) => onDisk.has(c), false),
+    "/usr/local/bin/cli"
+  );
+});
