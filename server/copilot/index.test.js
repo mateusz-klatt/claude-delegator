@@ -614,9 +614,19 @@ test("dispatches a tools call and cancellation from the same stdin chunk indepen
       "same-chunk cancellation left the Copilot child running"
     );
   }
-  if (fs.existsSync(server.capturePath)) {
-    const [{ pid }] = readCalls(server.capturePath);
-    await waitFor(() => !processIsAlive(pid), "same-chunk cancellation left the Copilot stub alive");
+  // Guard on the PARSED entry, not on the file existing. The stub creates the
+  // capture file and appends its JSON line in two steps, and readCalls
+  // deliberately tolerates a truncated final line by dropping it -- so the file
+  // can exist while readCalls returns []. Destructuring that empty array threw
+  // "Cannot read properties of undefined (reading 'pid')" on windows-latest
+  // Node 24 while the same commit passed on Node 22 and both Ubuntu jobs.
+  //
+  // A coalesced cancellation can also abort BEFORE the child spawns, which is a
+  // correct outcome rather than a missed kill, so no child at all is legitimate
+  // here and must not fail the test.
+  const [call] = readCalls(server.capturePath);
+  if (call) {
+    await waitFor(() => !processIsAlive(call.pid), "same-chunk cancellation left the Copilot stub alive");
   }
 
   const listed = await server.request("tools/list");
