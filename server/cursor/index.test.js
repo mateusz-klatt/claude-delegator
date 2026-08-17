@@ -40,7 +40,12 @@ function createCursorStub() {
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "calls.jsonl");
   const workspacePath = path.join(directory, "workspace");
-  const scriptPath = path.join(directory, "cursor-stub.js");
+  // Must contain the command name: resolveWindowsShim only accepts a quoted
+  // target whose path contains "cursor-agent" (or the "agent" alias), so a stub
+  // called cursor-stub.js makes the resolver throw and the server exit before it
+  // serves anything. That is invisible on POSIX, where the stub is copied to a
+  // file literally named cursor-agent and the shim path is never taken.
+  const scriptPath = path.join(directory, "cursor-agent-stub.js");
   fs.mkdirSync(workspacePath);
 
   const script = `#!/usr/bin/env node
