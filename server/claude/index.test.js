@@ -220,11 +220,24 @@ function startServer(extraEnv = {}) {
 }
 
 function readCalls(capturePath) {
-  return fs.readFileSync(capturePath, "utf8")
-    .trim()
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  let raw;
+  try {
+    raw = fs.readFileSync(capturePath, "utf8");
+  } catch {
+    return []; // The stub has not created the file yet.
+  }
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  return lines.flatMap((line, index) => {
+    try {
+      return [JSON.parse(line)];
+    } catch (error) {
+      // The stub creates the file and appends to it in two steps, so a reader
+      // can arrive mid-write and see a truncated final line. Tolerate that one;
+      // an unparseable line anywhere else is real corruption and must not pass.
+      if (index === lines.length - 1) return [];
+      throw error;
+    }
+  });
 }
 
 async function waitFor(predicate, message, timeoutMs = 3_000) {
@@ -391,7 +404,7 @@ test("cancels an active Claude process group and keeps the MCP server responsive
     name: "claude",
     arguments: { prompt: "hang until cancelled" }
   });
-  await waitFor(() => fs.existsSync(server.capturePath), "Claude stub did not start");
+  await waitFor(() => readCalls(server.capturePath).length > 0, "Claude stub did not start");
   const [{ pid }] = readCalls(server.capturePath);
 
   server.notify("notifications/cancelled", { requestId: 1, reason: "test cancellation" });
@@ -431,7 +444,7 @@ test("terminating the MCP server also terminates an active Claude process group"
     name: "claude",
     arguments: { prompt: "hang until parent shutdown" }
   }).catch(() => null);
-  await waitFor(() => fs.existsSync(server.capturePath), "Claude stub did not start");
+  await waitFor(() => readCalls(server.capturePath).length > 0, "Claude stub did not start");
   const [{ pid }] = readCalls(server.capturePath);
 
   await server.terminate();
