@@ -178,7 +178,7 @@ After changes, verify with actual MCP calls:
 1. Install the plugin in Claude Code
 2. Run `/claude-delegator:setup`
 3. Verify MCP tools are available (`mcp__codex__codex`)
-4. Use `node test/mcp-probe.mjs -- <server command>` for an stdio handshake, then test a live call with a low-cost model
+4. Use `node test/mcp-probe.mjs -- <server command>` for an stdio handshake, then test a live call with a low-cost model. Its exit code is a taxonomy, not a boolean — `0` success, `1` the bridge answered and the answer is a tool-level failure, `2` contract failure (bad usage, tool not advertised, JSON-RPC error, server died mid-handshake). Read it that way: a provider outage is `1` and says nothing about your bridge, while `2` means the bridge broke its own contract
 5. Verify responses are properly synthesized
 6. Test error cases (timeout, missing CLI)
 
