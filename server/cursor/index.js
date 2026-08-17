@@ -59,13 +59,27 @@ function parseCursorOutput(stdout) {
   const trimmed = stdout.trim();
   if (!trimmed) return null;
 
-  const start = trimmed.indexOf("{");
-  if (start === -1) return null;
+  // Scan whole LINES, last first, rather than slicing from the first "{" to the
+  // end. cursor-agent prints its result object on one line, and prints bare
+  // non-JSON status lines too — "Connection lost, reconnecting to ... (attempt
+  // 1)" was measured as one. Slicing from the first brace survived a line
+  // BEFORE the result and broke on anything after it, turning a completed run
+  // into a reported failure and discarding the session_id with it, so the caller
+  // could not even resume. A line scan handles noise on either side.
+  //
+  // This is deliberately not shared with the grok bridge, whose --output-format
+  // json is PRETTY-PRINTED across many lines: a line scan would find no
+  // parseable line there at all. Same-looking problem, opposite correct answer.
   let data;
-  try {
-    data = JSON.parse(trimmed.slice(start));
-  } catch {
-    return null;
+  for (const line of trimmed.split(/\r?\n/).reverse()) {
+    const candidate = line.trim();
+    if (!candidate.startsWith("{")) continue;
+    try {
+      data = JSON.parse(candidate);
+      break;
+    } catch {
+      // Not this line; keep scanning outward.
+    }
   }
   if (!isObject(data)) return null;
 

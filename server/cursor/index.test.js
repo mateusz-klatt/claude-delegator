@@ -455,10 +455,20 @@ test("fails loudly when Cursor resumes a different session", async () => {
 test("parses one JSON object and tolerates nothing that is not one", () => {
   const { parseCursorOutput } = require("./index.js");
 
-  const parsed = parseCursorOutput(
-    '{"type":"result","subtype":"success","is_error":false,"result":"hi","session_id":"s1"}\n'
-  );
+  const object = '{"type":"result","subtype":"success","is_error":false,"result":"hi","session_id":"s1"}';
+  const parsed = parseCursorOutput(object + "\n");
   assert.deepEqual(parsed, { isError: false, response: "hi", sessionId: "s1", subtype: "success" });
+
+  // Noise on EITHER side of the object. cursor-agent prints bare status lines --
+  // "Connection lost, reconnecting to ... (attempt 1)" was measured as one -- and
+  // an earlier version sliced from the first "{" to the end of stdout, which
+  // survived a line before the result and broke on anything after it. That
+  // turned a completed run into a reported failure and threw away the session_id
+  // with it, so the caller could not even resume.
+  const expected = { isError: false, response: "hi", sessionId: "s1", subtype: "success" };
+  assert.deepEqual(parseCursorOutput("Connection lost, reconnecting (attempt 1)\n" + object), expected);
+  assert.deepEqual(parseCursorOutput(object + "\nSome trailing warning"), expected);
+  assert.deepEqual(parseCursorOutput("warn before\n" + object + "\nwarn after"), expected);
 
   // Not-JSON is a null, not a throw: the caller decides what the absence means,
   // and both non-JSON shapes (exit 1 and exit 0) reach that decision together.
