@@ -34,6 +34,36 @@ test("follows every .cmd shim shape npm and the vendors actually emit", () => {
   assert.equal(core.resolveWindowsShim(SHIM, "claude", () => cjs), `${DIR}\\claude-runner.cjs`);
 });
 
+test("resolves a real npm shim captured from a Windows host", () => {
+  // Not a shim shape this suite invented. test/fixtures/copilot.cmd is the
+  // verbatim C:\Users\...\AppData\Roaming\npm\copilot.cmd from claude-win-home-1,
+  // and every hand-written case above turned out to guess a different variant:
+  // npm emits `CALL :find_dp0` with an unquoted `SET dp0=%~dp0`, not the
+  // `@SET "dp0=%~dp0"` this suite assumed. The loader is also named
+  // npm-loader.js rather than copilot.js, so a matcher that looks for the command
+  // name in the *filename* instead of anywhere in the path fails here.
+  const shim = require("node:fs").readFileSync(
+    path.join(__dirname, "..", "..", "test", "fixtures", "copilot.cmd"),
+    "utf8"
+  );
+  const resolved = core.resolveWindowsShim(
+    "C:\\Users\\mateu\\AppData\\Roaming\\npm\\copilot.cmd",
+    "copilot",
+    () => shim
+  );
+
+  // Confirmed present on that host.
+  assert.equal(resolved, "C:\\Users\\mateu\\AppData\\Roaming\\npm\\node_modules\\@github\\copilot\\npm-loader.js");
+  // %~dp0 already ends in a separator and the shim concatenates another, so the
+  // naive expansion yields npm\\node_modules. Windows tolerates it; string
+  // comparison does not.
+  assert.equal(resolved.includes("\\\\"), false);
+  assert.equal(/%~?dp0%?/.test(resolved), false);
+
+  // And it is spawned under node rather than executed directly.
+  assert.equal(core.spawnTarget(resolved, ["--version"]).command, process.execPath);
+});
+
 test("resolves a shim's own directory with the win32 parser, not the host's", () => {
   // path.dirname on POSIX returns "." for a backslash path, so a relative
   // reference silently resolved against the process cwd instead of the shim's
