@@ -247,9 +247,21 @@ function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
   // Report the link target too when they differ. Version-managed CLIs install
   // one launcher per version and point a stable name at the current one —
   // ~/.local/bin/cursor-agent -> .../versions/<v>/cursor-agent, and grok's own
-  // ~/.local/bin/grok -> ~/.grok/bin/grok. Logging only the stable name makes
-  // two different versions look identical, which is exactly the "a stale
-  // install beats a current one" failure selectCandidate exists to prevent.
+  // ~/.local/bin/grok -> ~/.grok/bin/grok -> ../downloads/grok-linux-x86_64.
+  // Logging only the stable name makes two different versions look identical,
+  // which is exactly the "a stale install beats a current one" failure
+  // selectCandidate exists to prevent.
+  //
+  // BOUNDARY, stated by the same person who proposed this: the realpath result
+  // is for identity, comparison and this log line ONLY. It must never be
+  // written into a fallback list. Measured across six CLIs on one host, three
+  // resolve to an artefact stamped with a version or a platform
+  // (grok-linux-x86_64, versions/2.1.233, versions/2026.08.11-e8db854), and
+  // three are plain files. As an identifier it beats the path; as a path to
+  // record it is the worst available, because it is correct only on the machine
+  // that produced it and only until that CLI next updates. A well-meant
+  // "improvement" that resolves fallbacks before storing them would produce a
+  // list that silently fits nobody.
   let reported = resolved;
   try {
     const real = fs.realpathSync(resolved);

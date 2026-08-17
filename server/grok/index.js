@@ -232,12 +232,18 @@ function cliFallbacks() {
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
   //
-  // ~/.grok/bin is the install root on every platform measured, Windows
+  // ~/.grok/bin is where grok installs on every platform measured, Windows
   // included — claude-mac-laptop-1 has ~/.grok/bin/grok, claude-win-home-1 has
   // ~\.grok\bin\grok.exe. It is listed first because ~/.local/bin/grok is not a
   // second install: on WSL it is a symlink *into* ~/.grok/bin, so it exists only
-  // where the installer chose to add the convenience link. Ordering the real
+  // where the installer chose to add the convenience link. Listing the stable
   // location first means the fallback still works where that link was skipped.
+  //
+  // "Stable", not "real": ~/.grok/bin/grok is itself a symlink, to
+  // ../downloads/grok-<platform>-<arch>. That last hop is deliberately NOT a
+  // fallback — it carries the platform in its name, so writing it down would
+  // produce a list that fits only the machine that generated it. See the
+  // boundary note on the realpath diagnostic in server/shared/bridge.js.
   if (IS_WINDOWS) return [path.join(homedir(), ".grok", "bin", "grok.exe")];
   return [
     path.join(homedir(), ".grok", "bin", "grok"),
