@@ -8,12 +8,23 @@ const test = require("node:test");
 const providers = require("../config/providers.json");
 const mcpServers = require("../config/mcp-servers.example.json");
 
+// `-c mcp_servers.codex.enabled=false` is deliberately absent. A `-c` override
+// CREATES `mcp_servers.codex` when config.toml has no such section, and Codex
+// refuses to start on any `mcp_servers.<name>` that declares no transport:
+// measured on codex-cli 0.147.0 against two isolated CODEX_HOME directories,
+// the flag gave "error loading config: invalid transport" without the section
+// and started normally with it. A config carrying no self-reference is the
+// ordinary case, so these distributed configurations shipped a Codex server
+// that failed as CONNECTION_CLOSED — a symptom naming neither flag nor config.
+//
+// These files are static, so they cannot test for the section the way
+// `commands/setup.md` does; omitting the flag is correct for them. An operator
+// who really has a self-referential [mcp_servers.codex] adds it back by hand.
 const EXPECTED_CODEX_ARGS = [
   "-m", "gpt-5.6-sol",
   "-s", "danger-full-access",
   "-a", "never",
   "-c", "model_reasoning_effort=ultra",
-  "-c", "mcp_servers.codex.enabled=false",
   "mcp-server"
 ];
 

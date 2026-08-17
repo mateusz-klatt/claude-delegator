@@ -364,9 +364,10 @@ The native Codex MCP server is started through the transparent environment-bound
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js \
   -m gpt-5.6-sol -s danger-full-access -a never \
-  -c model_reasoning_effort=ultra \
-  -c mcp_servers.codex.enabled=false mcp-server
+  -c model_reasoning_effort=ultra mcp-server
 ```
+
+`-c mcp_servers.codex.enabled=false` belongs here **only when `config.toml` already declares `[mcp_servers.codex]`**. A `-c` override creates that table when it is absent, and Codex rejects any `mcp_servers.<name>` without a transport — measured on codex-cli 0.147.0, where the flag produced `error loading config: invalid transport` on a config lacking the section and started normally on one that had it. Passing it unconditionally left the server failing as `CONNECTION_CLOSED`, a symptom that names neither the flag nor the config — the same symptom the stale-cache-path defect produced, which is why the two were easy to confuse. The declaration in `.claude-plugin/plugin.json` is static and cannot test for the section, so it omits the flag; an operator who really keeps a self-referential `[mcp_servers.codex]` adds it back there by hand.
 
 This prevents an inner approval prompt from suspending the parent CLI. The launcher preserves native MCP stdio while scrubbing the caller's Agent Mail identity and credentials. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use a restrictive per-call override only when refusal is preferable to autonomous completion.
 

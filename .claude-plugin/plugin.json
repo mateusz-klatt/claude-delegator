@@ -41,8 +41,6 @@
         "never",
         "-c",
         "model_reasoning_effort=ultra",
-        "-c",
-        "mcp_servers.codex.enabled=false",
         "mcp-server"
       ]
     },

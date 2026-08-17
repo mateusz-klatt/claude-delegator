@@ -3,7 +3,7 @@
     "codex": {
       "type": "stdio",
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "mcp-server"]
     },
     "agy": {
       "type": "stdio",
