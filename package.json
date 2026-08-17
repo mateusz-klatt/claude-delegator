@@ -1,6 +1,6 @@
 {
   "name": "claude-delegator",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "description": "MCP bridges for delegating work between Claude, Codex, Agy, Kimi, and Copilot CLIs.",
   "license": "MIT",

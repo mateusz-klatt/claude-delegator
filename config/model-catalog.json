@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-08-10",
+  "verifiedAt": "2026-08-17",
   "cliVersionsCheckedAt": "2026-08-17",
-  "cliVersionNote": "cliVersion reflects `<cli> --version` on cliVersionsCheckedAt. Rosters re-read the same day: agy via `agy models`, copilot via `copilot help config`, codex via ~/.codex/models_cache.json. Only claude's roster still dates from verifiedAt \u2014 its /model selector is interactive, so the ids are corroborated against the CLI bundle rather than enumerated. Note that an invalid --model is a cheap roster probe on agy only; copilot, codex and claude reject it without listing alternatives.",
+  "cliVersionNote": "Rosters and CLI versions were all re-read on 2026-08-17: agy via `agy models`, copilot via `copilot help config`, codex via ~/.codex/models_cache.json, kimi via ~/.kimi-code/config.toml, ollama via `ollama list` plus the hosted-model tag API with per-model access probed live. Only claude's roster is not enumerable headlessly \u2014 its /model selector is interactive, so those ids are corroborated against the installed CLI bundle instead. Note that an invalid --model is a cheap roster probe on agy only; copilot, codex and claude reject it without listing alternatives.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
@@ -292,6 +292,79 @@
       ],
       "authNote": "Kimi Code supports both a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17, so the API key is the practical path. The key can live as `api_key` under [providers.*] in ~/.kimi-code/config.toml, or come from KIMI_API_KEY / MOONSHOT_API_KEY in the environment, which the bridge passes through untouched.",
       "envNote": "The CLI also recognises a large models.dev catalog of third-party provider key variables (ANTHROPIC_API_KEY, AZURE_API_KEY, CEREBRAS_API_KEY and many more). buildCalleeEnv forwards the caller environment except Agent Mail identity, so any such key already exported in the parent shell is visible to the delegated kimi process."
+    },
+    "ollama": {
+      "cliVersion": "0.32.14",
+      "reachedThrough": "kimi bridge",
+      "hasOwnMcpServer": false,
+      "discoverySource": "`ollama list` for local weights and https://ollama.com/api/tags?cloud=true for hosted ones, on 2026-08-17. Access tiers probed live per model against this account; they do not follow model size. Ollama is a model server, not an agent \u2014 it has no MCP server of its own and is configured as an extra [providers.*] entry in ~/.kimi-code/config.toml.",
+      "defaultModel": "ornith:9b",
+      "freeFormModel": true,
+      "emitsEffortFlag": false,
+      "cloudSuffix": ":cloud",
+      "localModels": [
+        "ornith:9b",
+        "granite4.1:8b"
+      ],
+      "cloudModelsFree": [
+        "gpt-oss:20b",
+        "gpt-oss:120b",
+        "gemma4:31b",
+        "nemotron-3-nano:30b",
+        "minimax-m3"
+      ],
+      "cloudModelsPro": [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "glm-5.1",
+        "glm-5.2",
+        "qwen3.5:397b",
+        "mistral-large-3:675b",
+        "minimax-m2.7",
+        "nemotron-3-super",
+        "nemotron-3-ultra",
+        "kimi-k2.6",
+        "kimi-k2.7-code"
+      ],
+      "cloudModelsMetered": [
+        "kimi-k3"
+      ],
+      "meteredNote": "kimi-k3 bills against separately purchased Ollama extra usage rather than the Pro plan allowance. Copilot carries the same model inside its flat subscription, so prefer that route.",
+      "configNote": "Cloud entries must declare max_output_size explicitly: the bridge derives max_tokens from max_context_size, and a million-token context yields a request the backend rejects with 'max_tokens exceeds model's maximum output tokens' before any work happens.",
+      "liveCalls": [
+        {
+          "model": "ornith:9b",
+          "transport": "kimi bridge -> ollama local",
+          "operations": [
+            "start"
+          ],
+          "result": "success"
+        },
+        {
+          "model": "granite4.1:8b",
+          "transport": "kimi bridge -> ollama local",
+          "operations": [
+            "start"
+          ],
+          "result": "success"
+        },
+        {
+          "model": "deepseek-v4-pro:cloud",
+          "transport": "kimi bridge -> ollama cloud",
+          "operations": [
+            "start"
+          ],
+          "result": "success"
+        },
+        {
+          "model": "kimi-k3:cloud",
+          "transport": "ollama cloud",
+          "operations": [
+            "start"
+          ],
+          "result": "backend-rejected until extra usage funded"
+        }
+      ]
     }
   }
 }

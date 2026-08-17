@@ -24,7 +24,7 @@ async function captureJsonRpcResponse(action) {
 }
 
 test("model catalog records the empirically discovered CLI rosters", () => {
-  assert.equal(catalog.verifiedAt, "2026-08-10");
+  assert.equal(catalog.verifiedAt, "2026-08-17");
   assert.equal(catalog.cliVersionsCheckedAt, "2026-08-17");
   assert.equal(catalog.providers.claude.cliVersion, "2.1.233");
   assert.equal(catalog.providers.claude.models.length, 4);
@@ -51,6 +51,19 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
   assert.equal(catalog.providers.kimi.freeFormModel, true);
   assert.equal(catalog.providers.kimi.emitsEffortFlag, false);
+
+  // Ollama has no bridge of its own: it is reached through the Kimi bridge as an
+  // extra provider, so the catalog records it without an MCP server entry.
+  assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
+  assert.equal(catalog.providers.ollama.reachedThrough, "kimi bridge");
+  assert.equal(catalog.providers.ollama.cloudSuffix, ":cloud");
+  assert.ok(catalog.providers.ollama.localModels.includes("ornith:9b"));
+  assert.ok(catalog.providers.ollama.cloudModelsFree.includes("gpt-oss:120b"));
+  assert.ok(catalog.providers.ollama.cloudModelsPro.includes("deepseek-v4-pro"));
+  // kimi-k3 is metered separately and must not be listed as plan-included.
+  assert.deepEqual(catalog.providers.ollama.cloudModelsMetered, ["kimi-k3"]);
+  assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
+  assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
   assert.equal(catalog.providers.copilot.cliVersion, "1.0.80");
   assert.equal(catalog.providers.copilot.models.length, 27);
