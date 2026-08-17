@@ -404,11 +404,14 @@ test("reports an enforced denial instead of an empty answer", async () => {
   assert.match(response.result.content[0].text, /cut short/);
   assert.match(response.result.content[0].text, /workspace-write/);
 
-  // It must NOT claim a tool was denied. `cancelled` means truncated, and the
-  // two are separable: three hosts ran an identical denied prompt and two of
-  // them returned `end_turn` with the denials reported in full text. Asserting
-  // denial here would make the bridge state a cause it cannot observe.
+  // It must NOT claim a tool was denied, and must NOT offer a mechanism either.
+  // Two explanations were measured away: denial (a denial finishes the turn and
+  // is reported in the text) and persistence (a rerun went 7 turns / 12 model
+  // calls with 16 denials and finished cleanly, far longer than runs ending at
+  // 2). The signal carries neither cause, so the message must not imply one.
   assert.doesNotMatch(response.result.content[0].text, /denied by the permission mode/);
+  assert.doesNotMatch(response.result.content[0].text, /kept retrying|most often means/);
+  assert.match(response.result.content[0].text, /cause is not established/);
 });
 
 test("reports CLI failures and missing text", async () => {

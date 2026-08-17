@@ -139,24 +139,28 @@ async function runGrok(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
 
       const { response, sessionId, stopReason } = parseGrokOutput(stdout);
 
-      // `cancelled` means the run was CUT SHORT, which is not the same as "a tool
-      // was denied" — an earlier version of this message asserted the latter and
-      // was wrong. Three hosts ran an identical denied prompt: two returned
-      // `end_turn` with num_turns 2 and a complete answer that reported both tool
-      // errors verbatim, one returned `cancelled` with the text stopping
-      // mid-word. The denial is visible in the text either way; `cancelled`
-      // tracks the model persisting past a limit, not the permission layer.
+      // `cancelled` means the run was CUT SHORT. It does NOT mean a tool was
+      // denied, and no cause for it is established.
       //
-      // So the throw stays — a truncated answer must not be handed back as if it
-      // were a considered reply — but it now describes what is known and offers
-      // the likely cause instead of asserting it.
+      // Two wrong explanations were tried and measured away. First: "a tool call
+      // was denied by the permission mode" — false, because a denial shows up as
+      // tool-error text and coexists with `end_turn`. Second: "the model kept
+      // retrying until it was cut off" — also false, because a rerun on the host
+      // that produced the one `cancelled` went 7 turns and 12 model calls with 16
+      // denials and finished cleanly, four times longer than runs that finished
+      // at 2. Persistence does not predict it, and it has not reproduced.
+      //
+      // The throw stays, because a truncated answer must not be returned as if it
+      // were a considered reply. The message therefore says only what is known
+      // and what to do about it. Do not add a mechanism here without a
+      // measurement that survives a rerun.
       if (stopReason === "cancelled") {
         throw new Error(
-          "Grok stopped with stopReason 'cancelled': the run was cut short and the answer below, if any, " +
-          "is incomplete. Under sandbox 'read-only' this most often means the model kept retrying tools " +
-          "the permission mode denies; the denials themselves are reported in the text when the run is " +
-          "allowed to finish. Use 'workspace-write' if the task genuinely needs to make changes." +
-          `${response ? `\nPartial response: ${response}` : ""}`
+          "Grok stopped with stopReason 'cancelled': the run was cut short, so the answer below, if any, " +
+          "is incomplete. The cause is not established and it has not reproduced on rerun — retrying is " +
+          "usually worthwhile. Note that a denied tool is NOT this: under sandbox 'read-only' a denial " +
+          "normally finishes the turn and is reported in the text. Use 'workspace-write' only if the task " +
+          `genuinely needs to make changes.${response ? `\nPartial response: ${response}` : ""}`
         );
       }
       if (!response) {
