@@ -32,7 +32,7 @@ Inside a Claude Code instance, run the following commands:
 
 Done! Claude now routes complex tasks to GPT, Agy, Kimi, and Copilot experts automatically.
 
-> **Note**: Requires at least one of [Codex CLI](https://github.com/openai/codex), the Google Antigravity CLI (`agy`), Kimi Code (`kimi`), or [Copilot CLI](https://github.com/github/copilot). Setup guides you through installation.
+> **Note**: Requires at least one of [Codex CLI](https://github.com/openai/codex), the Google Antigravity CLI (`agy`), Kimi Code (`kimi`), the Grok CLI (`grok`), or [Copilot CLI](https://github.com/github/copilot). Setup guides you through installation.
 
 ---
 
@@ -114,7 +114,7 @@ Turn 2: mcp__*__*-reply(threadId) → expert remembers turn 1
 Turn 3: mcp__*__*-reply(threadId) → expert remembers turns 1-2
 ```
 
-Use single-shot (`claude`, `codex`, `agy`, `kimi`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
+Use single-shot (`claude`, `codex`, `agy`, `kimi`, `grok`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
 
 ### Long-running delegation progress
 
@@ -147,6 +147,7 @@ The native Codex target is launched with Codex's own `danger-full-access` sandbo
 | **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
 | **Agy** | `gemini-3.1-pro-high` | Fourteen ids across Gemini, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. |
+| **Grok** | `grok-4.6` | One model on this account. The only bridge whose `read-only` denies rather than advises. |
 | **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; efforts `none` through `max`. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
@@ -167,6 +168,10 @@ claude mcp remove agy >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" agy -- node ${CLAUDE_PLUGIN_ROOT}/server/agy/index.js
 
 # For Kimi
+# Idempotent: safe to rerun. ~/.local/bin is often missing from an MCP server's PATH.
+claude mcp remove grok >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" grok -- node ${CLAUDE_PLUGIN_ROOT}/server/grok/index.js
+
 # Idempotent: safe to rerun. ~/.kimi-code/bin is often missing from an MCP server's PATH.
 claude mcp remove kimi >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user --env=PATH="$HOME/.kimi-code/bin:$PATH" kimi -- node ${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js

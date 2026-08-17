@@ -24,6 +24,7 @@ which agy 2>/dev/null || [ -x "$HOME/.local/bin/agy" ] && agy --version 2>&1 | h
 ### Kimi
 ```bash
 which kimi 2>/dev/null || [ -x "$HOME/.kimi-code/bin/kimi" ] && kimi --version 2>&1 | head -1 || echo "KIMI_MISSING"
+which grok 2>/dev/null || [ -x "$HOME/.local/bin/grok" ] && grok --version 2>&1 | head -1 || echo "GROK_MISSING"
 ```
 
 ### Copilot (GPT)
@@ -92,6 +93,14 @@ claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH
 claude mcp remove gemini >/dev/null 2>&1 || true
 ```
 
+### Grok (xAI)
+```bash
+# Idempotent: safe to rerun setup. ~/.local/bin (Unix) and ~/.grok/bin (Windows)
+# are frequently missing from the PATH an MCP server inherits, so pin the Unix one.
+claude mcp remove grok >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" grok -- node ${CLAUDE_PLUGIN_ROOT}/server/grok/index.js
+```
+
 ### Copilot (GPT)
 ```bash
 # Idempotent: safe to rerun setup
@@ -116,6 +125,7 @@ Run these checks and report results:
 codex --version 2>&1 | head -1 || echo "Not installed"
 agy --version 2>&1 | head -1 || echo "Not installed"
 kimi --version 2>&1 | head -1 || echo "Not installed"
+grok --version 2>&1 | head -1 || echo "Not installed"
 copilot --version 2>&1 | head -1 || echo "Not installed"
 
 # Check 2: Codex MCP server
@@ -146,6 +156,13 @@ else
 fi
 
 # Check 5: Kimi MCP server
+GROK_CONFIG=$(claude mcp get grok 2>/dev/null)
+if echo "$GROK_CONFIG" | grep -q "server/grok/index.js"; then
+  printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
+    | node "${CLAUDE_PLUGIN_ROOT}/server/grok/index.js" 2>/dev/null \
+    | head -1
+fi
+
 KIMI_CONFIG=$(claude mcp get kimi 2>/dev/null)
 if echo "$KIMI_CONFIG" | grep -q "server/kimi/index.js"; then
   echo "Kimi: OK"

@@ -78,6 +78,7 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 | `server/agy/index.js` | Agy MCP bridge | Wraps the Google Antigravity CLI as MCP server |
 | `server/kimi/index.js` | Kimi MCP bridge | Wraps the Kimi Code CLI as MCP server |
 | `server/copilot/index.js` | Copilot MCP bridge | Wraps Copilot CLI as MCP server |
+| `server/grok/index.js` | Grok MCP bridge | Wraps the Grok CLI as MCP server; the only bridge whose `read-only` denies |
 
 > Expert prompts adapted from [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
 
@@ -116,6 +117,12 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
     This is not tidiness. The same Windows shim defect had to be fixed twice in two files on one day, a fifth copy sat inline in the Copilot bridge where a grep for the function name could not find it, and CI was red for three releases behind that duplication. The core takes the strongest of the five prior copies rather than their average — both `%dp0%` and `%~dp0`, `.cjs`/`.mjs` as well as `.js`, either quote style, an alias list for npm shims that name the package instead of the command, and PATH enumeration instead of shelling out to `where.exe`.
 
     Per-provider *tests* stay per provider even where the code merged. `server/agy` asserts that `--model` **is** passed on reply; `server/copilot` asserts that it is **not**. A test in the core phrased as "does the shared code add `--model`" would satisfy neither, because those assertions encode deviations rather than the shared pattern. Bridge tests therefore drive the spawned server and inspect real argv, and none of them requires the core directly. What did move is `test/fixtures/copilot.cmd`, a verbatim shim captured from a Windows host: on a machine where the CLIs install as native `.exe`, the resolver is never exercised at runtime, so a synthetic test is the only coverage that path can have.
+
+14. **Grok is the one bridged provider whose `read-only` denies** - and only because the bridge says so explicitly. `--permission-mode plan` cancelled a write and a shell escape under an insistent prompt, then was defeated by a permissive allow list in the caller's own Claude Code settings, which grok reads. The bridge therefore always adds `--deny Write/Edit/Bash`, which overrode that allow list. `--sandbox` is never emitted: `--sandbox read-only` is accepted by the CLI and did not stop a write — the same shape as Agy's `--mode plan`, a flag whose name outruns its behaviour.
+
+    The inherited-permission coupling is the deeper reason the denials are not optional. grok loads permission rules from the caller's Claude Code settings, but only when that file has `allow`/`deny`/`ask` entries: measured as 7 rules on WSL, 1 on macOS, 0 on Linux and 0 on Windows. Without our own denials, identical argv would grant different permissions on different machines — non-determinism, not just risk.
+
+    Two caveats travel with this. The enforcement result is **single-sourced**: a shared account usage limit blocked reproduction on three other hosts, where even the positive control returned "no file" because nothing executed. And project instruction files in `cwd` are auto-loaded with no off switch — `CLAUDE.md` on all four platforms, a planted `AGENTS.md` too — so delegating grok into this repository injects its own `CLAUDE.md`, the same surface as Kimi's.
 
 ## When NOT to Delegate
 

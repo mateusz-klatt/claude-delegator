@@ -69,7 +69,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 4, "expected a timeout row for Agy, Kimi, Copilot and Claude");
+  assert.equal(timeoutRows.length, 5, "expected a timeout row for Agy, Kimi, Grok, Copilot and Claude");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);

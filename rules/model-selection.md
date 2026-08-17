@@ -250,6 +250,43 @@ Access is tiered, and the tiers do not follow model size. `gpt-oss:20b`/`:120b`,
 
 **How the tiers actually compare.** On one planted-vulnerability review, identical prompt and file: the local 9B found four of six issues and proposed one fix with an inverted condition; a local 8B found three and missed plaintext password storage; `deepseek-v4-pro:cloud` found all six, added a rate-limiting issue nobody planted, mapped each to an OWASP category, and made no errors. Local weights are for the case where code must not leave the machine. When that is not the constraint, a hosted model on the same bridge is better work at no marginal cost.
 
+## Grok Parameters Reference
+
+### `mcp__grok__grok` (Start Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
+| `sandbox` | `read-only`, `workspace-write` | `read-only` is **enforced**, not advisory — see **Sandbox honesty** below. Default: `workspace-write` |
+| `model` | `grok-4.6` | Hard allowlist from `config/model-catalog.json`. This account sees one model |
+| `effort` | free-form string | Passed through as `--reasoning-effort`. The CLI does not enumerate its values, so the bridge forwards the string rather than inventing an allowlist |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `cwd` | path | Working directory. **Project instruction files here are auto-loaded** |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+
+**Sandbox honesty**: this is the one bridge whose `read-only` denies rather than advises — and the reason is the deny rules, not the permission mode. `--permission-mode plan` on its own cancelled both a write attempt and a shell escape under an insistent prompt, then was **defeated** by a permissive allow list in the caller's own Claude Code settings, which grok reads. The bridge therefore always adds `--deny` for `Write`, `Edit` and `Bash`; with those, the model tried the file tool, the shell and a third path, was denied each time, and said so. `--sandbox read-only` is never emitted: the CLI accepts it and it did **not** stop a write. Real sandbox profiles live in `~/.grok/sandbox.toml` and are operator configuration the bridge never writes.
+
+That inherited-permission coupling is also why the denials are not optional: it loads rules only when the caller's settings contain `allow`/`deny`/`ask` entries, measured as 7 rules on WSL, 1 on macOS and 0 on Linux and Windows. Without our own denials the same argv would grant different permissions on different machines.
+
+**Verification status**: the deny-rule result is **single-sourced**. A shared account usage limit blocked reproduction on three other hosts, where even the positive control returned "no file" because nothing executed. Treat the guarantee as provisional until someone re-runs it with a working positive control; the rules themselves are safe regardless, since a denial can only deny.
+
+**Workspace context**: project instruction files in `cwd` are auto-loaded with no known off switch — `CLAUDE.md` was measured loading on Linux, macOS, WSL and Windows, and a planted `AGENTS.md` loaded too. Delegating grok into this repository injects its own `CLAUDE.md`. This is the same prompt-injection surface as Kimi's, so prefer another provider when delegating into code you do not control. `--no-memory` disables cross-session memory, not project instructions.
+
+**Model guidance**: `grok-4.6` is the only model this account advertises, and `grok models` lists the roster headlessly, so a refresh needs no PTY. A free account has a usage limit that returns a JSON error object rather than a non-zero exit — budget for it on long runs.
+
+### `mcp__grok__grok-reply` (Continue Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `threadId` | string | **Required.** `sessionId` from the previous `grok` call. The bridge fails loudly if grok resumes a different session |
+| `prompt` | string | **Required.** Follow-up instruction |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
+| `effort` | free-form string | Optional override for this turn |
+| `cwd` | path | Working directory |
+
+Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its model. The bridge never passes `--continue`/`-c`, which resumes "the most recent session for the current working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
+
 ## Copilot Parameters Reference
 
 ### `mcp__copilot__copilot` (Start Session)
