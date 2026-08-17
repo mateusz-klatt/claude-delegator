@@ -11,6 +11,14 @@
  *     node server/claude/index.js
  *
  * Set MCP_PROBE_TIMEOUT_MS for live model calls (default: 30000).
+ *
+ * Exit codes are a taxonomy, not a boolean, because "the bridge is broken" and
+ * "the provider said no" need different responses from whoever is reading:
+ *   0  the call succeeded
+ *   1  the bridge answered, and the answer is a tool-level failure (isError)
+ *   2  contract failure — bad usage, tool not advertised, JSON-RPC error,
+ *      server died mid-handshake
+ * Collapsing 1 and 2 makes a driver that reports its own blind spots as passes.
  */
 
 import { spawn } from "node:child_process";
@@ -108,13 +116,13 @@ child.on("exit", (code, signal) => {
 });
 
 let failed = false;
-function fail(error) {
+function fail(error, code = 2) {
   if (failed) return;
   failed = true;
   const detail = stderr.trim() ? `\nServer stderr:\n${stderr.trim()}` : "";
   console.error(`${error.message}${detail}`);
   child.kill("SIGTERM");
-  process.exitCode = 1;
+  process.exitCode = code;
 }
 
 function request(method, params = {}) {
@@ -191,6 +199,16 @@ try {
       result,
       ...(replyTool ? { replyTool, reply } : {})
     }, null, 2));
+
+    // A bridge reports a provider-side failure as a well-formed result carrying
+    // isError, not as a JSON-RPC error — so a probe that only watches for
+    // message.error prints the failure and exits 0. That is the driver
+    // manufacturing a pass instead of measuring one.
+    const toolFailure = [result, reply].find((value) => value && value.isError === true);
+    if (toolFailure) {
+      const text = toolFailure.content?.[0]?.text;
+      fail(new Error(`Tool reported a failure: ${text || JSON.stringify(toolFailure)}`), 1);
+    }
   }
 } catch (error) {
   fail(error);
