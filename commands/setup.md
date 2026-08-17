@@ -108,6 +108,13 @@ claude plugin marketplace update jarrodwatts-claude-delegator
 claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
 claude plugin install   claude-delegator@jarrodwatts-claude-delegator
 
+# 1b. Confirm the reinstall actually delivered what step 2 depends on. Ordering
+#     protects against a known mistake; this protects against the reinstall
+#     quietly not having worked. Must print all six names before you continue.
+python3 -c "import json,sys;print(sorted(json.load(open(sys.argv[1])).get('mcpServers',{})))" \
+  ~/.claude/plugins/cache/*/claude-delegator/*/.claude-plugin/plugin.json
+#     expected: ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
+
 # 2. Only now drop the hand-added entries.
 for s in codex agy kimi copilot grok cursor gemini; do
   claude mcp remove "$s" >/dev/null 2>&1 || true
