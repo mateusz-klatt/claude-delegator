@@ -1,6 +1,6 @@
 # Model Orchestration
 
-You have access to Claude, GPT, Agy, Kimi, and Copilot experts via MCP tools. Use them strategically based on these guidelines. The Claude target is for external orchestrators such as Codex; Claude Code must not target itself.
+You have access to Claude, GPT, Agy, Kimi, Grok, Cursor, and Copilot experts via MCP tools. Use them strategically based on these guidelines. The Claude target is for external orchestrators such as Codex; Claude Code must not target itself.
 
 ## Available Tools
 
@@ -14,6 +14,10 @@ You have access to Claude, GPT, Agy, Kimi, and Copilot experts via MCP tools. Us
 | `mcp__agy__agy-reply` | Agy (Antigravity) | Continue an existing session (multi-turn) |
 | `mcp__kimi__kimi` | Kimi (Moonshot) | Start a new expert session |
 | `mcp__kimi__kimi-reply` | Kimi (Moonshot) | Continue an existing session (multi-turn) |
+| `mcp__grok__grok` | Grok (xAI) | Start a new expert session; the only bridge whose `read-only` denies |
+| `mcp__grok__grok-reply` | Grok (xAI) | Continue an existing session (multi-turn) |
+| `mcp__cursor__cursor` | Cursor (Cursor Agent) | Start a new expert session |
+| `mcp__cursor__cursor-reply` | Cursor (Cursor Agent) | Continue an existing session (multi-turn) |
 | `mcp__copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
 | `mcp__copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
@@ -31,17 +35,17 @@ You have access to Claude, GPT, Agy, Kimi, and Copilot experts via MCP tools. Us
 
 ## Session Management
 
-All four provider targets support both single-shot and multi-turn delegation.
+Every provider target supports both single-shot and multi-turn delegation.
 
 ### Single-Shot (Default)
 
-Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, `mcp__kimi__kimi`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
+Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, `mcp__kimi__kimi`, `mcp__grok__grok`, `mcp__cursor__cursor`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
 
 **Best for:** Advisory reviews, one-off analysis, independent implementation tasks.
 
 ### Multi-Turn
 
-All four targets return a `threadId` from the initial call. Pass it to the corresponding `-reply` tool for follow-up turns with full context preservation.
+Every target returns a `threadId` from the initial call. Pass it to the corresponding `-reply` tool for follow-up turns with full context preservation.
 
 ```typescript
 // Turn 1: Start session (Codex example)
@@ -63,7 +67,7 @@ mcp__codex__codex-reply({
 
 | Pattern | Tool | Context | Use When |
 |---------|------|---------|----------|
-| Single-shot | `claude` / `codex` / `agy` / `kimi` / `copilot` | Fresh each call | Advisory, one-off tasks |
+| Single-shot | `claude` / `codex` / `agy` / `kimi` / `grok` / `cursor` / `copilot` | Fresh each call | Advisory, one-off tasks |
 | Multi-turn | `*-reply` | Preserved via threadId | Chained steps, retries |
 
 ---
@@ -95,6 +99,8 @@ When user explicitly requests a specific provider:
 | "ask GPT", "consult GPT", "ask codex" | Identify task type → route to appropriate expert |
 | "ask Agy", "consult Agy", "ask agy" | Identify task type → route to appropriate expert |
 | "ask Kimi", "consult Kimi", "ask kimi" | Identify task type → route to appropriate expert |
+| "ask Grok", "consult Grok", "ask grok" | Identify task type → route to appropriate expert |
+| "ask Cursor", "consult Cursor", "ask cursor" | Identify task type → route to appropriate expert |
 | "ask Copilot", "consult Copilot", "ask copilot" | Identify task type → route to appropriate expert |
 | "ask GPT to review the architecture" | Delegate to Architect |
 | "have Agy review this code" | Delegate to Code Reviewer |
@@ -121,7 +127,7 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-For the Claude, Agy, Kimi, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
+For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
 
 ### Step 3: Determine Mode
 | Provider | Advisory | Implementation |
@@ -130,6 +136,8 @@ For the Claude, Agy, Kimi, and Copilot bridges, do not manually inject the Agent
 | Claude bridge | Default `workspace-write` (permission bypass); state "do not modify" | Default `workspace-write` |
 | Agy bridge | Default `workspace-write` (`--dangerously-skip-permissions`); state "do not modify". `read-only` denies shell only, never writes | Default `workspace-write` |
 | Kimi bridge | `workspace-write` only; state "do not modify". `read-only` is refused — print mode has no permission tier | `workspace-write` |
+| Grok bridge | Default `workspace-write` (`--permission-mode bypassPermissions`); state "do not modify". `read-only` **denies** — `plan` plus explicit `--deny` rules for Write, Edit and Bash | Default `workspace-write` |
+| Cursor bridge | Default `workspace-write` (`--force`); state "do not modify". `read-only` maps to `--mode ask`, which deflects but does not deny | Default `workspace-write` |
 | Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify" | Default `workspace-write` |
 
 The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. The explicit bridge `read-only` option is available for provider-enforced denial; it may also prevent Agent Mail writes, which must fail open.
@@ -195,6 +203,24 @@ mcp__agy__agy({
   cwd: "[current working directory]"
 })
 
+// OR Using Grok — the one bridge where read-only is enforced, not advisory
+mcp__grok__grok({
+  prompt: "[your 7-section delegation prompt with FULL context]",
+  "developer-instructions": "[contents of the expert's prompt file]",
+  coordination: { /* optional caller envelope */ },
+  sandbox: "read-only",   // denies Write, Edit and Bash at the permission layer
+  cwd: "[current working directory]"
+})
+
+// OR Using Cursor — read-only deflects but does not deny; carry intent in the instructions
+mcp__cursor__cursor({
+  prompt: "[your 7-section delegation prompt with FULL context]",
+  "developer-instructions": "[contents of the expert's prompt file]",
+  coordination: { /* optional caller envelope */ },
+  sandbox: "workspace-write",
+  cwd: "[current working directory]"
+})
+
 // OR Using Copilot (GPT) — Copilot defaults to never-asking
 mcp__copilot__copilot({
   prompt: "[your 7-section delegation prompt with FULL context]",
@@ -231,7 +257,7 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 (Claude, Codex, Agy, Kimi, or Copilot)
+// Attempt 1 (Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot)
 const result = mcp__codex__codex({ ... }) // or mcp__claude__claude / mcp__agy__agy / mcp__kimi__kimi / mcp__copilot__copilot
 
 // Attempt 2 (context preserved — expert remembers attempt 1)

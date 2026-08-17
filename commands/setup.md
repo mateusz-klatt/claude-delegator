@@ -96,6 +96,14 @@ claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH
 claude mcp remove gemini >/dev/null 2>&1 || true
 ```
 
+### Kimi (Moonshot)
+```bash
+# Idempotent: safe to rerun setup. kimi installs to ~/.kimi-code/bin rather than
+# ~/.local/bin, and that directory is the bridge's only POSIX fallback, so pin it.
+claude mcp remove kimi >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.kimi-code/bin:$HOME/.local/bin:$PATH" kimi -- node ${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js
+```
+
 ### Grok (xAI)
 ```bash
 # Idempotent: safe to rerun setup. ~/.local/bin (Unix) and ~/.grok/bin (Windows)
@@ -161,7 +169,7 @@ else
   echo "Agy Bridge: SKIPPED (Agy MCP not configured)"
 fi
 
-# Check 5: Kimi MCP server
+# Check 5: Grok, Cursor and Kimi MCP servers
 GROK_CONFIG=$(claude mcp get grok 2>/dev/null)
 if echo "$GROK_CONFIG" | grep -q "server/grok/index.js"; then
   printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
@@ -191,7 +199,7 @@ else
   echo "Copilot: NOT CONFIGURED"
 fi
 
-# Check 6: Copilot bridge health (initialize handshake)
+# Check 7: Copilot bridge health (initialize handshake)
 if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
   BRIDGE_HEALTH=$(printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
     | node "${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js" 2>/dev/null \
