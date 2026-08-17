@@ -25,6 +25,9 @@ which agy 2>/dev/null || [ -x "$HOME/.local/bin/agy" ] && agy --version 2>&1 | h
 ```bash
 which kimi 2>/dev/null || [ -x "$HOME/.kimi-code/bin/kimi" ] && kimi --version 2>&1 | head -1 || echo "KIMI_MISSING"
 which grok 2>/dev/null || [ -x "$HOME/.local/bin/grok" ] && grok --version 2>&1 | head -1 || echo "GROK_MISSING"
+# cursor-agent --version is purely local: unlike -p or `models` it establishes no
+# session and writes nothing to ~/.cursor, so it is safe to probe before setup.
+which cursor-agent 2>/dev/null || [ -x "$HOME/.local/bin/cursor-agent" ] && cursor-agent --version 2>&1 | head -1 || echo "CURSOR_MISSING"
 ```
 
 ### Copilot (GPT)
@@ -99,6 +102,8 @@ claude mcp remove gemini >/dev/null 2>&1 || true
 # are frequently missing from the PATH an MCP server inherits, so pin the Unix one.
 claude mcp remove grok >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" grok -- node ${CLAUDE_PLUGIN_ROOT}/server/grok/index.js
+claude mcp remove cursor >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" cursor -- node ${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js
 ```
 
 ### Copilot (GPT)
@@ -126,6 +131,7 @@ codex --version 2>&1 | head -1 || echo "Not installed"
 agy --version 2>&1 | head -1 || echo "Not installed"
 kimi --version 2>&1 | head -1 || echo "Not installed"
 grok --version 2>&1 | head -1 || echo "Not installed"
+cursor-agent --version 2>&1 | head -1 || echo "Not installed"
 copilot --version 2>&1 | head -1 || echo "Not installed"
 
 # Check 2: Codex MCP server
@@ -160,6 +166,13 @@ GROK_CONFIG=$(claude mcp get grok 2>/dev/null)
 if echo "$GROK_CONFIG" | grep -q "server/grok/index.js"; then
   printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
     | node "${CLAUDE_PLUGIN_ROOT}/server/grok/index.js" 2>/dev/null \
+    | head -1
+fi
+
+CURSOR_CONFIG=$(claude mcp get cursor 2>/dev/null)
+if echo "$CURSOR_CONFIG" | grep -q "server/cursor/index.js"; then
+  printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
+    | node "${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js" 2>/dev/null \
     | head -1
 fi
 

@@ -44,13 +44,15 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   const copilotBridge = require("../server/copilot");
   const claudeBridge = require("../server/claude");
   const grokBridge = require("../server/grok");
+  const cursorBridge = require("../server/cursor");
 
   for (const tool of [
     ...agyBridge.toolDefinitions,
     ...kimiBridge.toolDefinitions,
     ...copilotBridge.toolDefinitions,
     ...claudeBridge.toolDefinitions,
-    ...grokBridge.toolDefinitions
+    ...grokBridge.toolDefinitions,
+    ...cursorBridge.toolDefinitions
   ]) {
     const { timeout } = tool.inputSchema.properties;
     assert.equal(timeout.default, 900_000, `${tool.name} default timeout`);
@@ -71,7 +73,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 5, "expected a timeout row for Agy, Kimi, Grok, Copilot and Claude");
+  assert.equal(timeoutRows.length, 6, "expected a timeout row for Agy, Kimi, Grok, Cursor, Copilot and Claude");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);
@@ -174,13 +176,23 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
     kimi: require("../server/kimi"),
     copilot: require("../server/copilot"),
     claude: require("../server/claude"),
-    grok: require("../server/grok")
+    grok: require("../server/grok"),
+    cursor: require("../server/cursor")
   };
+
+  // cursor-agent's Windows install directory has not been measured on any host
+  // here. An empty list is the honest state — PATH still resolves it wherever the
+  // installer put itself — and a guessed entry is the WinGet\\Packages mistake
+  // removed in 1.7.0. Named rather than silent, so it cannot rot: delete this the
+  // moment someone reports the real location.
+  const noMeasuredWindowsLocation = process.platform === "win32" ? new Set(["cursor"]) : new Set();
 
   for (const [name, bridge] of Object.entries(bridges)) {
     const fallbacks = bridge.cliFallbacks();
     assert.ok(Array.isArray(fallbacks), `${name} must expose its fallbacks`);
-    assert.ok(fallbacks.length > 0, `${name} has no install-location fallback`);
+    if (!noMeasuredWindowsLocation.has(name)) {
+      assert.ok(fallbacks.length > 0, `${name} has no install-location fallback`);
+    }
     for (const fallback of fallbacks) {
       assert.ok(path.isAbsolute(fallback), `${name}: ${fallback} must be absolute`);
       assert.ok(

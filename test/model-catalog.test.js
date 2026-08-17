@@ -192,3 +192,31 @@ test("bridge validation rejects token-bearing coordination before invoking a CLI
     assert.match(response.error.message, /unknown coordination field.*callerToken/);
   }
 });
+
+test("the Cursor catalog entry records what the account can use, not what the CLI lists", () => {
+  const catalog = require("../config/model-catalog.json");
+  const cursorBridge = require("../server/cursor");
+  const cursor = catalog.providers.cursor;
+
+  assert.equal(cursor.defaultModel, "auto");
+  // Free-form, like kimi: the CLI documents bracket-parameterised overrides that
+  // no enum can express, so the bridge forwards the string.
+  assert.equal(cursor.freeFormModel, true);
+  assert.equal(cursorBridge.toolDefinitions[0].inputSchema.properties.model.enum, undefined);
+  assert.equal(cursorBridge.toolDefinitions[0].inputSchema.properties.model.default, cursor.defaultModel);
+  // The tier is baked into the model id, as on agy, so no effort flag exists.
+  assert.equal(cursor.emitsEffortFlag, false);
+
+  // `cursor-agent models` printed 204 ids while only these completed a live call;
+  // the entry must record the second number, not the first.
+  assert.ok(cursor.models.includes("auto"));
+  assert.ok(cursor.models.length < 10, "models must list what ran, not what was listed");
+  assert.match(cursor.discoverySource, /204/);
+  assert.match(cursor.discoverySource, /Free plans can only use Auto/);
+
+  // read-only deflects rather than denies; saying otherwise is how an advisory
+  // delegation quietly rewrites the workspace.
+  assert.match(cursor.permissionNote, /DEFLECTS/);
+  assert.match(cursor.trustNote, /--trust is MANDATORY/);
+  assert.match(cursor.outputNote, /exit code does NOT classify/i);
+});

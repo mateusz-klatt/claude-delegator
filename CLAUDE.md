@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A multi-provider MCP delegator. Claude Code can route to Codex, Agy (Google Antigravity), Kimi (Moonshot), or Copilot, while Codex and other MCP clients can also route to Claude through a symmetric `claude` / `claude-reply` bridge. Five domain experts can advise OR implement: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, and Security Analyst.
+A multi-provider MCP delegator. Claude Code can route to Codex, Agy (Google Antigravity), Kimi (Moonshot), Grok (xAI), Cursor, or Copilot, while Codex and other MCP clients can also route to Claude through a symmetric `claude` / `claude-reply` bridge. Five domain experts can advise OR implement: Architect, Plan Reviewer, Scope Analyst, Code Reviewer, and Security Analyst.
 
 ## Development Commands
 
@@ -79,6 +79,7 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 | `server/kimi/index.js` | Kimi MCP bridge | Wraps the Kimi Code CLI as MCP server |
 | `server/copilot/index.js` | Copilot MCP bridge | Wraps Copilot CLI as MCP server |
 | `server/grok/index.js` | Grok MCP bridge | Wraps the Grok CLI as MCP server; the only bridge whose `read-only` denies |
+| `server/cursor/index.js` | Cursor MCP bridge | Wraps the Cursor Agent CLI; always passes `--trust`, and parses stdout before the exit code |
 
 > Expert prompts adapted from [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
 
@@ -131,6 +132,15 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
     Two caveats travel with this. Project instruction files in `cwd` are auto-loaded with no off switch — `CLAUDE.md` on all four platforms, a planted `AGENTS.md` too — so delegating grok into this repository injects its own `CLAUDE.md`, the same surface as Kimi's. And **an isolated `HOME` for this experiment must symlink individual files, not the whole `~/.grok`**: grok writes a full state set during a run and *replaces* a symlinked `auth.json` with a real file. Per-file links make that visible in the scratch directory, where it is a live credential to delete; a whole-directory link leaves nothing to replace, so every write — a refreshed `auth.json` included — lands in the operator's real `~/.grok`. Measured on both hosts. It does not invalidate a permission result, which comes from the permission layer rather than from state, but such a run is isolated only in the one variable being manipulated.
 
 15. **`buildCalleeEnv` severs the caller's identity, not the caller's configuration** - four channels were measured reaching a delegated grok, none of them through the environment: Agent Mail hooks and permission rules from `~/.claude/settings.json`, project instructions from `cwd`, and **Claude Code plugin skills** — `grok inspect` listed 46, of which 26 were the caller's own plugins, `codex:rescue` and `codex:review` among them. Those two exist to delegate onward, so their mere visibility puts a further-delegation path within reach that `CLAUDE_DELEGATOR_*_DEPTH` cannot observe: the guard watches environment variables and every one of these channels is on disk. Invocability was not tested and testing it would cost a live session; the visibility is enough to state the limit. This is why decision 10 calls the depth guard defence in depth rather than a boundary — it now has a named second reason, not just the `workspace-write` one.
+
+16. **Cursor's `read-only` deflects; its trust flag is what actually gates the run** - `--mode ask` refused an insistent write-or-shell prompt twice, including under a permissive caller allow list, and was then defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls. Both files appeared; the model's own report read "the Ask mode label did not block either call". So it is Agy's category, not Grok's — kept because it is strictly more restrictive than `--force`, documented for exactly what it is, and never called enforcement. `--mode plan` is worse and is never emitted: with trust granted it wrote the file on the first insistent prompt, despite its help text promising "no edits". `--sandbox` is never emitted either. There are no command-line deny rules, so the mechanism that makes Grok enforce is unavailable; route to Grok or Claude when a caller needs real denial.
+
+    Three seams deviate from the house pattern, each measured:
+    - **`--trust` is mandatory and always passed.** Without it a headless run prints "Workspace Trust Required" and exits **0** having executed nothing — indistinguishable from a permission mode denying the task. That false negative already cost a measurement here: a plan-mode test read as "enforced" when the model had never run, and its positive control passed only because `--force` grants trust as a side effect, so control and test differed by two variables instead of one.
+    - **The exit code does not classify the run.** A transient backend failure returned code 0 with plain-text "Connection lost, reconnecting…" and no JSON, while a rejected model returned code 1, also without JSON. The bridge parses stdout first and uses the code only to pick a message — Agy's rule, reached independently.
+    - **A resume inherits its model**, so `cursor-reply` does not re-pin it. This is the exact inverse of Agy, which is why both assertions live in their own bridge's tests rather than in the core.
+
+    The model list is free-form because the CLI documents bracket-parameterised overrides (`claude-opus-4-8[context=1m,effort=high,fast=false]`) that no enum can express. Note the gap between listing and access: `cursor-agent models` printed **204** ids while only `auto` and the Composer family ran on the verification account, and `auto` is server-routed — it resolved to two different models across one session, so the plan restricts *choosing* a model, not *using* one.
 
 ## When NOT to Delegate
 

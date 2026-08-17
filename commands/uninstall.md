@@ -25,6 +25,7 @@ claude mcp remove --scope user codex
 claude mcp remove --scope user agy
 claude mcp remove --scope user kimi
 claude mcp remove --scope user grok
+claude mcp remove --scope user cursor
 claude mcp remove --scope user gemini  # removed in 1.5.0; clears a stale registration
 claude mcp remove --scope user copilot
 ```

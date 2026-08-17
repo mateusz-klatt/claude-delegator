@@ -219,6 +219,37 @@
       "avoid": [
         "delegating into a repository you do not control: project instruction files in cwd are auto-loaded with no off switch"
       ]
+    },
+    "cursor": {
+      "name": "Cursor",
+      "description": "Cursor-hosted models via the Cursor Agent CLI - specialized expert subagents",
+      "cli": "cursor-agent",
+      "install": "install the Cursor Agent CLI; on Unix it lands in ~/.local/bin/cursor-agent as a symlink into ~/.local/share/cursor-agent/versions/<version>/. The Windows install directory is not yet measured on any host here, so the bridge ships no Windows fallback rather than a guessed one.",
+      "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: a Free plan rejects every named model with 'Named models unavailable. Free plans can only use Auto.'",
+      "mcp": {
+        "type": "stdio",
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js"
+        ]
+      },
+      "modelCatalogKey": "cursor",
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "many model families behind one CLI",
+        "stable multi-turn resume that inherits its model",
+        "cross-family second opinion"
+      ],
+      "avoid": [
+        "tasks needing provider-enforced read-only: --mode ask deflects but was defeated by an adversarial prompt, and there are no command-line deny rules. Route to grok or Claude instead",
+        "runs that must be reproducible on the default model: 'auto' is server-routed and resolved to two different models across one session"
+      ]
     }
   }
 }

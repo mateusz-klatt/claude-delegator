@@ -23,7 +23,7 @@ test("resultText survives quotes, newlines, and non-ASCII content", () => {
 });
 
 test("every bridge embeds threadId in the success text envelope", () => {
-  for (const bridge of ["claude", "agy", "kimi", "copilot", "grok"]) {
+  for (const bridge of ["claude", "agy", "kimi", "copilot", "grok", "cursor"]) {
     const source = fs.readFileSync(
       path.resolve(__dirname, `../server/${bridge}/index.js`),
       "utf8"

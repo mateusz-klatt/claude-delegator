@@ -291,6 +291,50 @@ Verified on **two hosts** (Linux/WSL and macOS), identical verbatim denial strin
 
 Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its model. The bridge never passes `--continue`/`-c`, which resumes "the most recent session for the current working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
+## Cursor Parameters Reference
+
+### `mcp__cursor__cursor` (Start Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
+| `sandbox` | `read-only`, `workspace-write` | `workspace-write` passes `--force`; `read-only` passes `--mode ask`. Default: `workspace-write`. See **Sandbox honesty** below. |
+| `model` | free-form string | Default: `auto`. Not an enum — see **Model guidance** |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `cwd` | path | Working directory; it also becomes the workspace |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+
+**Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
+
+Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account, and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
+
+`auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. Pick a Composer id when a run has to be reproducible.
+
+**Sandbox honesty**: `read-only` **deflects, it does not deny.** `--mode ask` refused an insistent write-or-shell prompt twice, including under a permissive allow list — and was then defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls. Both the write and the shell command went through, and the model's own report read "the Ask mode label did not block either call". This is Agy's category, not Grok's: the value is kept because it is strictly more restrictive than the alternative, and it is documented for exactly what it is. Carry advisory intent in `developer-instructions` too.
+
+`--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Grok or Claude when the caller needs provider-enforced denial.**
+
+**Workspace trust**: the bridge always passes `--trust`, and this is load-bearing. Without it a headless run prints `Workspace Trust Required` and exits **0** having executed nothing — indistinguishable from a permission mode successfully denying the task. That false negative already cost one measurement here.
+
+**Output and failure**: `--output-format json` emits one single-line object (`result`, `session_id`, `is_error`). The **exit code does not classify the run** — a transient backend failure returned code 0 with plain-text "Connection lost, reconnecting…" and no JSON, while a rejected model returned code 1, also without JSON. The bridge parses stdout first and uses the code only to pick a message, the same rule as Agy.
+
+**Context**: `--add-dir` is never passed, for the Agy reason — `cwd` alone grants file access, while `--add-dir` widens rules discovery.
+
+### `mcp__cursor__cursor-reply` (Continue Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `threadId` | string | **Required.** `session_id` from the previous `cursor` call. The bridge fails loudly if cursor resumes a different session. |
+| `prompt` | string | **Required.** Follow-up instruction |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value |
+| `cwd` | path | Working directory |
+
+`cursor-reply` accepts the same `timeout` bounds as the start tool.
+
+**No `model` on reply**, and this is the opposite of Agy: a Cursor resume **inherits** the model the session started with. Verified by starting on `auto` while the configured default was `composer-2.5-fast` and finding no fallback. `--continue` is never emitted — it resumes the previous session for the working directory and would cross-talk between concurrent delegations sharing a `cwd`, as on Kimi.
+
+
 ## Copilot Parameters Reference
 
 ### `mcp__copilot__copilot` (Start Session)
