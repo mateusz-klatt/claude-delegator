@@ -69,6 +69,40 @@
         "first-attempt-fixes"
       ]
     },
+    "kimi": {
+      "name": "Kimi",
+      "description": "Moonshot Kimi models via the Kimi Code CLI - specialized expert subagents",
+      "cli": "kimi",
+      "install": "install Kimi Code; it lands in ~/.kimi-code/bin/kimi",
+      "auth": "set an api_key in ~/.kimi-code/config.toml or export KIMI_API_KEY; `kimi login` covers the subscription device-code flow, which was not open for signup as of 2026-08-17",
+      "mcp": {
+        "type": "stdio",
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js"
+        ]
+      },
+      "modelCatalogKey": "kimi",
+      "experts": [
+        "architect",
+        "plan-reviewer",
+        "scope-analyst",
+        "code-reviewer",
+        "security-analyst"
+      ],
+      "strengths": [
+        "reasoning",
+        "large context",
+        "code generation",
+        "cross-family second opinion"
+      ],
+      "avoid": [
+        "provider-enforced read-only review",
+        "delegation into untrusted repositories",
+        "simple-operations",
+        "first-attempt-fixes"
+      ]
+    },
     "copilot": {
       "name": "Copilot (GPT, Claude & Gemini)",
       "description": "GitHub Copilot GPT, Claude, and Gemini models via Copilot CLI - specialized expert subagents",

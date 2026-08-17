@@ -27,6 +27,14 @@ startup_timeout_sec = 20
 tool_timeout_sec = 3600
 required = false
 
+[mcp_servers.kimi]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/kimi/index.js"]
+enabled_tools = ["kimi", "kimi-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+
 [mcp_servers.copilot]
 command = "node"
 args = ["/absolute/path/to/claude-delegator/server/copilot/index.js"]

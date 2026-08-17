@@ -1,6 +1,6 @@
 # Claude Delegator
 
-Claude, GPT, and Gemini expert subagents over MCP. Claude Code can orchestrate Codex, Agy, and Copilot; Codex and other MCP clients can invoke Claude through the same start/reply contract.
+Claude, GPT, and Gemini expert subagents over MCP. Claude Code can orchestrate Codex, Agy, Kimi, and Copilot; Codex and other MCP clients can invoke Claude through the same start/reply contract.
 
 [![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
@@ -30,17 +30,17 @@ Inside a Claude Code instance, run the following commands:
 /claude-delegator:setup
 ```
 
-Done! Claude now routes complex tasks to GPT, Agy, and Copilot experts automatically.
+Done! Claude now routes complex tasks to GPT, Agy, Kimi, and Copilot experts automatically.
 
-> **Note**: Requires at least one of [Codex CLI](https://github.com/openai/codex), the Google Antigravity CLI (`agy`), or [Copilot CLI](https://github.com/github/copilot). Setup guides you through installation.
+> **Note**: Requires at least one of [Codex CLI](https://github.com/openai/codex), the Google Antigravity CLI (`agy`), Kimi Code (`kimi`), or [Copilot CLI](https://github.com/github/copilot). Setup guides you through installation.
 
 ---
 
 ## What is Claude Delegator?
 
-An MCP-capable coding agent gains a team of specialists: Claude through Claude CLI, GPT through Codex, Gemini/Claude/GPT-OSS through the Antigravity CLI, and the multi-family roster exposed by Copilot. Each expert has a distinct specialty and can advise OR implement.
+An MCP-capable coding agent gains a team of specialists: Claude through Claude CLI, GPT through Codex, Gemini/Claude/GPT-OSS through the Antigravity CLI, Moonshot Kimi through Kimi Code, and the multi-family roster exposed by Copilot. Each expert has a distinct specialty and can advise OR implement.
 
-**Note:** Claude Code should use Codex, Agy, or Copilot targets. Configure the Claude target only in a different orchestrator such as Codex; registering Claude inside Claude Code creates an avoidable self-delegation path.
+**Note:** Claude Code should use Codex, Agy, Kimi, or Copilot targets. Configure the Claude target only in a different orchestrator such as Codex; registering Claude inside Claude Code creates an avoidable self-delegation path.
 
 | What You Get | Why It Matters |
 |--------------|----------------|
@@ -87,6 +87,7 @@ Claude: [Detects security question → selects Security Analyst]
         │  mcp__codex__codex            │
         │  (or mcp__claude__claude)     │
         │  (or mcp__agy__agy)          │
+        │  (or mcp__kimi__kimi)        │
         │  (or mcp__copilot__copilot)   │
         │  → Security Analyst prompt    │
         │  → Expert analyzes your code  │
@@ -113,7 +114,7 @@ Turn 2: mcp__*__*-reply(threadId) → expert remembers turn 1
 Turn 3: mcp__*__*-reply(threadId) → expert remembers turns 1-2
 ```
 
-Use single-shot (`claude`, `codex`, `agy`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
+Use single-shot (`claude`, `codex`, `agy`, `kimi`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
 
 ### Long-running delegation progress
 
@@ -136,7 +137,7 @@ The orchestrator selects the mode based on your request.
 
 ### Configuration Defaults
 
-The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The three custom bridges expose only `read-only` and `workspace-write`, defaulting to `workspace-write`: Claude uses permission bypass, Agy uses `--dangerously-skip-permissions`, and Copilot uses `--allow-all-tools`. This avoids an approval prompt blocking both nested CLIs; advisory behavior is enforced by the expert instruction. Explicit `read-only` remains available when refusal is preferable to completion — with one honest exception: on Agy it denies shell only, not file writes or network access.
+The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The three custom bridges expose only `read-only` and `workspace-write`, defaulting to `workspace-write`: Claude uses permission bypass, Agy uses `--dangerously-skip-permissions`, and Copilot uses `--allow-all-tools`. This avoids an approval prompt blocking both nested CLIs; advisory behavior is enforced by the expert instruction. Explicit `read-only` remains available when refusal is preferable to completion — with two honest exceptions: on Agy it denies shell only, not file writes or network access, and Kimi refuses it outright because print mode has no permission tier.
 
 ### Supported Models
 
@@ -145,6 +146,7 @@ The native Codex target is launched with Codex's own `danger-full-access` sandbo
 | **Claude** | `opus` / `claude-opus-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases and their full IDs. |
 | **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
 | **Agy** | `gemini-3.1-pro-high` | Fourteen ids across Gemini, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
+| **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. |
 | **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; efforts `none` through `max`. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
@@ -163,6 +165,11 @@ claude mcp add --transport stdio --scope user codex -- node ${CLAUDE_PLUGIN_ROOT
 # Idempotent: safe to rerun. ~/.local/bin is often missing from an MCP server's PATH.
 claude mcp remove agy >/dev/null 2>&1 || true
 claude mcp add --transport stdio --scope user --env=PATH="$HOME/.local/bin:$PATH" agy -- node ${CLAUDE_PLUGIN_ROOT}/server/agy/index.js
+
+# For Kimi
+# Idempotent: safe to rerun. ~/.kimi-code/bin is often missing from an MCP server's PATH.
+claude mcp remove kimi >/dev/null 2>&1 || true
+claude mcp add --transport stdio --scope user --env=PATH="$HOME/.kimi-code/bin:$PATH" kimi -- node ${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js
 
 # For Copilot (GPT)
 # Idempotent: safe to rerun
@@ -191,7 +198,7 @@ startup_timeout_sec = 20
 tool_timeout_sec = 3600
 ```
 
-See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for Claude, Codex, Agy, and Copilot entries. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
+See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for Claude, Codex, Agy, Kimi, and Copilot entries. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 
 The Codex entry disables its own nested `mcp_servers.codex` target, preventing an MCP-started Codex session from recursively targeting itself. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent.
 
@@ -226,11 +233,13 @@ You need at least one of the following target CLIs configured:
 - **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
 - **Codex CLI** (for GPT): `npm install -g @openai/codex`
 - **Antigravity CLI** (for Agy): install the Google Antigravity CLI; it lands as a native binary, typically `~/.local/bin/agy`
+- **Kimi Code** (for Kimi): installs to `~/.kimi-code/bin/kimi`
 - **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`
 
 **Authentication**:
 - Codex: run `codex login`
 - Agy: run `agy` once and complete the Antigravity OAuth flow (no API-key variable)
+- Kimi: set an `api_key` in `~/.kimi-code/config.toml` or export `KIMI_API_KEY`. (`kimi login` exists for the subscription device-code flow, but subscription signup was not yet open at the time of writing.)
 - Copilot: run `copilot login`
 
 
@@ -250,9 +259,9 @@ You need at least one of the following target CLIs configured:
 | Issue | Solution |
 |-------|----------|
 | MCP server not found | Restart Claude Code after setup |
-| Provider not authenticated | Codex: run `codex login`. Agy: run `agy` once to complete the OAuth flow. Copilot: run `copilot login` |
+| Provider not authenticated | Codex: run `codex login`. Agy: run `agy` once to complete the OAuth flow. Kimi: set `KIMI_API_KEY` or an `api_key` in `~/.kimi-code/config.toml`. Copilot: run `copilot login` |
 | Tool not appearing | Run `claude mcp list` and verify registration |
-| Expert not triggered | Try explicit: "Ask Claude/GPT/Agy/Copilot to review..." |
+| Expert not triggered | Try explicit: "Ask Claude/GPT/Agy/Kimi/Copilot to review..." |
 | Codex cannot see targets | Check the active `CODEX_HOME`, run `codex mcp list`, then restart the Codex client |
 
 ---

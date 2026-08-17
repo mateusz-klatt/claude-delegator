@@ -1,6 +1,6 @@
 # Model Selection Guidelines
 
-Claude, GPT (Codex), Copilot, and Agy experts serve as specialized consultants for complex problems.
+Claude, GPT (Codex), Copilot, Agy, and Kimi experts serve as specialized consultants for complex problems.
 
 ## Provider Selection
 
@@ -11,8 +11,10 @@ Before delegating, check which MCP tools are available in the current environmen
    - Use **Agy** for tasks requiring large context, or when you want a Gemini, Claude or GPT-OSS model from a single provider.
    - Use **GPT (Codex)** for tasks where the user explicitly asked for "GPT" or "Codex".
    - Use **Copilot** for tasks where the user explicitly asked for "Copilot".
+   - Use **Kimi** for tasks where the user explicitly asked for "Kimi", or for a Moonshot second opinion.
    - Default to **Agy** for general reasoning.
-   - Do **not** use Agy when the caller genuinely needs provider-enforced read-only; it has no such tier. Use Claude or Codex for that.
+   - Do **not** use Agy or Kimi when the caller genuinely needs provider-enforced read-only; neither has such a tier, and Kimi refuses the value outright. Use Claude or Codex for that.
+   - Prefer Claude, Codex or Agy over Kimi when delegating into a repository you do not control: Kimi auto-loads its `AGENTS.md` with no off switch.
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
@@ -32,7 +34,7 @@ For the account-specific roster, use `config/model-catalog.json` as the source o
 
 Every expert can operate in two modes:
 
-The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The three custom bridges expose only `read-only` and `workspace-write`; unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Use `read-only` only when the caller explicitly wants provider-enforced write denial and accepts that unavailable operations will be refused — but see **Sandbox honesty** below, because Agy cannot deliver that guarantee and only soft-denies shell. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
+The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The four custom bridges expose only `read-only` and `workspace-write` (Kimi accepts `workspace-write` alone); unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Use `read-only` only when the caller explicitly wants provider-enforced write denial and accepts that unavailable operations will be refused — but see **Sandbox honesty** below, because Agy cannot deliver that guarantee and only soft-denies shell. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
 
 ## Expert Details
 
@@ -178,6 +180,43 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 `agy-reply` accepts the same `timeout` bounds as the start tool.
 
+## Kimi Parameters Reference
+
+### `mcp__kimi__kimi` (Start Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
+| `sandbox` | `workspace-write` only | `read-only` is **refused** with -32602. See **Sandbox honesty** below. |
+| `model` | alias from `~/.kimi-code/config.toml` | Free-form; the roster is user-extensible. Default: `moonshot-ai/kimi-k3` |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `cwd` | path | Working directory. **A repository `AGENTS.md` here is auto-loaded.** |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+
+**Model guidance**: `moonshot-ai/kimi-k3` (default) for expert work; `moonshot-ai/kimi-k2.7-code` for coding tasks, `moonshot-ai/kimi-k2.7-code-highspeed` for quick low-stakes checks, `moonshot-ai/kimi-k2.6` as a fallback. The alias is free-form because `kimi provider catalog` can import more providers; an unknown alias fails with exit 1 and a clear message before any work happens.
+
+**Authentication**: Kimi Code supports a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17 — in practice it is the API key. Put it in `~/.kimi-code/config.toml` or export `KIMI_API_KEY` / `MOONSHOT_API_KEY`; the bridge forwards the caller environment untouched apart from Agent Mail identity. Be aware the CLI also recognises a large catalog of third-party provider key variables (`ANTHROPIC_API_KEY`, `AZURE_API_KEY` and many more), so any such key exported in the parent shell is visible to the delegated process.
+
+**No effort parameter**: kimi exposes no effort flag. Reasoning depth is the `[thinking]` toggle in `~/.kimi-code/config.toml`, which is user state the bridge deliberately does not touch.
+
+**Timeout guidance**: kimi has no timeout flag of its own, so the bridge deadline is the only one. On expiry the bridge SIGTERMs the process group; edits already written to disk are **not** rolled back, and there is no resumable-id recovery path like Agy's. Estimate generously for implementation runs.
+
+**Sandbox honesty**: kimi print mode has **no permission tier at all**. `--plan`, `--yolo` and `--auto` are each rejected outright when combined with `--prompt` (`Cannot combine --prompt with --plan`), and a plain `-p` run created a file unprompted. There is nothing to map `read-only` onto, so the bridge **refuses** it with -32602 rather than accept a value that would change nothing. Every kimi delegation is effectively implementation-mode; carry any do-not-modify intent in `developer-instructions` and treat it as advisory only, not enforced. When a caller genuinely needs enforced denial, route to Claude or Codex instead.
+
+**Workspace context**: a repository-supplied `AGENTS.md` in `cwd` is auto-loaded into the session. Verified: the sentinel instruction was honoured with the file present and the model answered `NO_CODEWORD` in a clean directory. `--skills-dir` pointed at an empty directory does **not** suppress it, and no off switch was found. This is a wider prompt-injection surface than Agy's, where omitting `--add-dir` prevents rules injection entirely — so treat every kimi delegation as trusting the target repository, and prefer another provider when delegating into code you did not write.
+
+### `mcp__kimi__kimi-reply` (Continue Session)
+
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `threadId` | string | **Required.** `session_id` from the previous `kimi` call. The bridge fails loudly if kimi resumes a different session. |
+| `prompt` | string | **Required.** Follow-up instruction |
+| `model` | alias | Optional; omit to keep the resumed session's model |
+| `cwd` | path | Working directory |
+
+`kimi-reply` accepts the same `timeout` bounds as the start tool. The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
+
 ## Copilot Parameters Reference
 
 ### `mcp__copilot__copilot` (Start Session)
@@ -231,7 +270,7 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `threadId` | string | Session ID for multi-turn follow-ups |
 | `content` | MCP content array | Text is normally in `content[0].text`; native Codex also returns `structuredContent.content` |
 
-The bridges (Claude, Agy, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
+The bridges (Claude, Agy, Kimi, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
 
 ## When NOT to Delegate
 

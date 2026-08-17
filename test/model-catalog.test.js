@@ -6,6 +6,7 @@ const test = require("node:test");
 const catalog = require("../config/model-catalog.json");
 const copilotBridge = require("../server/copilot");
 const agyBridge = require("../server/agy");
+const kimiBridge = require("../server/kimi");
 
 async function captureJsonRpcResponse(action) {
   const originalWrite = process.stdout.write;
@@ -45,6 +46,12 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
+  assert.equal(catalog.providers.kimi.cliVersion, "0.36.1");
+  assert.equal(catalog.providers.kimi.models.length, 4);
+  // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
+  assert.equal(catalog.providers.kimi.freeFormModel, true);
+  assert.equal(catalog.providers.kimi.emitsEffortFlag, false);
+
   assert.equal(catalog.providers.copilot.cliVersion, "1.0.80");
   assert.equal(catalog.providers.copilot.models.length, 27);
   assert.deepEqual(
@@ -65,7 +72,7 @@ test("catalog defaults, aliases, and effort overrides reference unique advertise
   assert.ok(codexIds.includes(codex.defaultModel));
   for (const model of codex.models) assert.equal(new Set(model.efforts).size, model.efforts.length);
 
-  for (const providerName of ["agy", "copilot"]) {
+  for (const providerName of ["agy", "kimi", "copilot"]) {
     const provider = catalog.providers[providerName];
     assert.equal(new Set(provider.models).size, provider.models.length);
     assert.ok(provider.models.includes(provider.defaultModel));
@@ -108,7 +115,7 @@ test("Agy tool schema is sourced from the catalog and exposes no effort knob", (
 });
 
 test("all bridge tools expose the strict optional coordination object", () => {
-  for (const tool of [...copilotBridge.toolDefinitions, ...agyBridge.toolDefinitions]) {
+  for (const tool of [...copilotBridge.toolDefinitions, ...agyBridge.toolDefinitions, ...kimiBridge.toolDefinitions]) {
     const coordination = tool.inputSchema.properties.coordination;
     assert.equal(coordination.additionalProperties, false);
     assert.deepEqual(
@@ -119,7 +126,7 @@ test("all bridge tools expose the strict optional coordination object", () => {
 });
 
 test("tools/list handlers return the exported catalog-backed schemas", async () => {
-  for (const bridge of [copilotBridge, agyBridge]) {
+  for (const bridge of [copilotBridge, agyBridge, kimiBridge]) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/list"](17, {}, true)
     );
@@ -132,7 +139,8 @@ test("tools/list handlers return the exported catalog-backed schemas", async () 
 test("bridge validation rejects token-bearing coordination before invoking a CLI", async () => {
   for (const [bridge, toolName] of [
     [copilotBridge, "copilot"],
-    [agyBridge, "agy"]
+    [agyBridge, "agy"],
+    [kimiBridge, "kimi"]
   ]) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/call"](23, {

@@ -40,9 +40,10 @@ test("CI analyzes the canonical Sonar project without dependency lifecycle scrip
 
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {
   const agyBridge = require("../server/agy");
+  const kimiBridge = require("../server/kimi");
   const copilotBridge = require("../server/copilot");
 
-  for (const tool of [...agyBridge.toolDefinitions, ...copilotBridge.toolDefinitions]) {
+  for (const tool of [...agyBridge.toolDefinitions, ...kimiBridge.toolDefinitions, ...copilotBridge.toolDefinitions]) {
     const { timeout } = tool.inputSchema.properties;
     assert.equal(timeout.default, 900_000, `${tool.name} default timeout`);
     assert.equal(timeout.minimum, 10_000, `${tool.name} minimum timeout`);
@@ -60,7 +61,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 3, "expected a timeout row for Agy, Copilot and Claude");
+  assert.equal(timeoutRows.length, 4, "expected a timeout row for Agy, Kimi, Copilot and Claude");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);
@@ -126,4 +127,28 @@ test("the Agy bridge never claims a read-only guarantee agy cannot enforce", () 
   // --effort conflicts with the reasoning tier baked into most agy model ids.
   assert.doesNotMatch(agySource, /"--effort"/);
   assert.match(agySource, /"--disable-slash-commands"/);
+});
+
+test("the Kimi bridge refuses a read-only tier kimi print mode cannot provide", () => {
+  const kimiBridge = require("../server/kimi");
+  const catalog = require("../config/model-catalog.json");
+
+  // kimi -p rejects --plan, --yolo and --auto outright ("Cannot combine --prompt
+  // with ...") and runs tools unattended regardless, so there is no tier to map.
+  // The bridge refuses read-only instead of accepting an inert value.
+  const source = fs.readFileSync(path.resolve(__dirname, "../server/kimi/index.js"), "utf8");
+  assert.match(source, /'sandbox: read-only' is not supported by Kimi/);
+  assert.doesNotMatch(source, /"--plan"/);
+  assert.doesNotMatch(source, /"--yolo"/);
+  assert.doesNotMatch(source, /"--auto"/);
+  // --continue resumes "the previous session for the working directory", which
+  // would cross-talk between concurrent delegations sharing a cwd.
+  assert.doesNotMatch(source, /"--continue"/);
+
+  assert.match(catalog.providers.kimi.permissionNote, /no permission tier/i);
+  // A repository AGENTS.md is auto-loaded with no off switch; the rules must say so.
+  assert.ok(catalog.providers.kimi.contextNote.includes("AGENTS.md"));
+  const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
+  assert.match(rules, /\*\*Sandbox honesty\*\*/);
+  assert.match(rules, /AGENTS\.md/);
 });

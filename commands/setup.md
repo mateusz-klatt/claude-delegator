@@ -1,13 +1,13 @@
 ---
 name: setup
-description: Configure claude-delegator with Codex (GPT), Agy, or Copilot MCP servers
+description: Configure claude-delegator with Codex (GPT), Agy, Kimi, or Copilot MCP servers
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
 
 # Setup
 
-Configure GPT (via Codex or Copilot) or Agy (Google Antigravity) as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
+Configure GPT (via Codex or Copilot), Agy (Google Antigravity) or Kimi (Moonshot) as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
 
@@ -19,6 +19,11 @@ which codex 2>/dev/null && codex --version 2>&1 | head -1 || echo "CODEX_MISSING
 ### Agy (Antigravity)
 ```bash
 which agy 2>/dev/null || [ -x "$HOME/.local/bin/agy" ] && agy --version 2>&1 | head -1 || echo "AGY_MISSING"
+```
+
+### Kimi
+```bash
+which kimi 2>/dev/null || [ -x "$HOME/.kimi-code/bin/kimi" ] && kimi --version 2>&1 | head -1 || echo "KIMI_MISSING"
 ```
 
 ### Copilot (GPT)
@@ -43,6 +48,16 @@ Then authenticate: launch `agy` once and complete the Antigravity OAuth flow.
 Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
 If registration succeeds but the bridge cannot start, re-register with
 `--env=PATH=$HOME/.local/bin:$PATH`.
+```
+
+**Kimi Missing:**
+```
+Kimi Code CLI not found.
+Install Kimi Code; it lands in ~/.kimi-code/bin/kimi.
+Then authenticate: set an api_key in ~/.kimi-code/config.toml or export KIMI_API_KEY.
+(`kimi login` covers the subscription device-code flow, but subscription signup
+was not open for registration as of 2026-08-17.)
+Note: ~/.kimi-code/bin is often absent from the minimal PATH an MCP server inherits.
 ```
 
 **Copilot Missing:**
@@ -100,6 +115,7 @@ Run these checks and report results:
 # Check 1: CLI versions
 codex --version 2>&1 | head -1 || echo "Not installed"
 agy --version 2>&1 | head -1 || echo "Not installed"
+kimi --version 2>&1 | head -1 || echo "Not installed"
 copilot --version 2>&1 | head -1 || echo "Not installed"
 
 # Check 2: Codex MCP server
@@ -129,7 +145,15 @@ else
   echo "Agy Bridge: SKIPPED (Agy MCP not configured)"
 fi
 
-# Check 5: Copilot MCP server
+# Check 5: Kimi MCP server
+KIMI_CONFIG=$(claude mcp get kimi 2>/dev/null)
+if echo "$KIMI_CONFIG" | grep -q "server/kimi/index.js"; then
+  echo "Kimi: OK"
+else
+  echo "Kimi: NOT CONFIGURED"
+fi
+
+# Check 6: Copilot MCP server
 COPILOT_CONFIG=$(claude mcp get copilot 2>/dev/null)
 if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
   echo "Copilot: OK"
@@ -163,9 +187,11 @@ claude-delegator Status
 ───────────────────────────────────────────────────
 Codex CLI:      [version from check 1]
 Agy CLI:        [version from check 1]
+Kimi CLI:       [version from check 1]
 Copilot CLI:    [version from check 1]
 Codex MCP:      [status from check 2]
 Agy MCP:        [status from check 3]
+Kimi MCP:       [status from check 5]
 Agy Bridge:     [status from check 4]
 Copilot MCP:    [status from check 5]
 Copilot Bridge: [status from check 6]
@@ -186,6 +212,7 @@ Next steps:
 2. Authenticate providers as needed:
    - Codex: Run `codex login`
    - Agy: Run `agy` once to complete the Antigravity OAuth flow. There is no API-key variable; the token lives in the CLI's own user configuration.
+   - Kimi: Set an `api_key` in `~/.kimi-code/config.toml` or export `KIMI_API_KEY`. Subscription signup via `kimi login` was not open as of 2026-08-17.
    - Copilot: Run `copilot login`
 
 Five experts available:
@@ -214,7 +241,7 @@ Five experts available:
 
 Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is enforced by a clear "do not modify" instruction, while `read-only` is an explicit opt-in.
 Expert is auto-detected based on your request.
-Explicit: "Ask GPT to...", "Ask Agy to...", or "Ask Copilot to..."
+Explicit: "Ask GPT to...", "Ask Agy to...", "Ask Kimi to...", or "Ask Copilot to..."
 ```
 
 ## Step 7: Ask About Starring

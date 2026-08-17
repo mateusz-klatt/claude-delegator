@@ -263,6 +263,35 @@
         "Grok 4.6"
       ],
       "pickerNote": "Observed in the interactive /model picker on 2026-08-17. accountUnavailable ids are still in the CLI allowlist but the picker marks them Unavailable for this account, so a call would be backend-rejected. pickerOnly entries are display names the picker offers but `copilot help config` does not list; their CLI ids are unconfirmed."
+    },
+    "kimi": {
+      "cliVersion": "0.36.1",
+      "discoverySource": "Model aliases configured in ~/.kimi-code/config.toml on 2026-08-17, corroborated by the interactive /model picker. The roster is user-extensible via `kimi provider catalog`, so --model stays free-form; kimi validates it itself and an unknown alias fails with exit 1 and a clear stderr message before any work happens.",
+      "defaultModel": "moonshot-ai/kimi-k3",
+      "freeFormModel": true,
+      "emitsEffortFlag": false,
+      "effortNote": "kimi exposes no effort flag. Reasoning depth is the [thinking] toggle in config.toml, which is user state the bridge does not touch.",
+      "models": [
+        "moonshot-ai/kimi-k3",
+        "moonshot-ai/kimi-k2.7-code",
+        "moonshot-ai/kimi-k2.7-code-highspeed",
+        "moonshot-ai/kimi-k2.6"
+      ],
+      "permissionNote": "kimi print mode (-p) has NO permission tier: --plan, --yolo and --auto are all rejected as 'Cannot combine --prompt with ...', and a plain -p run created a file unprompted. The bridge therefore refuses sandbox: read-only rather than advertise a guarantee it cannot honour.",
+      "contextNote": "A repository-supplied AGENTS.md in cwd is auto-loaded into the session (verified: sentinel honoured with the file present, NO_CODEWORD in a clean directory). --skills-dir pointed at an empty directory does not suppress it. There is no known off switch, so treat every kimi delegation as trusting the target repository.",
+      "liveCalls": [
+        {
+          "model": "moonshot-ai/kimi-k2.7-code-highspeed",
+          "transport": "uniform bridge",
+          "operations": [
+            "start",
+            "reply"
+          ],
+          "result": "success"
+        }
+      ],
+      "authNote": "Kimi Code supports both a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17, so the API key is the practical path. The key can live as `api_key` under [providers.*] in ~/.kimi-code/config.toml, or come from KIMI_API_KEY / MOONSHOT_API_KEY in the environment, which the bridge passes through untouched.",
+      "envNote": "The CLI also recognises a large models.dev catalog of third-party provider key variables (ANTHROPIC_API_KEY, AZURE_API_KEY, CEREBRAS_API_KEY and many more). buildCalleeEnv forwards the caller environment except Agent Mail identity, so any such key already exported in the parent shell is visible to the delegated kimi process."
     }
   }
 }

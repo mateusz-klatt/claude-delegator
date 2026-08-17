@@ -10,6 +10,11 @@
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/server/agy/index.js"]
     },
+    "kimi": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/kimi/index.js"]
+    },
     "copilot": {
       "type": "stdio",
       "command": "node",

@@ -1,6 +1,6 @@
 # Delegation Triggers
 
-This file defines when to delegate to experts via Claude, Codex, Agy, or Copilot.
+This file defines when to delegate to experts via Claude, Codex, Agy, Kimi, or Copilot.
 
 ## IMPORTANT: Check These Triggers on EVERY Message
 
@@ -8,7 +8,7 @@ You MUST scan incoming messages for delegation triggers. This is NOT optional.
 
 **Behavior:**
 1. **PROACTIVE**: On every user message, check if semantic triggers match → delegate automatically
-2. **REACTIVE**: If user explicitly mentions Claude, GPT/Codex, Agy/Antigravity, or Copilot → delegate immediately
+2. **REACTIVE**: If user explicitly mentions Claude, GPT/Codex, Agy/Antigravity, Kimi, or Copilot → delegate immediately
 
 When a trigger matches:
 1. Identify the appropriate expert
@@ -36,6 +36,7 @@ User explicitly requests delegation:
 | "ask Claude", "consult Claude" | Route based on context; external orchestrators only |
 | "ask GPT", "consult GPT" | Route based on context |
 | "ask Agy", "ask agy", "ask Antigravity" | Route based on context |
+| "ask Kimi", "ask kimi" | Route based on context |
 | "ask Copilot", "ask copilot" | Route based on context |
 | "review this architecture" | Architect |
 | "review this plan" | Plan Reviewer |
@@ -119,7 +120,7 @@ Any expert can operate in two modes:
 | **Advisory** | Default `workspace-write` + explicit "do not modify" instruction | Analysis, recommendations, review verdicts without nested approval prompts |
 | **Implementation** | `workspace-write` (non-interactive full-tool mode) | Actually making changes, fixing issues |
 
-Codex native MCP may inherit the operator's own sandbox. Claude, Agy, and Copilot bridge calls should receive the bridge sandbox above. Note that Agy's `read-only` soft-denies shell only — it does not deny writes. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
+Codex native MCP may inherit the operator's own sandbox. Claude, Agy, and Copilot bridge calls should receive the bridge sandbox above. Note that Agy's `read-only` soft-denies shell only — it does not deny writes — and Kimi refuses `read-only` outright because print mode has no permission tier. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
 
 **Examples:**
 
