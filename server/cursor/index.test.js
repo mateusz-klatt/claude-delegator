@@ -551,28 +551,37 @@ test("falls back to the stable launcher and never to a versioned path", () => {
 
 test("expands the Windows shim to the PowerShell script it wraps", () => {
   const { resolveWindowsShim } = require("./index.js");
-  const dir = "C:\\Users\\dev\\AppData\\Local\\cursor-agent";
+  const dir = "C:\\Users\\mateu\\AppData\\Local\\cursor-agent";
 
-  // The vendor shim names its directory SCRIPT_DIR rather than dp0, which is why
-  // the core reads the assignment out of the shim instead of keeping a list of
-  // popular variable names.
-  const shim = [
-    "@echo off",
-    "SET SCRIPT_DIR=%~dp0",
-    '%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe ' +
-      '-NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\\cursor-agent.ps1" %*'
-  ].join("\r\n");
+  // Verbatim from a Windows host, like test/fixtures/copilot.cmd. It differs from
+  // that one in every way that touches the resolver, which is why a reconstruction
+  // was not good enough: it names its directory SCRIPT_DIR rather than dp0, it
+  // STRIPS the trailing backslash before use, and its target is a .ps1 that cannot
+  // be spawned as an image at all rather than a .js that node can run.
+  const shim = fs.readFileSync(
+    path.join(__dirname, "..", "..", "test", "fixtures", "cursor-agent.cmd"),
+    "utf8"
+  );
 
   assert.equal(
     resolveWindowsShim(`${dir}\\cursor-agent.cmd`, () => shim),
     `${dir}\\cursor-agent.ps1`
   );
 
-  // NOTE: the shim body above is reconstructed from a colleague's report of the
-  // powershell line, not captured verbatim from a Windows host the way
-  // test/fixtures/copilot.cmd was. How SCRIPT_DIR is assigned is therefore the
-  // one unverified assumption in this bridge; replace this with a real fixture
-  // when someone can read the installed file.
+  // The stripping is why this must be a real capture. SCRIPT_DIR holds no trailing
+  // separator by the time it is used, and the shim supplies its own -- so an
+  // expansion that appends one would produce a doubled backslash, and one that
+  // assumed the variable still carried it would produce none.
+  const resolved = resolveWindowsShim(`${dir}\\cursor-agent.cmd`, () => shim);
+  assert.doesNotMatch(resolved, /\\\\/);
+  assert.doesNotMatch(resolved, /%[A-Za-z_]/);
+
+  // Windows installs it CRLF; git may hand it back either way depending on
+  // autocrlf, and neither may change the answer.
+  assert.equal(
+    resolveWindowsShim(`${dir}\\cursor-agent.cmd`, () => shim.replace(/\n/g, "\r\n")),
+    `${dir}\\cursor-agent.ps1`
+  );
 });
 
 test("cancels an active Cursor process group and keeps the MCP server responsive", async () => {
