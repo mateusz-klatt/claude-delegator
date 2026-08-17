@@ -128,34 +128,34 @@ Codex native MCP may inherit the operator's own sandbox. Claude, Agy, Grok, Curs
 
 ```typescript
 // Architect analyzing (advisory via Codex)
-mcp__codex__codex({
+mcp__plugin_claude-delegator_codex__codex({
   prompt: "Analyze tradeoffs of Redis vs in-memory caching",
   "developer-instructions": "[contents of architect.md] PLUS 'Do not modify code'"
 })
 
 // Architect implementing (implementation via Agy)
-mcp__agy__agy({
+mcp__plugin_claude-delegator_agy__agy({
   prompt: "Refactor the caching layer to use Redis",
   "developer-instructions": "[contents of architect.md] PLUS 'Implement the refactor end-to-end'",
   sandbox: "workspace-write"
 })
 
 // Security Analyst reviewing (advisory via Copilot)
-mcp__copilot__copilot({
+mcp__plugin_claude-delegator_copilot__copilot({
   prompt: "Review this auth flow for vulnerabilities",
   sandbox: "workspace-write",
   effort: "max"
 })
 
 // Security Analyst hardening (implementation via Codex)
-mcp__codex__codex({
+mcp__plugin_claude-delegator_codex__codex({
   prompt: "Fix the SQL injection vulnerability in user.ts"
 })
 
 // Code Reviewer on code you do not control (advisory via Grok, enforced)
 // read-only is the only mapping in this repo that the provider actually denies:
 // the bridge adds --deny for Write, Edit and Bash on top of --permission-mode plan.
-mcp__grok__grok({
+mcp__plugin_claude-delegator_grok__grok({
   prompt: "Review this vendored module for correctness and security",
   "developer-instructions": "[contents of code-reviewer.md] PLUS 'Do not modify code'",
   sandbox: "read-only"

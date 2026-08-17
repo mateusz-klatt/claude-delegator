@@ -84,11 +84,11 @@ You: "Is this authentication flow secure?"
 Claude: [Detects security question → selects Security Analyst]
                     ↓
         ┌───────────────────────────────┐
-        │  mcp__codex__codex            │
+        │  mcp__plugin_claude-delegator_codex__codex            │
         │  (or mcp__claude__claude)     │
-        │  (or mcp__agy__agy)          │
-        │  (or mcp__kimi__kimi)        │
-        │  (or mcp__copilot__copilot)   │
+        │  (or mcp__plugin_claude-delegator_agy__agy)          │
+        │  (or mcp__plugin_claude-delegator_kimi__kimi)        │
+        │  (or mcp__plugin_claude-delegator_copilot__copilot)   │
         │  → Security Analyst prompt    │
         │  → Expert analyzes your code  │
         └───────────────────────────────┘

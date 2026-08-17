@@ -117,7 +117,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
-### `mcp__codex__codex` (Start Session)
+### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -133,7 +133,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 **Effort guidance**: the launcher pins `model_reasoning_effort=ultra` when it starts the server, and a per-call `model` override does **not** lower it. Only `gpt-5.6-sol` and `gpt-5.6-terra` accept `ultra`; `gpt-5.6-luna` stops at `max`, and `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` stop at `xhigh`. Delegating to any of those without also passing `config: {"model_reasoning_effort": "xhigh"}` (or `"max"` for `gpt-5.6-luna`) fails with an HTTP 400 `unsupported_value` on `reasoning.effort` before the session starts, so no work happens and no `threadId` comes back to resume. Codex reports the pinned value as `max` in that error because it normalises `ultra` at the API layer. Unlike the Copilot bridge, which clamps effort per model in `resolveEffort`, the transparent launcher never inspects the call and cannot correct this for you.
 
-### `mcp__codex__codex-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_codex__codex-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -142,7 +142,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Agy Parameters Reference
 
-### `mcp__agy__agy` (Start Session)
+### `mcp__plugin_claude-delegator_agy__agy` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -168,7 +168,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 **Reply re-pins the model**: unlike every sibling bridge, `agy-reply` **requires** `model`. A resumed agy conversation inherits neither its model nor its workspace — omitting the flag silently falls back to the user's `settings.json` default, which was observed switching a Flash-tier session to Gemini 3.7 Flash (High) mid-conversation. Echo back the model the start call used, and pass the same `cwd`.
 
-### `mcp__agy__agy-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_agy__agy-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -182,7 +182,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Kimi Parameters Reference
 
-### `mcp__kimi__kimi` (Start Session)
+### `mcp__plugin_claude-delegator_kimi__kimi` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -206,7 +206,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 **Workspace context**: a repository-supplied `AGENTS.md` in `cwd` is auto-loaded into the session. Verified: the sentinel instruction was honoured with the file present and the model answered `NO_CODEWORD` in a clean directory. `--skills-dir` pointed at an empty directory does **not** suppress it, and no off switch was found. This is a wider prompt-injection surface than Agy's, where omitting `--add-dir` prevents rules injection entirely — so treat every kimi delegation as trusting the target repository, and prefer another provider when delegating into code you did not write.
 
-### `mcp__kimi__kimi-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_kimi__kimi-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -252,7 +252,7 @@ Access is tiered, and the tiers do not follow model size. `gpt-oss:20b`/`:120b`,
 
 ## Grok Parameters Reference
 
-### `mcp__grok__grok` (Start Session)
+### `mcp__plugin_claude-delegator_grok__grok` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -279,7 +279,7 @@ Verified on **three hosts** (WSL, macOS and Linux), identical verbatim denial st
 
 **Model guidance**: `grok-4.6` is the only model this account advertises, and `grok models` lists the roster headlessly, so a refresh needs no PTY. A free account has a usage limit that returns a JSON error object rather than a non-zero exit — budget for it on long runs.
 
-### `mcp__grok__grok-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_grok__grok-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -293,7 +293,7 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 
 ## Cursor Parameters Reference
 
-### `mcp__cursor__cursor` (Start Session)
+### `mcp__plugin_claude-delegator_cursor__cursor` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -321,7 +321,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 
 **Context**: `--add-dir` is never passed, for the Agy reason — `cwd` alone grants file access, while `--add-dir` widens rules discovery.
 
-### `mcp__cursor__cursor-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_cursor__cursor-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -337,7 +337,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 
 ## Copilot Parameters Reference
 
-### `mcp__copilot__copilot` (Start Session)
+### `mcp__plugin_claude-delegator_copilot__copilot` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -372,7 +372,7 @@ Pass the `threadId` returned by `claude` plus the follow-up `prompt`. The reply 
 
 Do not add this target to Claude Code's own MCP configuration; that would create a self-delegation path.
 
-### `mcp__copilot__copilot-reply` (Continue Session)
+### `mcp__plugin_claude-delegator_copilot__copilot-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|

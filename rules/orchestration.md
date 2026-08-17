@@ -8,18 +8,18 @@ You have access to Claude, GPT, Agy, Kimi, Grok, Cursor, and Copilot experts via
 |------|----------|---------|
 | `mcp__claude__claude` | Claude | Start a new Claude expert session from an external orchestrator |
 | `mcp__claude__claude-reply` | Claude | Continue an existing Claude session (multi-turn) |
-| `mcp__codex__codex` | GPT (Codex) | Start a new expert session |
-| `mcp__codex__codex-reply` | GPT (Codex) | Continue an existing session (multi-turn) |
-| `mcp__agy__agy` | Agy (Antigravity) | Start a new expert session |
-| `mcp__agy__agy-reply` | Agy (Antigravity) | Continue an existing session (multi-turn) |
-| `mcp__kimi__kimi` | Kimi (Moonshot) | Start a new expert session |
-| `mcp__kimi__kimi-reply` | Kimi (Moonshot) | Continue an existing session (multi-turn) |
-| `mcp__grok__grok` | Grok (xAI) | Start a new expert session; the only bridge whose `read-only` denies |
-| `mcp__grok__grok-reply` | Grok (xAI) | Continue an existing session (multi-turn) |
-| `mcp__cursor__cursor` | Cursor (Cursor Agent) | Start a new expert session |
-| `mcp__cursor__cursor-reply` | Cursor (Cursor Agent) | Continue an existing session (multi-turn) |
-| `mcp__copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
-| `mcp__copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_codex__codex` | GPT (Codex) | Start a new expert session |
+| `mcp__plugin_claude-delegator_codex__codex-reply` | GPT (Codex) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_agy__agy` | Agy (Antigravity) | Start a new expert session |
+| `mcp__plugin_claude-delegator_agy__agy-reply` | Agy (Antigravity) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_kimi__kimi` | Kimi (Moonshot) | Start a new expert session |
+| `mcp__plugin_claude-delegator_kimi__kimi-reply` | Kimi (Moonshot) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_grok__grok` | Grok (xAI) | Start a new expert session; the only bridge whose `read-only` denies |
+| `mcp__plugin_claude-delegator_grok__grok-reply` | Grok (xAI) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_cursor__cursor` | Cursor (Cursor Agent) | Start a new expert session |
+| `mcp__plugin_claude-delegator_cursor__cursor-reply` | Cursor (Cursor Agent) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
+| `mcp__plugin_claude-delegator_copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
 ## Available Experts
 
@@ -39,7 +39,7 @@ Every provider target supports both single-shot and multi-turn delegation.
 
 ### Single-Shot (Default)
 
-Use `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, `mcp__kimi__kimi`, `mcp__grok__grok`, `mcp__cursor__cursor`, or `mcp__copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
+Use `mcp__claude__claude`, `mcp__plugin_claude-delegator_codex__codex`, `mcp__plugin_claude-delegator_agy__agy`, `mcp__plugin_claude-delegator_kimi__kimi`, `mcp__plugin_claude-delegator_grok__grok`, `mcp__plugin_claude-delegator_cursor__cursor`, or `mcp__plugin_claude-delegator_copilot__copilot` for independent tasks. Each call starts a fresh session with no memory of previous calls. Include ALL relevant context in the delegation prompt.
 
 **Best for:** Advisory reviews, one-off analysis, independent implementation tasks.
 
@@ -49,7 +49,7 @@ Every target returns a `threadId` from the initial call. Pass it to the correspo
 
 ```typescript
 // Turn 1: Start session (Codex example)
-const result = mcp__codex__codex({
+const result = mcp__plugin_claude-delegator_codex__codex({
   prompt: "Implement input validation for the user endpoint",
   "developer-instructions": "[expert prompt]",
   cwd: "/path/to/project"
@@ -57,7 +57,7 @@ const result = mcp__codex__codex({
 // result includes threadId: "019c58e5-..."
 
 // Turn 2: Follow up with context preserved
-mcp__codex__codex-reply({
+mcp__plugin_claude-delegator_codex__codex-reply({
   threadId: "019c58e5-...",
   prompt: "Now add tests for the validation you just implemented"
 })
@@ -178,7 +178,7 @@ For the Claude, Agy, Kimi, and Copilot bridges, pass the object only through the
 ### Step 6: Call the Expert
 ```typescript
 // Using Codex (GPT) — sandbox/approval inherit from ~/.codex/config.toml
-mcp__codex__codex({
+mcp__plugin_claude-delegator_codex__codex({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file — also carries advisory-vs-implementation intent]",
   cwd: "[current working directory]"
@@ -195,7 +195,7 @@ mcp__claude__claude({
 })
 
 // OR Using Agy
-mcp__agy__agy({
+mcp__plugin_claude-delegator_agy__agy({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
   coordination: { /* optional caller envelope */ },
@@ -204,7 +204,7 @@ mcp__agy__agy({
 })
 
 // OR Using Grok — the one bridge where read-only is enforced, not advisory
-mcp__grok__grok({
+mcp__plugin_claude-delegator_grok__grok({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
   coordination: { /* optional caller envelope */ },
@@ -213,7 +213,7 @@ mcp__grok__grok({
 })
 
 // OR Using Cursor — read-only deflects but does not deny; carry intent in the instructions
-mcp__cursor__cursor({
+mcp__plugin_claude-delegator_cursor__cursor({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
   coordination: { /* optional caller envelope */ },
@@ -222,7 +222,7 @@ mcp__cursor__cursor({
 })
 
 // OR Using Copilot (GPT) — Copilot defaults to never-asking
-mcp__copilot__copilot({
+mcp__plugin_claude-delegator_copilot__copilot({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
   coordination: { /* optional caller envelope */ },
@@ -258,10 +258,10 @@ Escalate to user
 
 ```typescript
 // Attempt 1 (Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot)
-const result = mcp__codex__codex({ ... }) // or mcp__claude__claude / mcp__agy__agy / mcp__kimi__kimi / mcp__copilot__copilot
+const result = mcp__plugin_claude-delegator_codex__codex({ ... }) // or mcp__claude__claude / mcp__plugin_claude-delegator_agy__agy / mcp__plugin_claude-delegator_kimi__kimi / mcp__plugin_claude-delegator_copilot__copilot
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
-mcp__codex__codex-reply({ // or mcp__claude__claude-reply / mcp__agy__agy-reply / mcp__kimi__kimi-reply / mcp__copilot__copilot-reply
+mcp__plugin_claude-delegator_codex__codex-reply({ // or mcp__claude__claude-reply / mcp__plugin_claude-delegator_agy__agy-reply / mcp__plugin_claude-delegator_kimi__kimi-reply / mcp__plugin_claude-delegator_copilot__copilot-reply
   threadId: result.threadId,
   prompt: `The previous implementation failed verification.
 Error: [exact error message]
@@ -306,7 +306,7 @@ User: "What are the tradeoffs of Redis vs in-memory caching?"
 
 **Step 5-6**:
 ```typescript
-mcp__codex__codex({
+mcp__plugin_claude-delegator_codex__codex({
   prompt: `TASK: Analyze tradeoffs between Redis and in-memory caching for [context].
 EXPECTED OUTCOME: Clear recommendation with rationale.
 CONTEXT: [user's situation, full details]
@@ -325,7 +325,7 @@ First attempt failed with "TypeError: Cannot read property 'x' of undefined"
 
 **Attempt 1 (initial call):**
 ```typescript
-const result = mcp__codex__codex({
+const result = mcp__plugin_claude-delegator_codex__codex({
   prompt: `TASK: Add input validation to the user registration endpoint.
 
 CONTEXT:
@@ -344,7 +344,7 @@ REQUIREMENTS:
 
 **Attempt 2 (retry via multi-turn):**
 ```typescript
-mcp__codex__codex-reply({
+mcp__plugin_claude-delegator_codex__codex-reply({
   threadId: result.threadId,
   prompt: `The previous implementation failed verification.
 Error: TypeError: Cannot read property 'x' of undefined at line 45

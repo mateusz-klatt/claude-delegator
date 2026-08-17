@@ -296,3 +296,33 @@ test("no distributed config passes a -c override that would CREATE a config tabl
     );
   }
 });
+
+test("shipped rules name the tools the plugin actually advertises", () => {
+  const manifest = require("../.claude-plugin/plugin.json");
+  const shipped = ["rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md",
+                   "CLAUDE.md", "README.md"];
+
+  // commands/setup.md copies rules/*.md into ~/.claude/rules/delegator/, so these
+  // files are the orchestrator's instructions, not just prose. Declaring the
+  // servers in the manifest renamed every tool -- mcp__agy__agy became
+  // mcp__plugin_claude-delegator_agy__agy -- and left 70 references to names that
+  // no longer resolve. The release would have shipped instructions telling Claude
+  // Code to call tools it cannot see.
+  for (const file of shipped) {
+    const text = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+    for (const server of Object.keys(manifest.mcpServers)) {
+      assert.doesNotMatch(
+        text,
+        new RegExp(`mcp__${server}__`),
+        `${file} still names mcp__${server}__*, which no longer exists`
+      );
+    }
+  }
+
+  // The Claude bridge is the deliberate exception and must NOT be rewritten: it is
+  // absent from the manifest by decision 9, so an external orchestrator registers
+  // it itself and it keeps the bare name.
+  const orchestration = fs.readFileSync(path.resolve(__dirname, "../rules/orchestration.md"), "utf8");
+  assert.match(orchestration, /mcp__claude__claude/);
+  assert.equal(Object.hasOwn(manifest.mcpServers, "claude"), false);
+});

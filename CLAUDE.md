@@ -48,7 +48,7 @@ User Request → Claude Code → [Match trigger → Select expert & provider]
 1. **Match trigger** - Check `rules/triggers.md` for semantic patterns
 2. **Read expert prompt** - Load from `prompts/[expert].md`
 3. **Build 7-section prompt** - Use format from `rules/delegation-format.md`
-4. **Call provider tool** - `mcp__claude__claude`, `mcp__codex__codex`, `mcp__agy__agy`, `mcp__kimi__kimi`, or `mcp__copilot__copilot`
+4. **Call provider tool** - `mcp__claude__claude`, `mcp__plugin_claude-delegator_codex__codex`, `mcp__plugin_claude-delegator_agy__agy`, `mcp__plugin_claude-delegator_kimi__kimi`, or `mcp__plugin_claude-delegator_copilot__copilot`
 5. **Synthesize response** - Never show raw output; interpret and verify
 
 ### The 7-Section Delegation Format
