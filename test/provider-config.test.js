@@ -258,3 +258,41 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
   assert.doesNotMatch(setup, /^claude mcp add /m);
 });
+
+test("no distributed config passes a -c override that would CREATE a config table", () => {
+  const manifest = require("../.claude-plugin/plugin.json");
+
+  // Stated as a property rather than by comparing against EXPECTED_CODEX_ARGS,
+  // because that literal is exactly the construction which entrenched the defect:
+  // adding the flag back to both the literal and the manifest would keep a
+  // deepEqual green. A `-c mcp_servers.<name>.<key>` override CREATES that table
+  // when config.toml has no such section, and Codex then refuses to start on an
+  // entry declaring no transport -- surfacing as CONNECTION_CLOSED, which names
+  // neither the flag nor the config. It shipped in three distributed configs and
+  // no test saw it, because the bridges answer a hand-written `initialize` while
+  // the launcher only parses config once it is running as an MCP server.
+  //
+  // This cannot prove Codex starts -- that needs the CLI installed and is a
+  // developer-host check. It does catch the exact shape that reached a release.
+  const sources = {
+    "plugin.json": manifest.mcpServers.codex.args,
+    "providers.json": providers.providers.codex.mcp.args,
+    "mcp-servers.example.json": mcpServers.mcpServers.codex.args
+  };
+
+  for (const [where, args] of Object.entries(sources)) {
+    const overrides = args.filter((argument, index) => args[index - 1] === "-c");
+    for (const override of overrides) {
+      assert.doesNotMatch(
+        override,
+        /^mcp_servers\./,
+        `${where} must not -c into mcp_servers.*; it creates the table it means to disable`
+      );
+    }
+    // The effort pin is the legitimate use of -c and must survive.
+    assert.ok(
+      overrides.some((override) => override.startsWith("model_reasoning_effort=")),
+      `${where} should still pin the reasoning effort`
+    );
+  }
+});
