@@ -402,7 +402,7 @@ npm test
 npm run test:coverage
 ```
 
-[`test/mcp-probe.mjs`](test/mcp-probe.mjs) is a manual stdio handshake/live-call probe and is intentionally excluded from the unit-test glob. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the suite on Node 22 and 24, uploads exact-commit coverage, and scans the [`mateusz-klatt_claude-delegator`](https://sonarcloud.io/project/overview?id=mateusz-klatt_claude-delegator) SonarCloud project when the repository has a `SONAR_TOKEN` Actions secret. Without the secret, tests remain green and the scan is skipped with a warning.
+[`test/mcp-probe.mjs`](test/mcp-probe.mjs) is a manual stdio handshake/live-call probe and is intentionally excluded from the unit-test glob. The [CI workflow](https://github.com/mateusz-klatt/claude-delegator/actions/workflows/ci.yml) runs the suite on Node 22 and 24, uploads exact-commit coverage, and scans the [`mateusz-klatt_claude-delegator`](https://sonarcloud.io/project/overview?id=mateusz-klatt_claude-delegator) SonarCloud project when the repository has a `SONAR_TOKEN` Actions secret. Without the secret, tests remain green and the scan is skipped with a warning.
 
 ### Customizing Expert Prompts
 

@@ -803,9 +803,17 @@ test("setup accepts non-executable Windows command shims without weakening nativ
 
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
   const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const contributing = fs.readFileSync(path.resolve(__dirname, "../CONTRIBUTING.md"), "utf8");
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
   const uninstall = fs.readFileSync(path.resolve(__dirname, "../commands/uninstall.md"), "utf8");
 
+  assert.match(contributing, /mcp__plugin_claude-delegator_codex__codex/);
+  assert.doesNotMatch(contributing, /mcp__codex__codex/);
+  assert.match(
+    readme,
+    /https:\/\/github\.com\/mateusz-klatt\/claude-delegator\/actions\/workflows\/ci\.yml/
+  );
+  assert.doesNotMatch(readme, /\]\(\.github\/workflows\/ci\.yml\)/);
   assert.match(readme, /before 1\.9\.0/);
   assert.match(uninstall, /before 1\.9\.0/);
   assert.doesNotMatch(`${readme}\n${uninstall}`, /before 1\.8\.0/);
@@ -837,6 +845,46 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   assert.match(uninstallBlock, /claude_plugin_list=\$\(claude plugin list --json/);
   assert.match(uninstallBlock, /legacy_scan_status=\$\?/);
   assert.match(uninstallBlock, /preserving all bare MCP registrations/);
+  assert.match(uninstallBlock, /legacy_removed=""/);
+  assert.match(uninstallBlock, /legacy_remove_failed=""/);
+  assert.match(
+    uninstallBlock,
+    /if claude mcp remove --scope user "\$s"[^\n]+; then[\s\S]+?legacy_removed=/
+  );
+  assert.doesNotMatch(uninstallBlock, /claude mcp remove[^\n]+\|\| true/);
+  assert.match(uninstallBlock, /Preserved all bare MCP registrations because their ownership could not be verified/);
+  assert.match(uninstallBlock, /Removed recognized legacy user-scoped MCP registrations: \$legacy_removed/);
+  assert.match(uninstallBlock, /No recognized legacy user-scoped MCP registrations required removal/);
+  assert.match(uninstallBlock, /Failed to remove legacy user-scoped MCP registrations: \$legacy_remove_failed/);
+  const removalReporting = /(legacy_removed=""[\s\S]*?)\n# Remove the plugin/.exec(uninstallBlock)?.[1];
+  assert.ok(removalReporting, "uninstall legacy removal reporting block missing");
+  const runRemovalReporting = ({ scanStatus = 0, servers = "", failures = "" } = {}) => spawnSync(
+    "bash",
+    ["-c", `
+claude() {
+  case " $REMOVE_FAILURES " in
+    *" $5 "*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+legacy_scan_status=${scanStatus}
+legacy_servers=${JSON.stringify(servers)}
+REMOVE_FAILURES=${JSON.stringify(failures)}
+${removalReporting}
+`],
+    { encoding: "utf8" }
+  );
+  const preserved = runRemovalReporting({ scanStatus: 1, servers: "codex" });
+  assert.equal(preserved.status, 0);
+  assert.match(preserved.stdout, /Preserved all bare MCP registrations/);
+  assert.doesNotMatch(preserved.stdout, /Removed recognized legacy/);
+  const partial = runRemovalReporting({ servers: "codex agy", failures: "agy" });
+  assert.equal(partial.status, 0);
+  assert.match(partial.stdout, /Removed recognized legacy user-scoped MCP registrations: codex/);
+  assert.match(partial.stderr, /Failed to remove legacy user-scoped MCP registrations: agy/);
+  const empty = runRemovalReporting();
+  assert.equal(empty.status, 0);
+  assert.match(empty.stdout, /No recognized legacy user-scoped MCP registrations required removal/);
   const extractLegacyScanner = (block) =>
     /legacy_servers="\$\(\n\s+CLAUDE_PLUGIN_LIST_JSON="\$claude_plugin_list" node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
   const uninstallScanner = extractLegacyScanner(uninstallBlock);

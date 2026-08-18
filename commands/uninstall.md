@@ -111,13 +111,31 @@ for (const name of legacy) {
 NODE
 )"
 legacy_scan_status=$?
+legacy_removed=""
+legacy_remove_failed=""
 if [ "$legacy_scan_status" -ne 0 ]; then
   printf '%s\n' "Could not verify the active plugin cache root; preserving all bare MCP registrations." >&2
   legacy_servers=""
 fi
 for s in $legacy_servers; do
-  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
+  if claude mcp remove --scope user "$s" >/dev/null 2>&1; then
+    legacy_removed="${legacy_removed:+$legacy_removed }$s"
+  else
+    legacy_remove_failed="${legacy_remove_failed:+$legacy_remove_failed }$s"
+  fi
 done
+
+if [ "$legacy_scan_status" -ne 0 ]; then
+  printf '%s\n' "⚠ Preserved all bare MCP registrations because their ownership could not be verified."
+elif [ -n "$legacy_removed" ]; then
+  printf '%s\n' "✓ Removed recognized legacy user-scoped MCP registrations: $legacy_removed"
+else
+  printf '%s\n' "✓ No recognized legacy user-scoped MCP registrations required removal."
+fi
+if [ -n "$legacy_remove_failed" ]; then
+  printf '%s\n' "⚠ Failed to remove legacy user-scoped MCP registrations: $legacy_remove_failed" >&2
+fi
+printf '%s\n' "✓ Preserved ambiguous or independently owned same-named MCP registrations."
 
 # Remove the plugin that owns the namespaced plugin:claude-delegator:* servers.
 claude plugin uninstall --scope user claude-delegator@jarrodwatts-claude-delegator
@@ -132,12 +150,7 @@ rm -rf -- "$rules_root"
 
 ## Confirm Completion
 
-```
-✓ Removed the claude-delegator plugin and its MCP servers
-✓ Removed recognized legacy user-scoped MCP registrations
-✓ Preserved ambiguous or independently owned same-named MCP registrations
-✓ Removed rules from the active Claude profile's rules/delegator/ directory
-```
+Read the command output instead of assuming every legacy registration was removed. It reports the exact names removed, says when none required removal, and emits a warning when provenance could not be verified or a removal failed. Ambiguous or independently owned same-named MCP registrations are always preserved. Also confirm that the plugin uninstall and rules removal commands completed successfully before restarting Claude Code.
 
 Restart Claude Code to unload any tools retained by the current process.
 
