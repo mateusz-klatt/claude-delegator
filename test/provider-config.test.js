@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -255,6 +254,31 @@ test("catalog refresh prose follows the catalog dates and response envelope type
   assert.doesNotMatch(orchestration, /threadId:\s*result\.threadId/);
 });
 
+test("coordination guidance follows the live Agent Mail delivery shape", () => {
+  const files = [
+    "prompts/agent-mail-coordination.md",
+    "rules/orchestration.md",
+    "rules/delegation-format.md"
+  ];
+  for (const file of files) {
+    const source = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+    assert.match(source, /deliveries\[0\]\.message\.id/, file);
+    assert.doesNotMatch(source, /deliveries\[0\]\.payload\.id/, file);
+  }
+
+  const prompt = fs.readFileSync(
+    path.resolve(__dirname, "../prompts/agent-mail-coordination.md"),
+    "utf8"
+  );
+  const providerSessionLine = prompt.split(/\r?\n/).find((line) =>
+    line.includes("provider session `threadId`")
+  );
+  assert.ok(providerSessionLine, "coordination prompt must distinguish provider sessions");
+  for (const provider of Object.keys(providers.providers)) {
+    assert.ok(providerSessionLine.includes(`\`${provider}\``), `coordination prompt omits ${provider}`);
+  }
+});
+
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {
   const agyBridge = require("../server/agy");
   const kimiBridge = require("../server/kimi");
@@ -488,13 +512,16 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
     .map((name) => `plugin:${manifest.name}:${name}`);
   assert.deepEqual([...configuredServers].sort(), expectedServers.sort());
   assert.match(setup, /claude mcp get "\$server"/);
-  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$";
+  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$";
   assert.ok(setup.includes(`grep -Eq '${connectedPattern}'`));
-  for (const status of ["Status: ✔ Connected\n", "  Status: ✔ Connected  \n"]) {
-    assert.equal(spawnSync("grep", ["-Eq", connectedPattern], { input: status }).status, 0, status);
+  const isConnectedStatus = (status) => status.split(/\r?\n/).some((line) =>
+    /^[\t ]*Status:[\t ]+[^\p{L}\p{N}\s]+[\t ]+Connected[\t ]*$/u.test(line)
+  );
+  for (const status of ["Status: ✔ Connected\n", "Status: √ Connected\r\n", "  Status: ✓ Connected  \n"]) {
+    assert.equal(isConnectedStatus(status), true, status);
   }
   for (const status of ["Status: Not Connected\n", "Status: Disconnected\n", "Status: Connected\n"]) {
-    assert.notEqual(spawnSync("grep", ["-Eq", connectedPattern], { input: status }).status, 0, status);
+    assert.equal(isConnectedStatus(status), false, status);
   }
   assert.doesNotMatch(setup, /grep -q ["']server\//);
   assert.match(
@@ -503,6 +530,8 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
     "setup must probe Grok's stable launcher even when it is absent from PATH"
   );
   assert.match(setup, /On Windows, only PATH is supported/);
+  assert.doesNotMatch(setup, /advisory intent is enforced/);
+  assert.doesNotMatch(setup, /denies shell only, never writes/);
   assert.match(
     setup,
     /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then\s+check_cli_version "Cursor" "cursor-agent"\s+else\s+check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/,
@@ -523,12 +552,28 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     /claude plugin uninstall --scope user claude-delegator@jarrodwatts-claude-delegator/
   );
   assert.match(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
-  const migrationBlocks = {
-    README: /### Repair MCP registration after an upgrade[\s\S]*?```bash\n([\s\S]*?)\n```/.exec(readme)?.[1],
-    setup: /### Clearing registrations from an older install[\s\S]*?```bash\n([\s\S]*?)\n```/.exec(setup)?.[1]
+  const extractMigrationBlock = (source, heading) => {
+    const normalized = source.replace(/\r\n?/g, "\n");
+    return new RegExp(`${heading}[\\s\\S]*?\`\`\`bash\\n([\\s\\S]*?)\\n\`\`\``).exec(normalized)?.[1];
   };
+  const migrationSources = {
+    README: [readme, "### Repair MCP registration after an upgrade"],
+    setup: [setup, "### Clearing registrations from an older install"]
+  };
+  const migrationBlocks = Object.fromEntries(Object.entries(migrationSources).map(
+    ([label, [source, heading]]) => [label, extractMigrationBlock(source, heading)]
+  ));
   const expectedServers = Object.keys(manifest.mcpServers);
-  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$";
+  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$";
+
+  for (const [label, [source, heading]] of Object.entries(migrationSources)) {
+    const crlf = source.replace(/\r?\n/g, "\r\n");
+    assert.equal(
+      extractMigrationBlock(crlf, heading),
+      migrationBlocks[label],
+      `${label}: migration parser must be invariant under CRLF checkout`
+    );
+  }
 
   for (const [label, block] of Object.entries(migrationBlocks)) {
     assert.ok(block, `${label}: migration block not found`);
@@ -536,6 +581,8 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     assert.match(block, /installed_plugins\.json/);
     assert.match(block, /records\[0\]\["installPath"\]/);
     assert.doesNotMatch(block, /glob\.glob/);
+    assert.match(block, /node - <<'NODE'/);
+    assert.doesNotMatch(block, /python3/);
     assert.ok(block.includes(`grep -Eq '${connectedPattern}'`));
     for (const server of expectedServers) {
       assert.ok(block.includes(`plugin:claude-delegator:${server}`), `${label}: guard omits ${server}`);
@@ -543,6 +590,7 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     const refusal = block.indexOf("stop before removing legacy registrations");
     const removal = block.indexOf("for s in codex agy kimi copilot grok cursor gemini; do");
     assert.ok(refusal >= 0 && refusal < removal, `${label}: Connected gate must precede legacy removal`);
+    assert.match(block, /claude mcp remove --scope user "\$s"/);
     assert.match(block, /\n\)\s*$/);
   }
   assert.match(uninstall, /\/plugin install claude-delegator@jarrodwatts-claude-delegator/);

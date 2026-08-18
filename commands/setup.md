@@ -197,23 +197,26 @@ claude plugin install   claude-delegator@jarrodwatts-claude-delegator
 # 1b. Confirm the reinstall actually delivered what step 2 depends on. Read the
 #     manifest from Claude Code's active user-scope installPath, never by guessing
 #     which version-shaped cache directory is active. Fail closed on ambiguity.
-python3 - <<'PY'
-import json, os
-expected = ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
-state = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
-records = json.load(open(state)).get("plugins", {}).get(
-    "claude-delegator@jarrodwatts-claude-delegator", []
-)
-records = [record for record in records if record.get("scope") == "user"]
-if len(records) != 1 or not records[0].get("installPath"):
-    raise SystemExit("expected exactly one active user-scope claude-delegator install")
-manifest = os.path.join(records[0]["installPath"], ".claude-plugin", "plugin.json")
-actual = sorted(json.load(open(manifest)).get("mcpServers", {}))
-print(manifest)
-print(actual)
-if actual != expected:
-    raise SystemExit(f"manifest mismatch: expected {expected}, got {actual}")
-PY
+node - <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const state = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+const installed = JSON.parse(fs.readFileSync(state, "utf8"));
+const records = (installed.plugins?.["claude-delegator@jarrodwatts-claude-delegator"] || [])
+  .filter((record) => record.scope === "user");
+if (records.length !== 1 || !records[0]["installPath"]) {
+  throw new Error("expected exactly one active user-scope claude-delegator install");
+}
+const manifest = path.join(records[0]["installPath"], ".claude-plugin", "plugin.json");
+const actual = Object.keys(JSON.parse(fs.readFileSync(manifest, "utf8")).mcpServers || {}).sort();
+console.log(manifest);
+console.log(actual);
+if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  throw new Error(`manifest mismatch: expected ${expected}, got ${actual}`);
+}
+NODE
 
 # 1c. A present manifest is not enough: each namespaced bridge must start before
 #     the fallback registrations are removed.
@@ -226,7 +229,7 @@ for server in \
   plugin:claude-delegator:cursor
 do
   config=$(claude mcp get "$server" 2>&1)
-  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
+  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'; then
     printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
     exit 1
   fi
@@ -234,7 +237,7 @@ done
 
 # 2. Only now drop the hand-added entries.
 for s in codex agy kimi copilot grok cursor gemini; do
-  claude mcp remove "$s" >/dev/null 2>&1 || true
+  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
 done
 )
 ```
@@ -315,7 +318,7 @@ for server in \
 do
   config=$(claude mcp get "$server" 2>&1)
   name=${server##*:}
-  if printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
+  if printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'; then
     echo "$name MCP: CONNECTED"
   else
     echo "$name MCP: FAILED"
@@ -396,7 +399,7 @@ Five experts available:
 │                  │ → Vulnerabilities, threat modeling          │
 └──────────────────┴─────────────────────────────────────────────┘
 
-Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is enforced by a clear "do not modify" instruction, while `read-only` is an explicit opt-in.
+Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is carried by a clear "do not modify" instruction, while `read-only` is an explicit provider-specific opt-in with the limitations documented above.
 Expert is auto-detected based on your request.
 Explicit: "Ask GPT to...", "Ask Agy to...", "Ask Kimi to...", "Ask Grok to...", "Ask Cursor to...", or "Ask Copilot to..."
 ```

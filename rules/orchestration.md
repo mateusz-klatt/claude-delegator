@@ -147,7 +147,7 @@ For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually in
 |----------|----------|----------------|
 | Codex native MCP | Default `danger-full-access` + `never`; state "do not modify" in developer instructions | Same non-interactive policy; edits are authorized in developer instructions |
 | Claude bridge | Default `workspace-write` (permission bypass); state "do not modify" | Default `workspace-write` |
-| Agy bridge | Default `workspace-write` (`--dangerously-skip-permissions`); state "do not modify". `read-only` denies shell only, never writes | Default `workspace-write` |
+| Agy bridge | Default `workspace-write` (`--dangerously-skip-permissions`); state "do not modify". `read-only` soft-denies shell only; file writes and network remain available | Default `workspace-write` |
 | Kimi bridge | `workspace-write` only; state "do not modify". `read-only` is refused — print mode has no permission tier | `workspace-write` |
 | Grok bridge | Default `workspace-write` (`--permission-mode bypassPermissions`); state "do not modify". `read-only` **denies** — `plan` plus explicit `--deny` rules for Write, Edit and Bash | Default `workspace-write` |
 | Cursor bridge | Default `workspace-write` (`--force`); state "do not modify". `read-only` maps to `--mode ask`, which deflects but does not deny | Default `workspace-write` |
@@ -184,7 +184,7 @@ When MCP Agent Mail is already available to the caller, resolve the caller's bou
 
 `callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
 
-The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].message.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
 
 For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
 

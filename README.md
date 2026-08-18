@@ -200,23 +200,26 @@ claude plugin install   claude-delegator@jarrodwatts-claude-delegator
 
 # Read the manifest from the active user-scope installPath, not from the
 # highest-looking cache directory, and fail closed unless it declares all six.
-python3 - <<'PY'
-import json, os
-expected = ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
-state = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
-records = json.load(open(state)).get("plugins", {}).get(
-    "claude-delegator@jarrodwatts-claude-delegator", []
-)
-records = [record for record in records if record.get("scope") == "user"]
-if len(records) != 1 or not records[0].get("installPath"):
-    raise SystemExit("expected exactly one active user-scope claude-delegator install")
-manifest = os.path.join(records[0]["installPath"], ".claude-plugin", "plugin.json")
-actual = sorted(json.load(open(manifest)).get("mcpServers", {}))
-print(manifest)
-print(actual)
-if actual != expected:
-    raise SystemExit(f"manifest mismatch: expected {expected}, got {actual}")
-PY
+node - <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const state = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+const installed = JSON.parse(fs.readFileSync(state, "utf8"));
+const records = (installed.plugins?.["claude-delegator@jarrodwatts-claude-delegator"] || [])
+  .filter((record) => record.scope === "user");
+if (records.length !== 1 || !records[0]["installPath"]) {
+  throw new Error("expected exactly one active user-scope claude-delegator install");
+}
+const manifest = path.join(records[0]["installPath"], ".claude-plugin", "plugin.json");
+const actual = Object.keys(JSON.parse(fs.readFileSync(manifest, "utf8")).mcpServers || {}).sort();
+console.log(manifest);
+console.log(actual);
+if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  throw new Error(`manifest mismatch: expected ${expected}, got ${actual}`);
+}
+NODE
 
 # Confirm the namespaced servers are actually healthy. A manifest can be
 # present while its bridge still fails to start; do not delete the fallback
@@ -230,14 +233,14 @@ for server in \
   plugin:claude-delegator:cursor
 do
   config=$(claude mcp get "$server" 2>&1)
-  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
+  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'; then
     printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
     exit 1
   fi
 done
 
 for s in codex agy kimi copilot grok cursor gemini; do
-  claude mcp remove "$s" >/dev/null 2>&1 || true
+  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
 done
 )
 ```

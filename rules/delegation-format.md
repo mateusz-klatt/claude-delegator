@@ -40,7 +40,7 @@ Every delegation prompt MUST include these sections:
 
 Never include the caller's registration token or another credential. `callerAgentName` is the canonical routable value that Agent Mail accepts in `to`; it is neither the numeric database `Agent.id` nor a display label. A native subagent used only as a runner must forward the original caller envelope unchanged.
 
-The callee sends `STARTED` without a caller-provided mail thread id, remembers `deliveries[0].payload.id`, and uses `reply_message` on that outbound message for subsequent checkpoints. Agent Mail then establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by the matching `*-reply` tool.
+The callee sends `STARTED` without a caller-provided mail thread id, remembers `deliveries[0].message.id`, and uses `reply_message` on that outbound message for subsequent checkpoints. Agent Mail then establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by the matching `*-reply` tool.
 
 ---
 

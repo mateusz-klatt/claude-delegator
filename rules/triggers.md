@@ -152,7 +152,7 @@ mcp__plugin_claude-delegator_codex__codex({
   prompt: "Fix the SQL injection vulnerability in user.ts"
 })
 
-// Code Reviewer on code you do not control (advisory via Grok, enforced)
+// Code Reviewer on code you do not control (Grok denies its built-in write/shell tools)
 // The bridge adds --deny for Write, Edit and Bash on top of --permission-mode plan.
 mcp__plugin_claude-delegator_grok__grok({
   prompt: "Review this vendored module for correctness and security",

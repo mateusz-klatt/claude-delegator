@@ -88,7 +88,8 @@ test("injected guidance is fail-open, uses the callee identity, and prevents del
   assert.match(prompt, /COMPLETED/);
   assert.match(prompt, /Useful native subagents are allowed/);
   assert.match(prompt, /original caller envelope unchanged/);
-  assert.match(prompt, /deliveries\[0\]\.payload\.id/);
+  assert.match(prompt, /deliveries\[0\]\.message\.id/);
+  assert.doesNotMatch(prompt, /deliveries\[0\]\.payload\.id/);
   assert.match(prompt, /reply_message/);
   assert.match(prompt, /mail thread stays internal/);
   assert.match(prompt, /mail failure must not block the task/);
