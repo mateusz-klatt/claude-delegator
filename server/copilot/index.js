@@ -26,6 +26,8 @@ const {
   validateCommonArgs
 } = core;
 
+const depth = core.createDepthGuard("CLAUDE_DELEGATOR_COPILOT_DEPTH");
+
 const resolveWindowsShim = (candidate, readShim) => core.resolveWindowsShim(candidate, "copilot", readShim);
 
 const COPILOT_CATALOG = modelCatalog.providers.copilot;
@@ -127,7 +129,7 @@ async function runCopilot(args, cwd, timeoutMs, abortSignal) {
     args: fullArgs,
     binary: COPILOT_BIN,
     cwd,
-    env: buildCalleeEnv(process.env),
+    env: depth.stamp(buildCalleeEnv(process.env)),
     label: "Copilot",
     notFoundHint: "Install with 'npm install -g @github/copilot'.",
     timeoutMs: effectiveTimeout,
@@ -237,6 +239,12 @@ const handlers = {
     const { name, arguments: args } = params;
     if (!isNonEmptyString(name)) {
       if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
+      return;
+    }
+    if ((name === "copilot" || name === "copilot-reply") && depth.exceeded()) {
+      if (shouldRespond) {
+        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Copilot session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
+      }
       return;
     }
     if (!isObject(args)) {

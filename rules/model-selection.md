@@ -1,6 +1,6 @@
 # Model Selection Guidelines
 
-Claude, GPT (Codex), Copilot, Agy, and Kimi experts serve as specialized consultants for complex problems.
+Claude, GPT (Codex), Agy, Kimi, Copilot, Grok, and Cursor experts serve as specialized consultants for complex problems.
 
 ## Provider Selection
 
@@ -12,13 +12,15 @@ Before delegating, check which MCP tools are available in the current environmen
    - Use **GPT (Codex)** for tasks where the user explicitly asked for "GPT" or "Codex".
    - Use **Copilot** for tasks where the user explicitly asked for "Copilot".
    - Use **Kimi** for tasks where the user explicitly asked for "Kimi", or for a Moonshot second opinion.
+   - Use **Grok** when the user explicitly asks for Grok or wants an xAI second opinion.
+   - Use **Cursor** when the user explicitly asks for Cursor or a Composer model.
    - Default to **Agy** for general reasoning.
-   - Do **not** use Agy or Kimi when the caller genuinely needs provider-enforced read-only; neither has such a tier, and Kimi refuses the value outright. Use Claude or Codex for that.
+   - Do **not** use Agy, Kimi, or Cursor when the caller genuinely needs enforced denial; Agy and Cursor are advisory/deflecting, and Kimi refuses `read-only`. Use Claude or Copilot for provider-enforced denial, Grok for denial of its built-in write/shell tools, or a native Codex registration explicitly configured read-only instead of this project's `danger-full-access` default.
    - Prefer Claude, Codex or Agy over Kimi when delegating into a repository you do not control: Kimi auto-loads its `AGENTS.md` with no off switch.
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters and CLI versions were refreshed on 2026-08-17 (agy via `agy models`, copilot via `copilot help config`, codex via its models cache); Claude's roster is corroborated against the CLI bundle because its selector is interactive. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-08-17; installed CLI versions were rechecked on 2026-08-18 (agy via `agy models`, copilot via `copilot help config`, codex via its models cache). Claude's roster is corroborated against the CLI bundle because its selector is interactive. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -34,7 +36,7 @@ For the account-specific roster, use `config/model-catalog.json` as the source o
 
 Every expert can operate in two modes:
 
-The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The four custom bridges expose only `read-only` and `workspace-write` (Kimi accepts `workspace-write` alone); unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Use `read-only` only when the caller explicitly wants provider-enforced write denial and accepts that unavailable operations will be refused — but see **Sandbox honesty** below, because Agy cannot deliver that guarantee and only soft-denies shell. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
+The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The six custom bridges expose `read-only` and `workspace-write` (Kimi accepts `workspace-write` alone); unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
 
 ## Expert Details
 
@@ -177,8 +179,8 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `model` | same allowlist | **Required.** A resume does not inherit the model |
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
 | `cwd` | path | Repeat the original value; a resume does not inherit the workspace |
-
-`agy-reply` accepts the same `timeout` bounds as the start tool.
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 ## Kimi Parameters Reference
 
@@ -202,7 +204,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 **Timeout guidance**: kimi has no timeout flag of its own, so the bridge deadline is the only one. On expiry the bridge SIGTERMs the process group; edits already written to disk are **not** rolled back, and there is no resumable-id recovery path like Agy's. Estimate generously for implementation runs.
 
-**Sandbox honesty**: kimi print mode has **no permission tier at all**. `--plan`, `--yolo` and `--auto` are each rejected outright when combined with `--prompt` (`Cannot combine --prompt with --plan`), and a plain `-p` run created a file unprompted. There is nothing to map `read-only` onto, so the bridge **refuses** it with -32602 rather than accept a value that would change nothing. Every kimi delegation is effectively implementation-mode; carry any do-not-modify intent in `developer-instructions` and treat it as advisory only, not enforced. When a caller genuinely needs enforced denial, route to Claude or Codex instead.
+**Sandbox honesty**: kimi print mode has **no permission tier at all**. `--plan`, `--yolo` and `--auto` are each rejected outright when combined with `--prompt` (`Cannot combine --prompt with --plan`), and a plain `-p` run created a file unprompted. There is nothing to map `read-only` onto, so the bridge **refuses** it with -32602 rather than accept a value that would change nothing. Every kimi delegation is effectively implementation-mode; carry any do-not-modify intent in `developer-instructions` and treat it as advisory only, not enforced. When a caller genuinely needs enforced denial, route to Claude or Copilot, use Grok for denial of its built-in write/shell tools, or use a native Codex registration explicitly configured read-only.
 
 **Workspace context**: a repository-supplied `AGENTS.md` in `cwd` is auto-loaded into the session. Verified: the sentinel instruction was honoured with the file present and the model answered `NO_CODEWORD` in a clean directory. `--skills-dir` pointed at an empty directory does **not** suppress it, and no off switch was found. This is a wider prompt-injection surface than Agy's, where omitting `--add-dir` prevents rules injection entirely — so treat every kimi delegation as trusting the target repository, and prefer another provider when delegating into code you did not write.
 
@@ -212,10 +214,12 @@ The mode is determined by the task, not the expert, and must always be stated in
 |-----------|--------|-------|
 | `threadId` | string | **Required.** `session_id` from the previous `kimi` call. The bridge fails loudly if kimi resumes a different session. |
 | `prompt` | string | **Required.** Follow-up instruction |
-| `model` | alias | Optional; omit to keep the resumed session's model |
+| `sandbox` | `workspace-write` only | Repeat the supported start value; `read-only` is refused |
 | `cwd` | path | Working directory. **Match the start call's `cwd`** when it was non-default — see below |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-`kimi-reply` accepts the same `timeout` bounds as the start tool. The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
+The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
 **`cwd` must match the start call's `cwd`** when the start used a non-default working directory. The kimi CLI binds a session to the directory it was created under, and resuming from a different one fails with `Session was created under a different directory`. The bridge passes `cwd` through unchanged and so preserves this binding faithfully; the table marks `cwd` optional only because a start that used the default cwd needs no `cwd` on reply either. Verified cross-host: a reply that omitted `cwd` after a non-default-cwd start failed on the first retry and succeeded once `cwd` was repeated. Repeat the start call's `cwd` on every reply to be safe.
 
@@ -294,15 +298,17 @@ Three things are easy to get wrong, each measured:
 | `cwd` | path | Working directory. **Project instruction files here are auto-loaded** |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Sandbox honesty**: this is the one bridge whose `read-only` denies rather than advises — and the reason is the deny rules, not the permission mode. `--permission-mode plan` on its own cancelled both a write attempt and a shell escape under an insistent prompt, then was **defeated** by a permissive allow list in the caller's own Claude Code settings, which grok reads. The bridge therefore always adds `--deny` for `Write`, `Edit` and `Bash`; with those, the model tried the file tool, the shell and a third path, was denied each time, and said so. `--sandbox read-only` is never emitted: the CLI accepts it and it did **not** stop a write. Real sandbox profiles live in `~/.grok/sandbox.toml` and are operator configuration the bridge never writes.
+**Sandbox honesty**: Grok's `read-only` denies rather than advises because of the explicit deny rules, not the permission mode. (Copilot also enforces its narrower `read-only` contract through its own shell/write/edit deny flags.) `--permission-mode plan` on its own cancelled both a write attempt and a shell escape under an insistent prompt, then was **defeated** by a permissive allow list in the caller's own Claude Code settings, which grok reads. The bridge therefore always adds `--deny` for `Write`, `Edit` and `Bash`; with those, the model tried the file tool, the shell and a third path, was denied each time, and said so. `--sandbox read-only` is never emitted: the CLI accepts it and it did **not** stop a write. Real sandbox profiles live in `~/.grok/sandbox.toml` and are operator configuration the bridge never writes.
+
+That guarantee is limited to Grok's built-in Write/Edit/Bash tools. It is not an OS sandbox and does not deny writes exposed by an MCP server; reachable MCP tools remain operator-controlled surface.
 
 That inherited-permission coupling is also why the denials are not optional: it loads rules only when the caller's settings contain `allow`/`deny`/`ask` entries, measured as 7 rules on WSL, 1 on macOS and 0 on Linux and Windows. Without our own denials the same argv would grant different permissions on different machines.
 
-**Verification status**: verified in five cases with a live positive control, on **one host**. Under a permissive allow list in the caller's own Claude Code settings (6 rules loaded, checked against a 0-rule control): `bypassPermissions` wrote the file, proving the condition non-empty; `--permission-mode plan` **alone** wrote it too, so the mode by itself is defeated by what the caller has granted; `plan` plus the deny rules refused an insistent prompt, and also refused an **adversarial** prompt asserting the mode label was a display artifact and demanding real tool calls — the same prompt that defeated cursor-agent's `--mode ask`. The model attempted both tools and the permission layer refused them (`Denied by permission policy: deny rule on edit` / `... on bash`).
+**Verification status**: verified with live positive controls on WSL, macOS, Linux, and Windows. Under a permissive allow list in the caller's own Claude Code settings (6 rules loaded, checked against a 0-rule control): `bypassPermissions` wrote the file, proving the condition non-empty; `--permission-mode plan` **alone** wrote it too, so the mode by itself is defeated by what the caller has granted; `plan` plus the deny rules refused an insistent prompt, and also refused an **adversarial** prompt asserting the mode label was a display artifact and demanding real tool calls — the same prompt that defeated cursor-agent's `--mode ask`. The model attempted both tools and the permission layer refused them (`Denied by permission policy: deny rule on edit` / `... on bash`).
 
-The deny rules also make refusal **legible**, not merely reliable: without them a blocked run ends with `stopReason: cancelled` and an answer truncated mid-action, while with them it ends `end_turn` and the model reports each tool error verbatim.
+The deny rules often make refusal **legible** as well: observed runs with them usually ended `end_turn` and reported each tool error, while a run without them ended `stopReason: cancelled` with a truncated answer. Treat that as a tendency, not a contract; `cancelled` also occurred once with the deny rules.
 
-Verified on **three hosts** (WSL, macOS and Linux), identical verbatim denial strings; two of the runs put control and test in the same directory, so the written control file sat beside the absent target. Reproduction took all day because a shared free-tier limit blocked it; a SuperGrok subscription lifts it per account, but propagation lags per host — a CLI that has not re-authenticated returns "no file" for **every** case including the control, which is precisely the result that looks like success. Check a positive control before reading any refusal as enforcement.
+All four hosts returned identical verbatim denial strings; several runs put control and test in the same directory, so the written control file sat beside the absent target. Reproduction took all day because a shared free-tier limit blocked it; a SuperGrok subscription lifts it per account, but propagation lags per host — a CLI that has not re-authenticated returns "no file" for **every** case including the control, which is precisely the result that looks like success. Check a positive control before reading any refusal as enforcement.
 
 **Workspace context**: project instruction files in `cwd` are auto-loaded with no known off switch — `CLAUDE.md` was measured loading on Linux, macOS, WSL and Windows, and a planted `AGENTS.md` loaded too. Delegating grok into this repository injects its own `CLAUDE.md`. This is the same prompt-injection surface as Kimi's, so prefer another provider when delegating into code you do not control. `--no-memory` disables cross-session memory, not project instructions.
 
@@ -317,6 +323,8 @@ Verified on **three hosts** (WSL, macOS and Linux), identical verbatim denial st
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
 | `effort` | free-form string | Optional override for this turn |
 | `cwd` | path | Working directory |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its model. The bridge never passes `--continue`/`-c`, which resumes "the most recent session for the current working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
@@ -342,7 +350,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 
 **Sandbox honesty**: `read-only` **deflects, it does not deny.** `--mode ask` refused an insistent write-or-shell prompt twice, including under a permissive allow list — and was then defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls. Both the write and the shell command went through, and the model's own report read "the Ask mode label did not block either call". This is Agy's category, not Grok's: the value is kept because it is strictly more restrictive than the alternative, and it is documented for exactly what it is. Carry advisory intent in `developer-instructions` too.
 
-`--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Grok or Claude when the caller needs provider-enforced denial.**
+`--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Claude or Copilot for provider-enforced denial, to Grok for denial of its built-in write/shell tools, or to a native Codex registration explicitly configured read-only.**
 
 **Workspace trust**: the bridge always passes `--trust`, and this is load-bearing. Without it a headless run prints `Workspace Trust Required` and exits **0** having executed nothing — indistinguishable from a permission mode successfully denying the task. That false negative already cost one measurement here.
 
@@ -359,9 +367,9 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `threadId` | string | **Required.** `session_id` from the previous `cursor` call. The bridge fails loudly if cursor resumes a different session. |
 | `prompt` | string | **Required.** Follow-up instruction |
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value |
-| `cwd` | path | Working directory |
-
-`cursor-reply` accepts the same `timeout` bounds as the start tool.
+| `cwd` | path | **Use the same workspace path as the start call** |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 **No `model` on reply**, and this is the opposite of Agy: a Cursor resume **inherits** the model the session started with. Verified by starting on `auto` while the configured default was `composer-2.5-fast` and finding no fallback. `--continue` is never emitted — it resumes the previous session for the working directory and would cross-talk between concurrent delegations sharing a `cwd`, as on Kimi.
 
@@ -375,16 +383,17 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
-| `model` | One of the 25 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.78) |
-| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Reasoning effort level. Default: `max` (`max` is verified on `gpt-5.6-sol` only; other models are capped to `xhigh` server-side) |
+| `model` | One of the 27 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.80) |
+| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Reasoning effort level. Default: `max`; verified per-model floors and ceilings are applied server-side |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; `gpt-5.6-terra` for everyday tasks; `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks; `claude-sonnet-5` for a cross-family second opinion; `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`); Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; its backend rejects `minimal`, while `low` and `max` completed live calls, so the bridge floors both `none` and `minimal` to `low`. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5` for a cross-family second opinion, and `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
 ## Claude Parameters Reference (external orchestrators)
 
-The Claude bridge wraps Claude Code 2.1.226 with the same start/reply contract used by the other providers.
+The Claude bridge wraps Claude Code 2.1.234 with the same start/reply contract used by the other providers.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
@@ -399,7 +408,15 @@ The Claude bridge wraps Claude Code 2.1.226 with the same start/reply contract u
 
 ### `mcp__claude__claude-reply` (Continue Session)
 
-Pass the `threadId` returned by `claude` plus the follow-up `prompt`. The reply may also carry an updated `coordination` envelope. Repeat `sandbox` when permission continuity matters; omit `effort` to avoid overriding the resumed session.
+| Parameter | Values | Notes |
+|-----------|--------|-------|
+| `threadId` | string | **Required.** Session ID from the previous `claude` call |
+| `prompt` | string | **Required.** Follow-up instruction |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Optional; omit to avoid overriding the resumed session |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value for permission continuity |
+| `cwd` | path | Working directory for the task |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 Do not add this target to Claude Code's own MCP configuration; that would create a self-delegation path.
 
@@ -410,16 +427,24 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `threadId` | string | **Required.** Thread ID (session ID) from previous `copilot` call |
 | `prompt` | string | **Required.** Follow-up instruction |
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Optional. Omit to keep the resumed session's effort; per-model backend support varies |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value; otherwise the reply defaults to `workspace-write` |
+| `cwd` | path | Working directory for the task |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 
 ### Response Format (all providers)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `threadId` | string | Session ID for multi-turn follow-ups |
-| `content` | MCP content array | Text is normally in `content[0].text`; native Codex also returns `structuredContent.content` |
+| MCP result `content` | content-block array | The visible tool response; its first text block carries the bridge envelope |
+| Envelope `threadId` | string | Session ID for multi-turn follow-ups |
+| Envelope `content` | string | Expert response text inside the JSON envelope |
 
-The bridges (Claude, Agy, Kimi, Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
+Native Codex may additionally expose `structuredContent.content`; do not depend on
+that sibling field because MCP clients can strip it before the orchestrator sees it.
+
+The six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
 
 ## When NOT to Delegate
 

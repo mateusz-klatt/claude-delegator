@@ -85,7 +85,6 @@ Claude: [Detects security question → selects Security Analyst]
                     ↓
         ┌───────────────────────────────┐
         │  mcp__plugin_claude-delegator_codex__codex            │
-        │  (or mcp__claude__claude)     │
         │  (or mcp__plugin_claude-delegator_agy__agy)          │
         │  (or mcp__plugin_claude-delegator_kimi__kimi)        │
         │  (or mcp__plugin_claude-delegator_copilot__copilot)   │
@@ -118,6 +117,15 @@ Turn 3: mcp__*__*-reply(threadId) → expert remembers turns 1-2
 
 Use single-shot (`claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
 
+Reply calls are new tool invocations, so omitted optional arguments return to
+their defaults. In particular, repeat `sandbox: "read-only"` on every reply in
+a read-only chain; otherwise the custom bridges default back to
+`workspace-write`. Agy replies must also repeat the start call's `model` and
+`cwd`, because its resumed conversation inherits neither. Keep the same `cwd`
+for Kimi when the start used a non-default working directory, and for Cursor,
+whose sessions are workspace-bound. See the individual tool schema for the
+remaining provider-specific arguments.
+
 ### Long-running delegation progress
 
 When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
@@ -149,11 +157,17 @@ The native Codex target is launched with Codex's own `danger-full-access` sandbo
 | **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
 | **Agy** | `gemini-3.1-pro-high` | Fourteen ids across Gemini, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
-| **Grok** | `grok-4.6` | One model on this account. The only bridge whose `read-only` denies rather than advises. |
+| **Grok** | `grok-4.6` | One model on this account. `read-only` adds deny rules for built-in write and shell tools. |
 | **Cursor** | `auto` | 204 ids listed, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; efforts `none` through `max`. |
+| **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; verified per-model effort floors and ceilings are clamped by the bridge. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
+
+The supplied Codex registration pins `model_reasoning_effort=ultra`, which is
+valid only for `gpt-5.6-sol` and `gpt-5.6-terra` in the verified catalog.
+`gpt-5.6-luna` tops out at `max`; the remaining listed Codex models top out at
+`xhigh`. When changing the registered Codex model, change the effort in the
+same `args` array to a supported value as well.
 
 **Kimi as a bridge to Ollama.** The Kimi bridge reaches more than Moonshot: the same `kimi` / `kimi-reply` tools route to locally-run Ollama weights (VRAM, no cloud spend, code stays on the machine) and to Ollama's hosted models (a `:cloud` suffix, no VRAM). One `[providers.*]` block in `~/.kimi-code/config.toml` buys both; pass `model: "ollama-local/ornith-9b"` for a local model or `model: "ollama-cloud/deepseek-v4-pro"` for a hosted one. Local models are **advisory only** — a plausible-looking wrong edit is the failure that matters, not slowness, so read the work before using it. The full recipe, VRAM sizing arithmetic, and a tier-by-tier comparison live in [`rules/model-selection.md`](rules/model-selection.md) → "Ollama through the Kimi bridge".
 
@@ -161,10 +175,9 @@ The discovery sources, account-visible rosters, CLI versions, effort ceilings, l
 
 If `/setup` doesn't work after an upgrade, repair the plugin-owned registrations as follows:
 
-```text
 Nothing to register by hand. The plugin declares its MCP servers in
-.claude-plugin/plugin.json, so installing or updating it is enough and they
-appear as plugin:claude-delegator:<name>.
+`.claude-plugin/plugin.json`, so installing or updating it is enough and they
+appear as `plugin:claude-delegator:<name>`.
 
 Earlier versions told you to run `claude mcp add ... ${CLAUDE_PLUGIN_ROOT}/...`.
 The shell expanded that variable at setup time and stored a version-stamped
@@ -173,16 +186,63 @@ Declared in the manifest, Claude Code resolves it on every launch instead.
 
 If you set up before 1.9.0, clear the stale entries once — REINSTALL FIRST,
 then remove, because an installed copy from before this change has no
-mcpServers block and removing first would leave you with no servers at all:
+`mcpServers` block and removing first would leave you with no servers at all:
 
-  claude plugin marketplace update jarrodwatts-claude-delegator
-  claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
-  claude plugin install   claude-delegator@jarrodwatts-claude-delegator
-  for s in codex agy kimi copilot grok cursor gemini; do
-    claude mcp remove "$s" >/dev/null 2>&1 || true
-  done
-  # then restart the CLI
+```bash
+# Keep the fail-closed migration isolated: `exit` below stops this subshell,
+# not an interactive parent shell into which the block may be pasted.
+(
+set -e
+
+claude plugin marketplace update jarrodwatts-claude-delegator
+claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
+claude plugin install   claude-delegator@jarrodwatts-claude-delegator
+
+# Read the manifest from the active user-scope installPath, not from the
+# highest-looking cache directory, and fail closed unless it declares all six.
+python3 - <<'PY'
+import json, os
+expected = ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
+state = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+records = json.load(open(state)).get("plugins", {}).get(
+    "claude-delegator@jarrodwatts-claude-delegator", []
+)
+records = [record for record in records if record.get("scope") == "user"]
+if len(records) != 1 or not records[0].get("installPath"):
+    raise SystemExit("expected exactly one active user-scope claude-delegator install")
+manifest = os.path.join(records[0]["installPath"], ".claude-plugin", "plugin.json")
+actual = sorted(json.load(open(manifest)).get("mcpServers", {}))
+print(manifest)
+print(actual)
+if actual != expected:
+    raise SystemExit(f"manifest mismatch: expected {expected}, got {actual}")
+PY
+
+# Confirm the namespaced servers are actually healthy. A manifest can be
+# present while its bridge still fails to start; do not delete the fallback
+# registrations in that state.
+for server in \
+  plugin:claude-delegator:codex \
+  plugin:claude-delegator:agy \
+  plugin:claude-delegator:kimi \
+  plugin:claude-delegator:copilot \
+  plugin:claude-delegator:grok \
+  plugin:claude-delegator:cursor
+do
+  config=$(claude mcp get "$server" 2>&1)
+  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
+    printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
+    exit 1
+  fi
+done
+
+for s in codex agy kimi copilot grok cursor gemini; do
+  claude mcp remove "$s" >/dev/null 2>&1 || true
+done
+)
 ```
+
+Then restart the CLI.
 
 Verify with:
 
@@ -220,7 +280,7 @@ npm test
 npm run test:coverage
 ```
 
-[`test/mcp-probe.mjs`](test/mcp-probe.mjs) is a manual stdio handshake/live-call probe and is intentionally excluded from the unit-test glob. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the suite on Node 22 and 24, uploads exact-commit coverage, and scans the [`mateusz-klatt_snapper-delegate`](https://sonarcloud.io/project/overview?id=mateusz-klatt_snapper-delegate) SonarCloud project when the repository has a `SONAR_TOKEN` Actions secret. Without the secret, tests remain green and the scan is skipped with a warning.
+[`test/mcp-probe.mjs`](test/mcp-probe.mjs) is a manual stdio handshake/live-call probe and is intentionally excluded from the unit-test glob. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the suite on Node 22 and 24, uploads exact-commit coverage, and scans the [`mateusz-klatt_claude-delegator`](https://sonarcloud.io/project/overview?id=mateusz-klatt_claude-delegator) SonarCloud project when the repository has a `SONAR_TOKEN` Actions secret. Without the secret, tests remain green and the scan is skipped with a warning.
 
 ### Customizing Expert Prompts
 
@@ -236,6 +296,8 @@ Edit these to customize expert behavior for your workflow.
 
 ## Requirements
 
+The MCP bridges require **Node.js 22.12.0 or newer**.
+
 You need at least one of the following target CLIs configured:
 
 - **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
@@ -244,7 +306,7 @@ You need at least one of the following target CLIs configured:
 - **Kimi Code** (for Kimi): installs to `~/.kimi-code/bin/kimi`
 - **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`
 - **Grok CLI** (for xAI models): typically installs to `~/.grok/bin/grok` or `~/.local/bin/grok`
-- **Cursor Agent CLI** (for Cursor-hosted models): typically installs to `~/.local/bin/cursor-agent`
+- **Cursor Agent CLI** (for Cursor-hosted models): on POSIX it typically installs to `~/.local/bin/cursor-agent`; on Windows the bridge uses PATH because no stable fallback has been measured
 
 **Authentication**:
 - Codex: run `codex login`
@@ -261,7 +323,7 @@ You need at least one of the following target CLIs configured:
 
 | Command | Description |
 |---------|-------------|
-| `/claude-delegator:setup` | Configure MCP server and install rules |
+| `/claude-delegator:setup` | Verify plugin-owned MCP servers and install orchestration rules |
 | `/claude-delegator:uninstall` | Remove the plugin, legacy MCP registrations, and copied rules |
 
 ---
@@ -273,7 +335,7 @@ You need at least one of the following target CLIs configured:
 | MCP server not found | Restart Claude Code after setup |
 | Provider not authenticated | Codex: `codex login`. Agy: run `agy` once. Kimi: set `KIMI_API_KEY` or an `api_key` in `~/.kimi-code/config.toml`. Copilot: `copilot login`. Grok: `grok login`. Cursor: `cursor-agent login` |
 | Tool not appearing | Run `claude mcp list` and verify registration |
-| Expert not triggered | Try explicit: "Ask Claude/GPT/Agy/Kimi/Copilot/Grok/Cursor to review..." |
+| Expert not triggered | In Claude Code, try explicit: "Ask GPT/Agy/Kimi/Copilot/Grok/Cursor to review..." The Claude target is for a different MCP orchestrator such as Codex. |
 | Codex cannot see targets | Check the active `CODEX_HOME`, run `codex mcp list`, then restart the Codex client |
 
 ---

@@ -1,12 +1,26 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const catalog = require("../config/model-catalog.json");
 const copilotBridge = require("../server/copilot");
 const agyBridge = require("../server/agy");
 const kimiBridge = require("../server/kimi");
+const claudeBridge = require("../server/claude");
+const grokBridge = require("../server/grok");
+const cursorBridge = require("../server/cursor");
+
+const customBridges = [
+  [claudeBridge, "claude"],
+  [agyBridge, "agy"],
+  [kimiBridge, "kimi"],
+  [grokBridge, "grok"],
+  [cursorBridge, "cursor"],
+  [copilotBridge, "copilot"]
+];
 
 async function captureJsonRpcResponse(action) {
   const originalWrite = process.stdout.write;
@@ -25,10 +39,15 @@ async function captureJsonRpcResponse(action) {
 
 test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.verifiedAt, "2026-08-17");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-08-17");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.233");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-08-18");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.234");
   assert.equal(catalog.providers.claude.models.length, 4);
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5");
+  const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
+  assert.ok(
+    rules.includes(`Claude Code ${catalog.providers.claude.cliVersion}`),
+    "Claude reference must name the catalogued CLI version"
+  );
 
   assert.equal(catalog.providers.codex.cliVersion, "0.147.0");
   assert.equal(catalog.providers.codex.models.length, 7);
@@ -38,7 +57,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   );
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.1.13");
+  assert.equal(catalog.providers.agy.cliVersion, "1.1.14");
   assert.equal(catalog.providers.agy.models.length, 14);
   // A hard allowlist, unlike the free-form roster gemini exposed: agy validates
   // --model itself and an unknown id fails pre-flight before any work happens.
@@ -65,8 +84,9 @@ test("model catalog records the empirically discovered CLI rosters", () => {
     catalog.providers.grok.models,
     "the grok schema enum must come from the catalog"
   );
-  // grok is the one bridged provider whose read-only denies rather than advises,
-  // and the note must say what actually does the enforcing. Naming --sandbox
+  // Grok enforces read-only with its own deny rules (Copilot uses a separate
+  // shell/write/edit deny mechanism), and the note must say what actually does
+  // the enforcing. Naming --sandbox
   // there would repeat the agy mistake: a flag whose name outruns its behaviour.
   assert.match(catalog.providers.grok.permissionNote, /--deny/);
   assert.match(catalog.providers.grok.permissionNote, /--sandbox read-only is accepted and did not stop a write/);
@@ -112,9 +132,12 @@ test("catalog defaults, aliases, and effort overrides reference unique advertise
   for (const model of Object.keys(catalog.providers.copilot.maxEffortByModel)) {
     assert.ok(catalog.providers.copilot.models.includes(model));
   }
+  for (const model of Object.keys(catalog.providers.copilot.minEffortByModel)) {
+    assert.ok(catalog.providers.copilot.models.includes(model));
+  }
 });
 
-test("Copilot tool schema is sourced from the catalog and applies effort ceilings", () => {
+test("Copilot tool schema is sourced from the catalog and applies effort bounds", () => {
   const start = copilotBridge.toolDefinitions.find((tool) => tool.name === "copilot");
   const reply = copilotBridge.toolDefinitions.find((tool) => tool.name === "copilot-reply");
 
@@ -124,6 +147,8 @@ test("Copilot tool schema is sourced from the catalog and applies effort ceiling
   assert.equal(start.inputSchema.properties.effort.default, catalog.providers.copilot.defaultEffort);
   assert.equal(reply.inputSchema.properties.effort.default, undefined);
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "max"), "max");
+  assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "minimal"), "low");
+  assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "none"), "low");
   assert.equal(copilotBridge.resolveEffort("claude-opus-5", "max"), "xhigh");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-terra", undefined), "xhigh");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-terra", "minimal"), "minimal");
@@ -147,18 +172,20 @@ test("Agy tool schema is sourced from the catalog and exposes no effort knob", (
 });
 
 test("all bridge tools expose the strict optional coordination object", () => {
-  for (const tool of [...copilotBridge.toolDefinitions, ...agyBridge.toolDefinitions, ...kimiBridge.toolDefinitions]) {
-    const coordination = tool.inputSchema.properties.coordination;
-    assert.equal(coordination.additionalProperties, false);
-    assert.deepEqual(
-      coordination.required,
-      ["projectKey", "callerAgentName"]
-    );
+  for (const [bridge] of customBridges) {
+    for (const tool of bridge.toolDefinitions) {
+      const coordination = tool.inputSchema.properties.coordination;
+      assert.equal(coordination.additionalProperties, false);
+      assert.deepEqual(
+        coordination.required,
+        ["projectKey", "callerAgentName"]
+      );
+    }
   }
 });
 
 test("tools/list handlers return the exported catalog-backed schemas", async () => {
-  for (const bridge of [copilotBridge, agyBridge, kimiBridge]) {
+  for (const [bridge] of customBridges) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/list"](17, {}, true)
     );
@@ -169,11 +196,7 @@ test("tools/list handlers return the exported catalog-backed schemas", async () 
 });
 
 test("bridge validation rejects token-bearing coordination before invoking a CLI", async () => {
-  for (const [bridge, toolName] of [
-    [copilotBridge, "copilot"],
-    [agyBridge, "agy"],
-    [kimiBridge, "kimi"]
-  ]) {
+  for (const [bridge, toolName] of customBridges) {
     const response = await captureJsonRpcResponse(
       () => bridge.handlers["tools/call"](23, {
         name: toolName,

@@ -44,8 +44,11 @@ rm -rf ~/.claude/rules/delegator/
 ✓ Removed the claude-delegator plugin and its MCP servers
 ✓ Removed legacy user-scoped MCP registrations
 ✓ Removed rules from ~/.claude/rules/delegator/
+```
 
 Restart Claude Code to unload any tools retained by the current process.
 
-To reinstall: /claude-delegator:setup
-```
+To reinstall, restore the command first and then run setup:
+
+1. `/plugin install claude-delegator@jarrodwatts-claude-delegator`
+2. `/claude-delegator:setup`

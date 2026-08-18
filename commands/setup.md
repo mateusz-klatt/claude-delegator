@@ -1,15 +1,36 @@
 ---
 name: setup
-description: Configure claude-delegator with Codex, Agy, Kimi, Copilot, Grok, and Cursor MCP servers
+description: Verify the Codex, Agy, Kimi, Copilot, Grok, and Cursor MCP servers and install orchestration rules
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
 
 # Setup
 
-Configure Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents via native MCP. Five domain experts can advise OR implement.
+Verify Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents via native MCP, then install their orchestration rules. Five domain experts can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
+
+### Node.js runtime
+```bash
+check_node_runtime() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "NODE_MISSING: install Node.js 22.12.0 or newer"
+    return 1
+  fi
+
+  node_version=$(node -p 'process.versions.node')
+  if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 12) ? 0 : 1)'; then
+    echo "NODE_TOO_OLD: found $node_version; require 22.12.0 or newer"
+    return 1
+  fi
+  echo "Node.js $node_version: OK"
+}
+check_node_runtime
+```
+
+**STOP setup if Node.js is missing or older than 22.12.0.** Every bridge is a
+Node process, so provider CLI checks cannot compensate for an unsupported runtime.
 
 ### Codex (GPT)
 ```bash
@@ -61,7 +82,7 @@ fi
 # means the CLI is present but cannot start until the keychain is unlocked.
 if command -v cursor-agent >/dev/null 2>&1; then
   cursor-agent --version 2>&1 | head -1
-elif [ -x "$HOME/.local/bin/cursor-agent" ]; then
+elif [ "${OS:-}" != "Windows_NT" ] && [ -x "$HOME/.local/bin/cursor-agent" ]; then
   "$HOME/.local/bin/cursor-agent" --version 2>&1 | head -1
 else
   echo "CURSOR_MISSING"
@@ -116,9 +137,10 @@ Then authenticate: grok login
 **Cursor Missing:**
 ```
 Cursor Agent CLI not found.
-Install Cursor Agent; it typically lands in ~/.local/bin/cursor-agent.
+Install Cursor Agent; on POSIX it typically lands in ~/.local/bin/cursor-agent.
 Then authenticate: cursor-agent login
 On macOS, unlock the login keychain if even `cursor-agent --version` fails.
+On Windows, only PATH is supported; no install-location fallback has been measured.
 ```
 
 **Copilot Missing:**
@@ -130,7 +152,7 @@ Then authenticate: copilot login
 
 **STOP here if no providers are installed.**
 
-## Step 2: Configure MCP Servers
+## Step 2: Verify Plugin-Owned MCP Servers
 
 The MCP servers are **declared by the plugin**, in `.claude-plugin/plugin.json`. You
 do not register them by hand and there is nothing to run here — installing or
@@ -149,9 +171,11 @@ every launch, so the path cannot go stale.
 
 The declaration also drops the `--env=PATH` pinning the old commands carried.
 That was there because an MCP server inherits a minimal PATH, and it is no longer
-load-bearing: every bridge now resolves its CLI through absolute install-location
-fallbacks (`cliFallbacks()`), covering `~/.local/bin` and kimi's `~/.kimi-code/bin`.
-`test/provider-config.test.js` holds that guarantee.
+load-bearing on measured install locations: bridges use absolute
+install-location fallbacks (`cliFallbacks()`), covering `~/.local/bin`, Grok's
+`~/.grok/bin`, and Kimi's `~/.kimi-code/bin`. Cursor on Windows remains
+PATH-only because its install directory has not been measured; the bridge ships
+no guessed fallback. `test/provider-config.test.js` holds that guarantee.
 
 ### Clearing registrations from an older install
 
@@ -160,38 +184,62 @@ duplicate the plugin-provided ones. **Reinstall first, remove second** — the o
 matters and the other way round is destructive:
 
 ```bash
+# Keep the fail-closed migration isolated: `exit` below stops this subshell,
+# not an interactive parent shell into which the block may be pasted.
+(
+set -e
+
 # 1. Get a plugin copy that actually declares the servers.
 claude plugin marketplace update jarrodwatts-claude-delegator
 claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
 claude plugin install   claude-delegator@jarrodwatts-claude-delegator
 
-# 1b. Confirm the reinstall actually delivered what step 2 depends on. Ordering
-#     protects against a known mistake; this protects against the reinstall
-#     quietly not having worked. Must print all six names before you continue.
-#
-#     The cache can hold several versions side by side, and a bare glob expands
-#     to all of them — taking sys.argv[1] would inspect the alphabetically-first,
-#     which is the OLDEST copy (a pre-1.9.0 one has no mcpServers block), so the
-#     check would print [] and falsely fail after a successful reinstall. Inspect
-#     the newest version explicitly.
+# 1b. Confirm the reinstall actually delivered what step 2 depends on. Read the
+#     manifest from Claude Code's active user-scope installPath, never by guessing
+#     which version-shaped cache directory is active. Fail closed on ambiguity.
 python3 - <<'PY'
-import json, glob, os
-paths = glob.glob(os.path.expanduser("~/.claude/plugins/cache/*/claude-delegator/*/.claude-plugin/plugin.json"))
-def version(p):
-    return [int(x) for x in os.path.basename(os.path.dirname(os.path.dirname(p))).split(".") if x.isdigit()]
-newest = sorted(paths, key=version)[-1] if paths else None
-print(newest)
-print(sorted(json.load(open(newest)).get("mcpServers", {})) if newest else [])
+import json, os
+expected = ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
+state = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+records = json.load(open(state)).get("plugins", {}).get(
+    "claude-delegator@jarrodwatts-claude-delegator", []
+)
+records = [record for record in records if record.get("scope") == "user"]
+if len(records) != 1 or not records[0].get("installPath"):
+    raise SystemExit("expected exactly one active user-scope claude-delegator install")
+manifest = os.path.join(records[0]["installPath"], ".claude-plugin", "plugin.json")
+actual = sorted(json.load(open(manifest)).get("mcpServers", {}))
+print(manifest)
+print(actual)
+if actual != expected:
+    raise SystemExit(f"manifest mismatch: expected {expected}, got {actual}")
 PY
-#     expected: ['agy', 'codex', 'copilot', 'cursor', 'grok', 'kimi']
+
+# 1c. A present manifest is not enough: each namespaced bridge must start before
+#     the fallback registrations are removed.
+for server in \
+  plugin:claude-delegator:codex \
+  plugin:claude-delegator:agy \
+  plugin:claude-delegator:kimi \
+  plugin:claude-delegator:copilot \
+  plugin:claude-delegator:grok \
+  plugin:claude-delegator:cursor
+do
+  config=$(claude mcp get "$server" 2>&1)
+  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
+    printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
+    exit 1
+  fi
+done
 
 # 2. Only now drop the hand-added entries.
 for s in codex agy kimi copilot grok cursor gemini; do
   claude mcp remove "$s" >/dev/null 2>&1 || true
 done
-
-# 3. Restart the CLI.
+)
 ```
+
+3. Restart the CLI.
 
 Removing first leaves you with **no servers at all** whenever the installed copy
 predates this change, because a cache from an earlier version has no `mcpServers`
@@ -216,7 +264,7 @@ mkdir -p ~/.claude/rules/delegator && cp ${CLAUDE_PLUGIN_ROOT}/rules/*.md ~/.cla
 Run these checks and report results:
 
 ```bash
-# Check 1: CLI versions, including the install-location fallbacks used by bridges.
+# Check 1: CLI versions, including measured install-location fallbacks.
 check_cli_version() {
   label="$1"
   cli="$2"
@@ -248,7 +296,11 @@ check_cli_version "Codex" "codex"
 check_cli_version "Agy" "agy" "$HOME/.local/bin/agy"
 check_cli_version "Kimi" "kimi" "$HOME/.kimi-code/bin/kimi"
 check_cli_version "Grok" "grok" "$HOME/.grok/bin/grok" "$HOME/.local/bin/grok"
-check_cli_version "Cursor" "cursor-agent" "$HOME/.local/bin/cursor-agent"
+if [ "${OS:-}" = "Windows_NT" ]; then
+  check_cli_version "Cursor" "cursor-agent"
+else
+  check_cli_version "Cursor" "cursor-agent" "$HOME/.local/bin/cursor-agent"
+fi
 check_cli_version "Copilot" "copilot" "$HOME/.local/bin/copilot"
 
 # Check 2: all six plugin-owned MCP servers. `claude mcp get` exits zero and
@@ -263,7 +315,7 @@ for server in \
 do
   config=$(claude mcp get "$server" 2>&1)
   name=${server##*:}
-  if printf '%s\n' "$config" | grep -q 'Status: .*Connected'; then
+  if printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$'; then
     echo "$name MCP: CONNECTED"
   else
     echo "$name MCP: FAILED"
@@ -285,6 +337,7 @@ Display actual values from the checks above:
 ```
 claude-delegator Status
 ───────────────────────────────────────────────────
+Node.js:        [version from the Node.js runtime check]
 Codex CLI:      [version from check 1]
 Agy CLI:        [version from check 1]
 Kimi CLI:       [version from check 1]
@@ -356,12 +409,12 @@ Options: "Yes, star the repo" / "No thanks"
 
 **If yes**: Check if `gh` CLI is available and run:
 ```bash
-gh api -X PUT /user/starred/jarrodwatts/claude-delegator
+gh api -X PUT /user/starred/mateusz-klatt/claude-delegator
 ```
 
 If `gh` is not available or the command fails, provide the manual link:
 ```
-https://github.com/jarrodwatts/claude-delegator
+https://github.com/mateusz-klatt/claude-delegator
 ```
 
 **If no**: Thank them and complete setup without starring.

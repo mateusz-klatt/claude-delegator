@@ -14,11 +14,11 @@ You have access to Claude, GPT, Agy, Kimi, Grok, Cursor, and Copilot experts via
 | `mcp__plugin_claude-delegator_agy__agy-reply` | Agy (Antigravity) | Continue an existing session (multi-turn) |
 | `mcp__plugin_claude-delegator_kimi__kimi` | Kimi (Moonshot) | Start a new expert session |
 | `mcp__plugin_claude-delegator_kimi__kimi-reply` | Kimi (Moonshot) | Continue an existing session (multi-turn) |
-| `mcp__plugin_claude-delegator_grok__grok` | Grok (xAI) | Start a new expert session; the only bridge whose `read-only` denies |
+| `mcp__plugin_claude-delegator_grok__grok` | Grok (xAI) | Start a new expert session; `read-only` adds built-in write/shell deny rules |
 | `mcp__plugin_claude-delegator_grok__grok-reply` | Grok (xAI) | Continue an existing session (multi-turn) |
 | `mcp__plugin_claude-delegator_cursor__cursor` | Cursor (Cursor Agent) | Start a new expert session |
 | `mcp__plugin_claude-delegator_cursor__cursor-reply` | Cursor (Cursor Agent) | Continue an existing session (multi-turn) |
-| `mcp__plugin_claude-delegator_copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session |
+| `mcp__plugin_claude-delegator_copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session; `read-only` denies shell/write/edit |
 | `mcp__plugin_claude-delegator_copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
 
 **`mcp__claude__claude` is deliberately not in that form, and making the table look consistent would
@@ -55,7 +55,10 @@ Use `mcp__claude__claude`, `mcp__plugin_claude-delegator_codex__codex`, `mcp__pl
 
 ### Multi-Turn
 
-Every target returns a `threadId` from the initial call. Pass it to the corresponding `-reply` tool for follow-up turns with full context preservation.
+Every target returns a `threadId` from the initial call. In the visible MCP result,
+parse the JSON envelope in `content[0].text`; do not expect a sibling
+`result.threadId`, which MCP clients can strip. Pass the parsed value to the
+corresponding `-reply` tool for follow-up turns with full context preservation.
 
 ```typescript
 // Turn 1: Start session (Codex example)
@@ -64,11 +67,11 @@ const result = mcp__plugin_claude-delegator_codex__codex({
   "developer-instructions": "[expert prompt]",
   cwd: "/path/to/project"
 })
-// result includes threadId: "019c58e5-..."
+const { threadId } = JSON.parse(result.content[0].text)
 
 // Turn 2: Follow up with context preserved
 mcp__plugin_claude-delegator_codex__codex-reply({
-  threadId: "019c58e5-...",
+  threadId,
   prompt: "Now add tests for the validation you just implemented"
 })
 ```
@@ -148,9 +151,9 @@ For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually in
 | Kimi bridge | `workspace-write` only; state "do not modify". `read-only` is refused — print mode has no permission tier | `workspace-write` |
 | Grok bridge | Default `workspace-write` (`--permission-mode bypassPermissions`); state "do not modify". `read-only` **denies** — `plan` plus explicit `--deny` rules for Write, Edit and Bash | Default `workspace-write` |
 | Cursor bridge | Default `workspace-write` (`--force`); state "do not modify". `read-only` maps to `--mode ask`, which deflects but does not deny | Default `workspace-write` |
-| Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify" | Default `workspace-write` |
+| Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify". `read-only` denies shell, write and edit tools | Default `workspace-write` |
 
-The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. The explicit bridge `read-only` option is available for provider-enforced denial; it may also prevent Agent Mail writes, which must fail open.
+The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. A denying policy may also prevent Agent Mail writes, which must fail open.
 
 ### Step 4: Notify User
 Always inform the user before delegating:
@@ -181,9 +184,9 @@ When MCP Agent Mail is already available to the caller, resolve the caller's bou
 
 `callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
 
-The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, `kimi`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].payload.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
 
-For the Claude, Agy, Kimi, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
+For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
 
 ### Step 6: Call the Expert
 ```typescript
@@ -213,7 +216,7 @@ mcp__plugin_claude-delegator_agy__agy({
   cwd: "[current working directory]"
 })
 
-// OR Using Grok — the one bridge where read-only is enforced, not advisory
+// OR Using Grok — read-only adds built-in Write/Edit/Bash deny rules
 mcp__plugin_claude-delegator_grok__grok({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file]",
@@ -268,11 +271,12 @@ Escalate to user
 
 ```typescript
 // Attempt 1 (Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot)
-const result = mcp__plugin_claude-delegator_codex__codex({ ... }) // or mcp__claude__claude / mcp__plugin_claude-delegator_agy__agy / mcp__plugin_claude-delegator_kimi__kimi / mcp__plugin_claude-delegator_copilot__copilot
+const result = mcp__plugin_claude-delegator_codex__codex({ ... }) // or the matching start tool from the table above
+const { threadId } = JSON.parse(result.content[0].text)
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
-mcp__plugin_claude-delegator_codex__codex-reply({ // or mcp__claude__claude-reply / mcp__plugin_claude-delegator_agy__agy-reply / mcp__plugin_claude-delegator_kimi__kimi-reply / mcp__plugin_claude-delegator_copilot__copilot-reply
-  threadId: result.threadId,
+mcp__plugin_claude-delegator_codex__codex-reply({ // or the matching reply tool from the table above
+  threadId,
   prompt: `The previous implementation failed verification.
 Error: [exact error message]
 Fix the issue and verify the change works.`
@@ -281,7 +285,7 @@ Fix the issue and verify the change works.`
 
 Keep the original caller envelope and Agent Mail reply chain across retries. Do not redirect progress to an intermediary runner. Continue using the provider's independently returned `threadId` only for `*-reply` calls.
 
-For bridge reply calls, repeat the original `sandbox` when permission continuity matters. Claude and Copilot only change effort on reply when an explicit override is supplied.
+Reply calls are new tool invocations, so repeat the original `sandbox` when permission continuity matters; omitting it returns custom bridges to their `workspace-write` default. Agy replies must also repeat the start call's `model` and `cwd`. Keep Kimi's `cwd` when the start used a non-default directory, and always keep Cursor's `cwd` because its sessions are workspace-bound. Claude and Copilot only change effort on reply when an explicit override is supplied.
 
 ### Retry with Single-Shot (Fallback)
 
@@ -350,12 +354,13 @@ REQUIREMENTS:
   "developer-instructions": "[contents of code-reviewer.md]",
   cwd: "/path/to/project"
 })
+const { threadId } = JSON.parse(result.content[0].text)
 ```
 
 **Attempt 2 (retry via multi-turn):**
 ```typescript
 mcp__plugin_claude-delegator_codex__codex-reply({
-  threadId: result.threadId,
+  threadId,
   prompt: `The previous implementation failed verification.
 Error: TypeError: Cannot read property 'x' of undefined at line 45
 The middleware was added but req.body was undefined.
@@ -392,7 +397,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; default is `max` for delegation tasks (`max` is verified on `gpt-5.6-sol` only — other models are capped to `xhigh` server-side).
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; default is `max` for delegation tasks. The bridge applies verified per-model bounds: `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`.
 
 ---
 

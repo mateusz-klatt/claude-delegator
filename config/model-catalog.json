@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "verifiedAt": "2026-08-17",
-  "cliVersionsCheckedAt": "2026-08-17",
-  "cliVersionNote": "Rosters and CLI versions were all re-read on 2026-08-17: agy via `agy models`, copilot via `copilot help config`, codex via ~/.codex/models_cache.json, kimi via ~/.kimi-code/config.toml, ollama via `ollama list` plus the hosted-model tag API with per-model access probed live. Only claude's roster is not enumerable headlessly — its /model selector is interactive, so those ids are corroborated against the installed CLI bundle instead. Note that an invalid --model is a cheap roster probe on agy only; copilot, codex and claude reject it without listing alternatives.",
+  "cliVersionsCheckedAt": "2026-08-18",
+  "cliVersionNote": "All installed CLI versions were re-read on 2026-08-18. Agy 1.1.14 was the only enumerable provider whose version changed, so `agy models` was re-run and returned the same 14 ids; Claude's four ids were re-corroborated against the 2.1.234 bundle because its /model selector is interactive. The remaining rosters were last enumerated on 2026-08-17: copilot via `copilot help config`, codex via ~/.codex/models_cache.json, kimi via ~/.kimi-code/config.toml, ollama via `ollama list` plus the hosted-model tag API with per-model access probed live. An invalid --model is a cheap roster probe on agy only; copilot, codex and claude reject it without listing alternatives.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
-      "cliVersion": "2.1.233",
-      "discoverySource": "Models visible in this account's /model selector; full ids corroborated by the installed CLI bundle. Re-corroborated against the 2.1.233 bundle on 2026-08-17: unchanged. The selector itself is interactive and cannot be re-enumerated headlessly.",
+      "cliVersion": "2.1.234",
+      "discoverySource": "Models visible in this account's /model selector; full ids corroborated by the installed CLI bundle. Re-corroborated against the 2.1.234 bundle on 2026-08-18: unchanged. The selector itself is interactive and cannot be re-enumerated headlessly.",
       "defaultModel": "claude-opus-5",
       "defaultEffort": "xhigh",
       "efforts": [
@@ -140,8 +140,8 @@
       ]
     },
     "agy": {
-      "cliVersion": "1.1.13",
-      "discoverySource": "`agy models` on 2026-08-17. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
+      "cliVersion": "1.1.14",
+      "discoverySource": "`agy models` on 2026-08-18. The 1.1.14 roster is unchanged at 14 ids. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
       "defaultModel": "gemini-3.1-pro-high",
       "freeFormModel": false,
       "emitsEffortFlag": false,
@@ -221,10 +221,46 @@
         "gpt-5.6-sol": "max"
       },
       "minEffortByModel": {
+        "gpt-5.6-sol": "low",
         "gpt-5-mini": "low"
       },
+      "minEffortNote": "On gpt-5.6-sol, minimal was backend-rejected before a threadId was returned while low completed a live start; none was not called separately and is conservatively clamped to low because it sits below the rejected value. gpt-5-mini independently rejected both none and minimal and succeeded at low.",
       "fallbackMaxEffort": "xhigh",
       "liveCalls": [
+        {
+          "model": "gpt-5.6-sol",
+          "effort": "low",
+          "transport": "uniform bridge",
+          "operations": [
+            "start"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-08-18",
+          "note": "Returned the exact CPL_LOW_R73X_OK canary in 11.15 seconds with no tool requests."
+        },
+        {
+          "model": "gpt-5.6-sol",
+          "effort": "minimal",
+          "transport": "uniform bridge",
+          "operations": [
+            "start"
+          ],
+          "result": "backend-rejected",
+          "evidenceDate": "2026-08-18",
+          "note": "Rejected after 21.44 seconds before returning a threadId."
+        },
+        {
+          "model": "gpt-5.6-sol",
+          "effort": "max",
+          "transport": "uniform bridge",
+          "operations": [
+            "start",
+            "reply"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-08-18",
+          "note": "Start and reply preserved the same threadId in a 49.57-second live canary."
+        },
         {
           "model": "gpt-5-mini",
           "effort": "low",

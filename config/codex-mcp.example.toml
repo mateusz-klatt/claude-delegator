@@ -2,6 +2,9 @@
 # active CODEX_HOME/config.toml and replace /absolute/path/to/claude-delegator.
 # For unattended nesting, the Codex server args below explicitly select
 # danger-full-access and never so a child approval prompt cannot suspend its parent.
+# Keep the registered model and model_reasoning_effort compatible: ultra is
+# verified for gpt-5.6-sol and gpt-5.6-terra; Luna tops out at max and the
+# remaining catalogued models top out at xhigh.
 
 [mcp_servers.claude]
 command = "node"

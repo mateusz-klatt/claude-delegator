@@ -223,7 +223,7 @@
       "description": "Cursor-hosted models via the Cursor Agent CLI - specialized expert subagents",
       "cli": "cursor-agent",
       "install": "install the Cursor Agent CLI; on Unix it lands in ~/.local/bin/cursor-agent as a symlink into ~/.local/share/cursor-agent/versions/<version>/. The Windows install directory is not yet measured on any host here, so the bridge ships no Windows fallback rather than a guessed one.",
-      "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: a Free plan rejects every named model with 'Named models unavailable. Free plans can only use Auto.'",
+      "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: the verified Free plan rejected every named third-party model, while `auto`, `composer-2.5`, and `composer-2.5-fast` completed live calls.",
       "mcp": {
         "type": "stdio",
         "command": "node",
@@ -245,7 +245,7 @@
         "cross-family second opinion"
       ],
       "avoid": [
-        "tasks needing provider-enforced read-only: --mode ask deflects but was defeated by an adversarial prompt, and there are no command-line deny rules. Route to grok or Claude instead",
+        "tasks needing enforced denial: --mode ask deflects but was defeated by an adversarial prompt, and there are no command-line deny rules. Route to Claude or Copilot for provider-enforced denial, Grok for its built-in write/shell deny rules, or a native Codex registration explicitly configured read-only",
         "runs that must be reproducible on the default model: 'auto' is server-routed and resolved to two different models across one session"
       ]
     }

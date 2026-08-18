@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -8,6 +9,7 @@ const test = require("node:test");
 const providers = require("../config/providers.json");
 const mcpServers = require("../config/mcp-servers.example.json");
 const manifest = require("../.claude-plugin/plugin.json");
+const marketplace = require("../.claude-plugin/marketplace.json");
 
 const CODEX_MCP_EXAMPLE = fs.readFileSync(
   path.resolve(__dirname, "../config/codex-mcp.example.toml"),
@@ -97,6 +99,19 @@ test("distributed configurations run native Codex through the identity-boundary 
   assertTransparentCodexLauncher(mcpServers.mcpServers.codex);
 });
 
+test("release metadata stays at one version until the dedicated release commit", () => {
+  const packageJson = require("../package.json");
+  const packageLock = require("../package-lock.json");
+  const versions = [
+    packageJson.version,
+    packageLock.version,
+    packageLock.packages[""].version,
+    manifest.version,
+    marketplace.plugins[0].version
+  ];
+  assert.equal(new Set(versions).size, 1, `release metadata drifted: ${versions.join(", ")}`);
+});
+
 test("provider catalog, plugin manifest and MCP examples stay in parity", () => {
   const canonical = Object.keys(providers.providers);
   const claudeCodeTargets = canonical.filter((name) => name !== "claude");
@@ -144,10 +159,100 @@ test("provider catalog, plugin manifest and MCP examples stay in parity", () => 
 test("CI analyzes the canonical Sonar project without dependency lifecycle scripts", () => {
   const workflow = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/ci.yml"), "utf8");
   const sonarProperties = fs.readFileSync(path.resolve(__dirname, "../sonar-project.properties"), "utf8");
+  const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const sonarProjectKey = /^sonar\.projectKey=(.+)$/m.exec(sonarProperties)?.[1];
 
   assert.match(workflow, /^\s+run: npm ci --ignore-scripts$/m);
   assert.match(sonarProperties, /^sonar\.projectKey=mateusz-klatt_claude-delegator$/m);
   assert.doesNotMatch(sonarProperties, /mateusz-klatt_snapper-delegate/);
+  assert.ok(sonarProjectKey, "sonar-project.properties must declare sonar.projectKey");
+  assert.ok(
+    readme.includes(`sonarcloud.io/project/overview?id=${sonarProjectKey}`),
+    "README Sonar link must target the same project as sonar-project.properties"
+  );
+  assert.doesNotMatch(readme, /mateusz-klatt_snapper-delegate/);
+});
+
+test("README states the runtime and provider continuity contracts", () => {
+  const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
+  const packageJson = require("../package.json");
+  const catalog = require("../config/model-catalog.json");
+  const minimumNode = /\d+\.\d+\.\d+/.exec(packageJson.engines.node)?.[0];
+
+  assert.ok(minimumNode, "package engines.node must contain a concrete minimum version");
+  assert.ok(readme.includes(`Node.js ${minimumNode} or newer`));
+  assert.ok(setup.includes(`Node.js ${minimumNode} or newer`));
+  assert.match(setup, /NODE_TOO_OLD/);
+
+  assert.match(readme, /repeat `sandbox: "read-only"` on every reply/);
+  assert.match(readme, /Agy replies must also repeat[\s\S]{0,120}`model` and[\s\S]{0,40}`cwd`/);
+  assert.match(readme, /same `cwd`[\s\S]{0,120}Kimi[\s\S]{0,120}Cursor/);
+  assert.doesNotMatch(readme, /mcp__claude__claude/);
+
+  for (const model of catalog.providers.cursor.models) {
+    assert.ok(
+      providers.providers.cursor.auth.includes(`\`${model}\``),
+      `Cursor auth metadata must retain the verified live model ${model}`
+    );
+  }
+});
+
+test("shipped guidance does not claim Grok is the only enforcing bridge", () => {
+  const files = ["README.md", "CLAUDE.md", "rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md"];
+  const customProviders = ["Claude", "Agy", "Kimi", "Copilot", "Grok", "Cursor"];
+
+  for (const file of files) {
+    const source = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+    assert.doesNotMatch(source, /(?:only|one) bridge[^\n]*read-only[^\n]*(?:den(?:y|ies)|enforc)/i, file);
+    assert.doesNotMatch(source, /one bridged provider whose `read-only` denies/i, file);
+    assert.doesNotMatch(source, /only mapping[^\n]*denies/i, file);
+
+    const permissionSummary = source.split(/\r?\n/).find((line) =>
+      line.includes("Grok") && line.includes("Copilot") && line.includes("read-only")
+    );
+    assert.ok(permissionSummary, `${file}: missing provider-specific read-only summary`);
+    for (const provider of customProviders) {
+      assert.ok(permissionSummary.includes(provider), `${file}: read-only summary omits ${provider}`);
+    }
+  }
+});
+
+test("shared bridge guidance names every custom provider", () => {
+  const customProviders = Object.keys(providers.providers)
+    .filter((name) => name !== "codex")
+    .map((name) => name === "agy" ? "Agy" : name[0].toUpperCase() + name.slice(1));
+  const contracts = [
+    ["rules/model-selection.md", /Claude, GPT \(Codex\),[^\n]+experts serve/],
+    ["rules/model-selection.md", /1\. \*\*If multiple are available\*\*:[\s\S]+?2\. \*\*If only one is available\*\*/],
+    ["rules/orchestration.md", /For the ([^.]+) bridges, do not manually inject/],
+    ["rules/orchestration.md", /For the ([^.]+) bridges, pass the object only/],
+    ["rules/model-selection.md", /The six custom bridges \(([^)]+)\) put a JSON envelope/],
+    ["rules/triggers.md", /Codex native MCP[^\n]+?([^.]+) bridge calls should receive/]
+  ];
+
+  for (const [file, pattern] of contracts) {
+    const source = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+    const contract = pattern.exec(source)?.[0];
+    assert.ok(contract, `${file}: shared bridge contract not found`);
+    for (const provider of customProviders) {
+      assert.ok(contract.includes(provider), `${file}: shared bridge contract omits ${provider}`);
+    }
+  }
+});
+
+test("catalog refresh prose follows the catalog dates and response envelope types", () => {
+  const catalog = require("../config/model-catalog.json");
+  const selection = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
+  const orchestration = fs.readFileSync(path.resolve(__dirname, "../rules/orchestration.md"), "utf8");
+
+  assert.ok(selection.includes(`Rosters were refreshed on ${catalog.verifiedAt}`));
+  assert.ok(selection.includes(`CLI versions were rechecked on ${catalog.cliVersionsCheckedAt}`));
+  assert.match(selection, /\| MCP result `content` \| content-block array \|/);
+  assert.match(selection, /\| Envelope `content` \| string \|/);
+  assert.match(selection, /JSON envelope `\{"threadId": "\.\.\.", "content": "\.\.\."\}`/);
+  assert.match(orchestration, /JSON\.parse\(result\.content\[0\]\.text\)/);
+  assert.doesNotMatch(orchestration, /threadId:\s*result\.threadId/);
 });
 
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {
@@ -185,7 +290,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 6, "expected a timeout row for Agy, Kimi, Grok, Cursor, Copilot and Claude");
+  assert.equal(timeoutRows.length, 12, "expected start and reply timeout rows for all six custom bridges");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);
@@ -325,6 +430,22 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
   );
 });
 
+test("every custom bridge stamps and enforces its provider-specific depth guard", () => {
+  const customBridges = Object.keys(providers.providers).filter((name) => name !== "codex");
+  assert.deepEqual(customBridges.sort(), ["agy", "claude", "copilot", "cursor", "grok", "kimi"]);
+
+  for (const name of customBridges) {
+    const source = fs.readFileSync(path.resolve(__dirname, `../server/${name}/index.js`), "utf8");
+    const marker = `CLAUDE_DELEGATOR_${name.toUpperCase()}_DEPTH`;
+    assert.ok(
+      source.includes(`createDepthGuard("${marker}")`),
+      `${name} must create its provider-specific depth guard`
+    );
+    assert.match(source, /depth\.stamp\(/, `${name} must stamp its child environment`);
+    assert.match(source, /depth\.exceeded\(\)/, `${name} must refuse a nested delegation`);
+  }
+});
+
 test("the plugin declares its MCP servers, so no version-stamped path is ever stored", () => {
   const servers = manifest.mcpServers;
   assert.ok(servers, "plugin.json must declare mcpServers");
@@ -360,24 +481,38 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
 
   // Manifest-owned servers are addressable by their plugin-qualified names.
   // Bare lookups report "No MCP server found" even when the plugin is healthy.
-  const configuredServers = [...setup.matchAll(
+  const configuredServers = new Set([...setup.matchAll(
     /^\s+(plugin:claude-delegator:[a-z]+)(?:\s+\\)?\s*$/gm
-  )].map((match) => match[1]);
+  )].map((match) => match[1]));
   const expectedServers = Object.keys(servers)
     .map((name) => `plugin:${manifest.name}:${name}`);
-  assert.deepEqual(configuredServers.sort(), expectedServers.sort());
+  assert.deepEqual([...configuredServers].sort(), expectedServers.sort());
   assert.match(setup, /claude mcp get "\$server"/);
-  assert.match(setup, /grep -q 'Status: \.\*Connected'/);
+  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$";
+  assert.ok(setup.includes(`grep -Eq '${connectedPattern}'`));
+  for (const status of ["Status: ✔ Connected\n", "  Status: ✔ Connected  \n"]) {
+    assert.equal(spawnSync("grep", ["-Eq", connectedPattern], { input: status }).status, 0, status);
+  }
+  for (const status of ["Status: Not Connected\n", "Status: Disconnected\n", "Status: Connected\n"]) {
+    assert.notEqual(spawnSync("grep", ["-Eq", connectedPattern], { input: status }).status, 0, status);
+  }
   assert.doesNotMatch(setup, /grep -q ["']server\//);
   assert.match(
     setup,
     /"\$HOME\/\.grok\/bin\/grok" --version/,
     "setup must probe Grok's stable launcher even when it is absent from PATH"
   );
+  assert.match(setup, /On Windows, only PATH is supported/);
+  assert.match(
+    setup,
+    /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then\s+check_cli_version "Cursor" "cursor-agent"\s+else\s+check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/,
+    "setup must not invent a Cursor fallback on Windows"
+  );
 });
 
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
   const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
   const uninstall = fs.readFileSync(path.resolve(__dirname, "../commands/uninstall.md"), "utf8");
 
   assert.match(readme, /before 1\.9\.0/);
@@ -388,6 +523,32 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     /claude plugin uninstall --scope user claude-delegator@jarrodwatts-claude-delegator/
   );
   assert.match(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
+  const migrationBlocks = {
+    README: /### Repair MCP registration after an upgrade[\s\S]*?```bash\n([\s\S]*?)\n```/.exec(readme)?.[1],
+    setup: /### Clearing registrations from an older install[\s\S]*?```bash\n([\s\S]*?)\n```/.exec(setup)?.[1]
+  };
+  const expectedServers = Object.keys(manifest.mcpServers);
+  const connectedPattern = "^[[:space:]]*Status:[[:space:]]+✔[[:space:]]+Connected[[:space:]]*$";
+
+  for (const [label, block] of Object.entries(migrationBlocks)) {
+    assert.ok(block, `${label}: migration block not found`);
+    assert.match(block, /^# Keep[^\n]+\n#[^\n]+\n\(\nset -e\n/);
+    assert.match(block, /installed_plugins\.json/);
+    assert.match(block, /records\[0\]\["installPath"\]/);
+    assert.doesNotMatch(block, /glob\.glob/);
+    assert.ok(block.includes(`grep -Eq '${connectedPattern}'`));
+    for (const server of expectedServers) {
+      assert.ok(block.includes(`plugin:claude-delegator:${server}`), `${label}: guard omits ${server}`);
+    }
+    const refusal = block.indexOf("stop before removing legacy registrations");
+    const removal = block.indexOf("for s in codex agy kimi copilot grok cursor gemini; do");
+    assert.ok(refusal >= 0 && refusal < removal, `${label}: Connected gate must precede legacy removal`);
+    assert.match(block, /\n\)\s*$/);
+  }
+  assert.match(uninstall, /\/plugin install claude-delegator@jarrodwatts-claude-delegator/);
+  assert.match(uninstall, /\/claude-delegator:setup/);
+  assert.match(setup, /\/user\/starred\/mateusz-klatt\/claude-delegator/);
+  assert.doesNotMatch(setup, /\/user\/starred\/jarrodwatts\/claude-delegator/);
 });
 
 test("no distributed config passes a -c override that would CREATE a config table", () => {

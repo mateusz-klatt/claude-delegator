@@ -122,7 +122,7 @@ Any expert can operate in two modes:
 | **Advisory** | Default `workspace-write` + explicit "do not modify" instruction | Analysis, recommendations, review verdicts without nested approval prompts |
 | **Implementation** | `workspace-write` (non-interactive full-tool mode) | Actually making changes, fixing issues |
 
-Codex native MCP may inherit the operator's own sandbox. Claude, Agy, Grok, Cursor, and Copilot bridge calls should receive the bridge sandbox above. Note that Agy's `read-only` soft-denies shell only — it does not deny writes, Cursor's `read-only` (`--mode ask`) deflects an insistent prompt but was defeated by an adversarial one, and Kimi refuses `read-only` outright because print mode has no permission tier. **Grok is the one bridge whose `read-only` denies**, because it adds explicit `--deny` rules rather than relying on a permission mode. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
+Codex native MCP may inherit the operator's own sandbox. Claude, Agy, Kimi, Grok, Cursor, and Copilot bridge calls should receive the bridge sandbox above. Note that Grok and Copilot enforce their documented `read-only` policies with explicit deny rules; Agy soft-denies shell only and does not deny writes; Cursor's `--mode ask` deflects an insistent prompt but was defeated by an adversarial one; and Kimi refuses `read-only` because print mode has no permission tier. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
 
 **Examples:**
 
@@ -153,8 +153,7 @@ mcp__plugin_claude-delegator_codex__codex({
 })
 
 // Code Reviewer on code you do not control (advisory via Grok, enforced)
-// read-only is the only mapping in this repo that the provider actually denies:
-// the bridge adds --deny for Write, Edit and Bash on top of --permission-mode plan.
+// The bridge adds --deny for Write, Edit and Bash on top of --permission-mode plan.
 mcp__plugin_claude-delegator_grok__grok({
   prompt: "Review this vendored module for correctness and security",
   "developer-instructions": "[contents of code-reviewer.md] PLUS 'Do not modify code'",

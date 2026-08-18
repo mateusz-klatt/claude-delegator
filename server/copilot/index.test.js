@@ -48,7 +48,7 @@ function createCopilotStub() {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 if (args.includes("--version")) {
-  process.stdout.write("Copilot CLI 1.0.78\\n");
+  process.stdout.write("Copilot CLI 1.0.80\\n");
   process.exit(0);
 }
 
@@ -65,7 +65,8 @@ fs.appendFileSync(process.env.COPILOT_STUB_CAPTURE, JSON.stringify({
   mcpAgentMailToken: process.env.MCP_AGENT_MAIL_TOKEN,
   httpBearerToken: process.env.HTTP_BEARER_TOKEN,
   integrationBearerToken: process.env.integration_bearer_token,
-  claudeCode: process.env.CLAUDECODE
+  claudeCode: process.env.CLAUDECODE,
+  delegationDepth: process.env.CLAUDE_DELEGATOR_COPILOT_DEPTH
 }) + "\\n");
 
 if (process.env.COPILOT_STUB_PROCESS_ERROR === "1") {
@@ -139,7 +140,8 @@ if (process.env.COPILOT_STUB_HANG === "1") {
       MCP_AGENT_MAIL_TOKEN: "caller-project-token",
       HTTP_BEARER_TOKEN: "caller-server-token",
       integration_bearer_token: "caller-integration-token",
-      CLAUDECODE: "nested-session-marker"
+      CLAUDECODE: "nested-session-marker",
+      CLAUDE_DELEGATOR_COPILOT_DEPTH: ""
     }
   };
 }
@@ -404,17 +406,33 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
   assert.equal(call.httpBearerToken, undefined);
   assert.equal(call.integrationBearerToken, undefined);
   assert.equal(call.claudeCode, undefined);
+  assert.equal(call.delegationDepth, "1");
   await server.close();
 });
 
-test("forwards none/minimal efforts verbatim and maps workspace-write to allow-all", async () => {
+test("refuses to delegate from inside an already delegated Copilot session", async () => {
+  const server = startServer({ CLAUDE_DELEGATOR_COPILOT_DEPTH: "1" });
+  for (const name of ["copilot", "copilot-reply"]) {
+    const response = await server.request("tools/call", {
+      name,
+      arguments: { threadId: "thread-x", prompt: "hello" }
+    });
+    assert.equal(response.error.code, -32603);
+    assert.match(response.error.message, /already running inside a delegated Copilot session/);
+    assert.match(response.error.message, /CLAUDE_DELEGATOR_COPILOT_DEPTH=1/);
+  }
+  assert.deepEqual(readCalls(server.capturePath), []);
+  await server.close();
+});
+
+test("forwards efforts without a verified floor and maps workspace-write to allow-all", async () => {
   const server = startServer();
   for (const effort of ["none", "minimal"]) {
     const response = await server.request("tools/call", {
       name: "copilot",
       arguments: {
         prompt: `Use ${effort} effort`,
-        model: "gpt-5.6-sol",
+        model: "claude-opus-5",
         effort,
         sandbox: "workspace-write"
       }
@@ -434,6 +452,11 @@ test("forwards none/minimal efforts verbatim and maps workspace-write to allow-a
 
 test("uses verified model effort floors and ceilings and caps max conservatively on resume", async () => {
   assert.equal(resolveEffort("gpt-5.6-sol", "max"), "max");
+  assert.equal(resolveEffort("gpt-5.6-sol", "none"), "low");
+  assert.equal(resolveEffort("gpt-5.6-sol", "minimal"), "low");
+  assert.equal(resolveEffort("gpt-5.6-sol", "low"), "low");
+  assert.equal(resolveEffort("gpt-5.6-terra", "minimal"), "minimal");
+  assert.equal(resolveEffort("gpt-5.6-terra", "low"), "low");
   assert.equal(resolveEffort("gpt-5.6-terra", "max"), "xhigh");
   assert.equal(resolveEffort("claude-opus-5", "minimal"), "minimal");
   assert.equal(resolveEffort("gpt-5-mini", "none"), "low");
@@ -446,11 +469,13 @@ test("uses verified model effort floors and ceilings and caps max conservatively
   });
   assert.equal(start.result.threadId, "thread-start");
 
-  const flooredStart = await server.request("tools/call", {
-    name: "copilot",
-    arguments: { prompt: "Use the verified minimum", model: "gpt-5-mini", effort: "none" }
-  });
-  assert.equal(flooredStart.result.threadId, "thread-start");
+  for (const effort of ["none", "minimal", "low"]) {
+    const flooredStart = await server.request("tools/call", {
+      name: "copilot",
+      arguments: { prompt: `Use the verified minimum from ${effort}`, model: "gpt-5.6-sol", effort }
+    });
+    assert.equal(flooredStart.result.threadId, "thread-start");
+  }
 
   const reply = await server.request("tools/call", {
     name: "copilot-reply",
@@ -464,21 +489,32 @@ test("uses verified model effort floors and ceilings and caps max conservatively
   assert.deepEqual(JSON.parse(reply.result.content[0].text), { threadId: reply.result.threadId, content: "reply result" });
   assert.equal(reply.result.threadId, "thread-reply");
 
-  const [startCall, flooredStartCall, replyCall] = readCalls(server.capturePath);
+  const [startCall, ...remainingCalls] = readCalls(server.capturePath);
+  const replyCall = remainingCalls.pop();
+  const flooredStartCalls = remainingCalls;
   assert.equal(argumentValue(startCall.args, "--effort"), "max");
+  assert.equal(startCall.args.filter((arg) => arg === "--effort").length, 1);
   assert.ok(startCall.args.includes("--allow-all-tools"));
-  assert.equal(argumentValue(flooredStartCall.args, "--model"), "gpt-5-mini");
-  assert.equal(argumentValue(flooredStartCall.args, "--effort"), "low");
-  assert.ok(flooredStartCall.args.includes("--allow-all-tools"));
+  assert.equal(flooredStartCalls.length, 3);
+  for (const flooredStartCall of flooredStartCalls) {
+    assert.equal(argumentValue(flooredStartCall.args, "--model"), "gpt-5.6-sol");
+    assert.equal(argumentValue(flooredStartCall.args, "--effort"), "low");
+    assert.equal(flooredStartCall.args.filter((arg) => arg === "--effort").length, 1);
+    assert.ok(flooredStartCall.args.includes("--allow-all-tools"));
+  }
   assert.equal(argumentValue(replyCall.args, "--resume"), "thread-original");
   assert.equal(argumentValue(replyCall.args, "--effort"), "xhigh");
+  assert.equal(replyCall.args.filter((arg) => arg === "--effort").length, 1);
   assert.equal(replyCall.args.includes("--model"), false);
   assert.ok(replyCall.args.includes("--deny-tool=shell"));
+  assert.ok(replyCall.args.includes("--deny-tool=write"));
+  assert.ok(replyCall.args.includes("--deny-tool=edit"));
+  assert.equal(replyCall.args.includes("--allow-all-tools"), false);
   assert.equal(argumentValue(replyCall.args, "-p"), "Continue the review");
   await server.close();
 });
 
-test("adds coordination to replies and forwards an explicit low effort unchanged", async () => {
+test("adds coordination to replies and preserves an explicit effort without applying a model floor", async () => {
   const server = startServer();
   const response = await server.request("tools/call", {
     name: "copilot-reply",
