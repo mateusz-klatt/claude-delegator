@@ -18,6 +18,76 @@ const CODEX_MCP_EXAMPLE = fs.readFileSync(
   "utf8"
 );
 
+function resolveTestBash({
+  platform = process.platform,
+  environment = process.env,
+  existsSync = fs.existsSync,
+  probe,
+  gitExecPath
+} = {}) {
+  if (platform !== "win32") return environment.CLAUDE_DELEGATOR_TEST_BASH || "bash";
+
+  const isGnuBash = probe || ((candidate) => {
+    const result = spawnSync(candidate, ["--version"], {
+      encoding: "utf8",
+      env: environment,
+      windowsHide: true
+    });
+    return result.status === 0 && /GNU bash/i.test(`${result.stdout || ""}${result.stderr || ""}`);
+  });
+  let discoveredGitExecPath = gitExecPath;
+  if (discoveredGitExecPath === undefined) {
+    const result = spawnSync("git", ["--exec-path"], {
+      encoding: "utf8",
+      env: environment,
+      windowsHide: true
+    });
+    discoveredGitExecPath = result.status === 0 ? result.stdout.trim() : "";
+  }
+
+  const candidates = [];
+  const addCandidate = (candidate) => {
+    if (typeof candidate === "string" && candidate) candidates.push(candidate);
+  };
+  addCandidate(environment.CLAUDE_DELEGATOR_TEST_BASH);
+  if (discoveredGitExecPath) {
+    addCandidate(path.win32.resolve(discoveredGitExecPath, "..", "..", "..", "bin", "bash.exe"));
+  }
+  for (const root of [
+    environment.ProgramFiles,
+    environment.ProgramW6432,
+    environment["ProgramFiles(x86)"]
+  ]) {
+    if (root) addCandidate(path.win32.join(root, "Git", "bin", "bash.exe"));
+  }
+  if (environment.LOCALAPPDATA) {
+    addCandidate(path.win32.join(environment.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe"));
+  }
+  for (const directory of (environment.PATH || "").split(path.win32.delimiter)) {
+    if (directory) addCandidate(path.win32.join(directory, "bash.exe"));
+  }
+
+  const banned = new Set(["C:\\Windows\\System32\\bash.exe"]);
+  if (environment.SystemRoot && bridgeCore.isFullyQualifiedWindowsPath(environment.SystemRoot)) {
+    banned.add(path.win32.join(environment.SystemRoot, "System32", "bash.exe"));
+  }
+  const normalizedBanned = new Set(
+    [...banned].map((candidate) => path.win32.normalize(candidate).toLowerCase())
+  );
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!bridgeCore.isFullyQualifiedWindowsPath(candidate)) continue;
+    const normalized = path.win32.normalize(candidate);
+    const key = normalized.toLowerCase();
+    if (seen.has(key) || normalizedBanned.has(key)) continue;
+    seen.add(key);
+    if (existsSync(normalized) && isGnuBash(normalized)) return normalized;
+  }
+  throw new Error(
+    "Git Bash is required for Windows shell fixtures; System32\\bash.exe is a WSL launcher and is never used"
+  );
+}
+
 function parseCodexMcpExample(source) {
   const servers = {};
   let current;
@@ -688,6 +758,40 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   assert.match(setup, /read-only` is a provider-specific opt-in and is not universally\s+enforced/);
 });
 
+test("Windows shell fixtures never select the System32 WSL launcher", () => {
+  const systemRoot = String.raw`C:\Windows`;
+  const systemBash = String.raw`C:\Windows\System32\bash.exe`;
+  const gitBash = String.raw`C:\Program Files\Git\bin\bash.exe`;
+  const existing = new Set([systemBash, gitBash].map((candidate) => candidate.toLowerCase()));
+  const selected = resolveTestBash({
+    platform: "win32",
+    environment: {
+      SystemRoot: systemRoot,
+      ProgramFiles: String.raw`C:\Program Files`,
+      PATH: `${path.win32.dirname(systemBash)};${path.win32.dirname(gitBash)}`
+    },
+    existsSync: (candidate) => existing.has(candidate.toLowerCase()),
+    probe: () => true,
+    gitExecPath: ""
+  });
+  assert.equal(selected, gitBash);
+
+  assert.throws(
+    () => resolveTestBash({
+      platform: "win32",
+      environment: {
+        CLAUDE_DELEGATOR_TEST_BASH: systemBash,
+        SystemRoot: systemRoot,
+        PATH: path.win32.dirname(systemBash)
+      },
+      existsSync: () => true,
+      probe: () => true,
+      gitExecPath: ""
+    }),
+    /System32\\bash\.exe is a WSL launcher/
+  );
+});
+
 test("setup reuses the resolved Codex binary and preserves auth exit status", {
   skip: process.platform === "win32"
 }, () => {
@@ -719,7 +823,7 @@ check_cli_version "Codex" "codex-not-on-path" "$FIXTURE_CODEX" || true
 ${auth}
 printf 'FIXTURE_BIN=%s\\nFIXTURE_STATUS=%s\\n' "$CODEX_BIN" "$CODEX_AUTH_EXIT_STATUS"
 `;
-  const run = (mode, binary = fixtureBinary) => spawnSync("bash", ["-c", harness], {
+  const run = (mode, binary = fixtureBinary) => spawnSync(resolveTestBash(), ["-c", harness], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -781,7 +885,7 @@ test("setup accepts non-executable Windows command shims without weakening nativ
   fs.chmodSync(nativeNonExecutable, 0o644);
 
   const check = (candidate, osName = "Windows_NT") => spawnSync(
-    "bash",
+    resolveTestBash(),
     ["-c", `${predicate}\nis_runnable_cli_candidate "$FIXTURE_CANDIDATE"`],
     {
       encoding: "utf8",
@@ -859,7 +963,7 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   const removalReporting = /(legacy_removed=""[\s\S]*?)\n# Remove the plugin/.exec(uninstallBlock)?.[1];
   assert.ok(removalReporting, "uninstall legacy removal reporting block missing");
   const runRemovalReporting = ({ scanStatus = 0, servers = "", failures = "" } = {}) => spawnSync(
-    "bash",
+    resolveTestBash(),
     ["-c", `
 claude() {
   case " $REMOVE_FAILURES " in
