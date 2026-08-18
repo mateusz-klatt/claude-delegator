@@ -7,6 +7,10 @@ const test = require("node:test");
 
 const providers = require("../config/providers.json");
 const mcpServers = require("../config/mcp-servers.example.json");
+const manifest = require("../.claude-plugin/plugin.json");
+
+const EXPECTED_PLUGIN_SERVERS = ["codex", "agy", "kimi", "copilot", "grok", "cursor"];
+const EXPECTED_CODEX_SERVERS = ["claude", ...EXPECTED_PLUGIN_SERVERS];
 
 // `-c mcp_servers.codex.enabled=false` is deliberately absent. A `-c` override
 // CREATES `mcp_servers.codex` when config.toml has no such section, and Codex
@@ -17,9 +21,9 @@ const mcpServers = require("../config/mcp-servers.example.json");
 // ordinary case, so these distributed configurations shipped a Codex server
 // that failed as CONNECTION_CLOSED — a symptom naming neither flag nor config.
 //
-// These files are static, so they cannot test for the section the way
-// `commands/setup.md` does; omitting the flag is correct for them. An operator
-// who really has a self-referential [mcp_servers.codex] adds it back by hand.
+// The manifest, providers catalog and Claude JSON example cannot guarantee that
+// a Codex table exists, so omitting the flag is correct for them. The separate
+// Codex-orchestrator TOML deliberately declares that table and disables it.
 const EXPECTED_CODEX_ARGS = [
   "-m", "gpt-5.6-sol",
   "-s", "danger-full-access",
@@ -38,6 +42,55 @@ function assertTransparentCodexLauncher(configuration) {
 test("distributed configurations run native Codex through the identity-boundary launcher", () => {
   assertTransparentCodexLauncher(providers.providers.codex.mcp);
   assertTransparentCodexLauncher(mcpServers.mcpServers.codex);
+});
+
+test("distributed MCP examples register every supported target", () => {
+  assert.deepEqual(mcpServers.mcpServers, manifest.mcpServers);
+  assert.deepEqual(Object.keys(providers.providers).sort(), [...EXPECTED_CODEX_SERVERS].sort());
+
+  const codexExample = fs.readFileSync(
+    path.resolve(__dirname, "../config/codex-mcp.example.toml"),
+    "utf8"
+  );
+  const headers = [...codexExample.matchAll(/^\[mcp_servers\.([^\]]+)\]\s*$/gm)];
+  const sections = headers.map((match) => match[1]);
+  assert.deepEqual(
+    sections.sort(),
+    Object.keys(providers.providers).sort(),
+    "Codex-side TOML must contain all targets, including Claude"
+  );
+
+  const blocks = new Map(headers.map((match, index) => [
+    match[1],
+    codexExample.slice(match.index, headers[index + 1]?.index ?? codexExample.length)
+  ]));
+  for (const name of EXPECTED_CODEX_SERVERS) {
+    const block = blocks.get(name);
+    assert.ok(block, `${name} needs a Codex MCP table`);
+    assert.match(block, /^command = "node"$/m, name);
+    assert.match(block, /^startup_timeout_sec = 20$/m, name);
+    assert.match(block, /^tool_timeout_sec = 3600$/m, name);
+    assert.match(block, /^required = false$/m, name);
+
+    const args = JSON.parse(block.match(/^args = (\[.*\])$/m)[1]);
+    const enabledTools = JSON.parse(block.match(/^enabled_tools = (\[.*\])$/m)[1]);
+    assert.deepEqual(enabledTools, [name, `${name}-reply`], name);
+
+    if (name === "codex") {
+      assert.equal(args[0], "/absolute/path/to/claude-delegator/server/codex/launcher.js");
+      assert.deepEqual(args.slice(1), [
+        ...EXPECTED_CODEX_ARGS.slice(0, -1),
+        "-c", "mcp_servers.codex.enabled=false",
+        "mcp-server"
+      ]);
+    } else {
+      assert.deepEqual(
+        args,
+        [`/absolute/path/to/claude-delegator/server/${name}/index.js`],
+        name
+      );
+    }
+  }
 });
 
 test("CI analyzes the canonical Sonar project without dependency lifecycle scripts", () => {
@@ -71,7 +124,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
     assert.equal(timeout.maximum, 3_600_000, `${tool.name} maximum timeout`);
   }
 
-  // All four bridges now take these bounds from the shared core rather than
+  // All six custom bridges take these bounds from the shared core rather than
   // declaring their own, so lock the single definition too. Previously the Claude
   // bridge could only be checked by regex over its source, because it resolved the
   // CLI at load and exited when it was absent, as it is on CI runners.
@@ -225,7 +278,6 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
 });
 
 test("the plugin declares its MCP servers, so no version-stamped path is ever stored", () => {
-  const manifest = require("../.claude-plugin/plugin.json");
   const servers = manifest.mcpServers;
   assert.ok(servers, "plugin.json must declare mcpServers");
 
@@ -235,8 +287,7 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   // died the moment the version directory did: three bridges failed with
   // CONNECTION_CLOSED after a routine cache cleanup, with nothing explaining why.
   // Declared here instead, Claude Code resolves the variable on every launch.
-  const expected = ["codex", "agy", "kimi", "copilot", "grok", "cursor"];
-  assert.deepEqual(Object.keys(servers).sort(), [...expected].sort());
+  assert.deepEqual(Object.keys(servers).sort(), [...EXPECTED_PLUGIN_SERVERS].sort());
 
   for (const [name, server] of Object.entries(servers)) {
     assert.equal(server.type, "stdio", name);
@@ -257,10 +308,35 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   // setup.md must not grow the hand-registration block back.
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
   assert.doesNotMatch(setup, /^claude mcp add /m);
+
+  // Manifest-owned servers are addressable by their plugin-qualified names.
+  // Bare lookups report "No MCP server found" even when the plugin is healthy.
+  const configuredServers = [...setup.matchAll(
+    /^\s+(plugin:claude-delegator:[a-z]+)(?:\s+\\)?\s*$/gm
+  )].map((match) => match[1]);
+  const expectedServers = Object.keys(servers)
+    .map((name) => `plugin:${manifest.name}:${name}`);
+  assert.deepEqual(configuredServers.sort(), expectedServers.sort());
+  assert.match(setup, /claude mcp get "\$server"/);
+  assert.match(setup, /grep -q 'Status: \.\*Connected'/);
+  assert.doesNotMatch(setup, /grep -q ["']server\//);
 });
 
-test("no distributed config passes a -c override that would CREATE a config table", () => {
-  const manifest = require("../.claude-plugin/plugin.json");
+test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
+  const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const uninstall = fs.readFileSync(path.resolve(__dirname, "../commands/uninstall.md"), "utf8");
+
+  assert.match(readme, /before 1\.9\.0/);
+  assert.match(uninstall, /before 1\.9\.0/);
+  assert.doesNotMatch(`${readme}\n${uninstall}`, /before 1\.8\.0/);
+  assert.match(
+    uninstall,
+    /claude plugin uninstall --scope user claude-delegator@jarrodwatts-claude-delegator/
+  );
+  assert.match(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
+});
+
+test("configs without a guaranteed Codex table do not create one with -c", () => {
 
   // Stated as a property rather than by comparing against EXPECTED_CODEX_ARGS,
   // because that literal is exactly the construction which entrenched the defect:
@@ -298,7 +374,6 @@ test("no distributed config passes a -c override that would CREATE a config tabl
 });
 
 test("shipped rules name the tools the plugin actually advertises", () => {
-  const manifest = require("../.claude-plugin/plugin.json");
   const shipped = ["rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md",
                    "CLAUDE.md", "README.md"];
 

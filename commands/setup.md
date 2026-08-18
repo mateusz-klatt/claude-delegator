@@ -1,38 +1,82 @@
 ---
 name: setup
-description: Configure claude-delegator with Codex (GPT), Agy, Kimi, or Copilot MCP servers
+description: Configure claude-delegator with Codex, Agy, Kimi, Copilot, Grok, and Cursor MCP servers
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
 
 # Setup
 
-Configure GPT (via Codex or Copilot), Agy (Google Antigravity) or Kimi (Moonshot) as specialized expert subagents via native MCP. Five domain experts that can advise OR implement.
+Configure Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents via native MCP. Five domain experts can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
 
 ### Codex (GPT)
 ```bash
-which codex 2>/dev/null && codex --version 2>&1 | head -1 || echo "CODEX_MISSING"
+if command -v codex >/dev/null 2>&1; then
+  codex --version 2>&1 | head -1
+else
+  echo "CODEX_MISSING"
+fi
 ```
 
 ### Agy (Antigravity)
 ```bash
-which agy 2>/dev/null || [ -x "$HOME/.local/bin/agy" ] && agy --version 2>&1 | head -1 || echo "AGY_MISSING"
+if command -v agy >/dev/null 2>&1; then
+  agy --version 2>&1 | head -1
+elif [ -x "$HOME/.local/bin/agy" ]; then
+  "$HOME/.local/bin/agy" --version 2>&1 | head -1
+else
+  echo "AGY_MISSING"
+fi
 ```
 
 ### Kimi
 ```bash
-which kimi 2>/dev/null || [ -x "$HOME/.kimi-code/bin/kimi" ] && kimi --version 2>&1 | head -1 || echo "KIMI_MISSING"
-which grok 2>/dev/null || [ -x "$HOME/.local/bin/grok" ] && grok --version 2>&1 | head -1 || echo "GROK_MISSING"
-# cursor-agent --version is purely local: unlike -p or `models` it establishes no
-# session and writes nothing to ~/.cursor, so it is safe to probe before setup.
-which cursor-agent 2>/dev/null || [ -x "$HOME/.local/bin/cursor-agent" ] && cursor-agent --version 2>&1 | head -1 || echo "CURSOR_MISSING"
+if command -v kimi >/dev/null 2>&1; then
+  kimi --version 2>&1 | head -1
+elif [ -x "$HOME/.kimi-code/bin/kimi" ]; then
+  "$HOME/.kimi-code/bin/kimi" --version 2>&1 | head -1
+else
+  echo "KIMI_MISSING"
+fi
+```
+
+### Grok
+```bash
+if command -v grok >/dev/null 2>&1; then
+  grok --version 2>&1 | head -1
+elif [ -x "$HOME/.grok/bin/grok" ]; then
+  "$HOME/.grok/bin/grok" --version 2>&1 | head -1
+elif [ -x "$HOME/.local/bin/grok" ]; then
+  "$HOME/.local/bin/grok" --version 2>&1 | head -1
+else
+  echo "GROK_MISSING"
+fi
+```
+
+### Cursor
+```bash
+# On macOS this version check also touches the login keychain. A locked keychain
+# means the CLI is present but cannot start until the keychain is unlocked.
+if command -v cursor-agent >/dev/null 2>&1; then
+  cursor-agent --version 2>&1 | head -1
+elif [ -x "$HOME/.local/bin/cursor-agent" ]; then
+  "$HOME/.local/bin/cursor-agent" --version 2>&1 | head -1
+else
+  echo "CURSOR_MISSING"
+fi
 ```
 
 ### Copilot (GPT)
 ```bash
-which copilot 2>/dev/null && copilot --version 2>&1 | head -1 || echo "COPILOT_MISSING"
+if command -v copilot >/dev/null 2>&1; then
+  copilot --version 2>&1 | head -1
+elif [ -x "$HOME/.local/bin/copilot" ]; then
+  "$HOME/.local/bin/copilot" --version 2>&1 | head -1
+else
+  echo "COPILOT_MISSING"
+fi
 ```
 
 ### If Missing
@@ -50,8 +94,6 @@ Agy (Google Antigravity) CLI not found.
 Install the Antigravity CLI; it lands as a native binary, typically ~/.local/bin/agy.
 Then authenticate: launch `agy` once and complete the Antigravity OAuth flow.
 Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
-If registration succeeds but the bridge cannot start, re-register with
-`--env=PATH=$HOME/.local/bin:$PATH`.
 ```
 
 **Kimi Missing:**
@@ -62,6 +104,21 @@ Then authenticate: set an api_key in ~/.kimi-code/config.toml or export KIMI_API
 (`kimi login` covers the subscription device-code flow, but subscription signup
 was not open for registration as of 2026-08-17.)
 Note: ~/.kimi-code/bin is often absent from the minimal PATH an MCP server inherits.
+```
+
+**Grok Missing:**
+```
+Grok CLI not found.
+Install the Grok CLI; it typically lands in ~/.grok/bin/grok or ~/.local/bin/grok.
+Then authenticate: grok login
+```
+
+**Cursor Missing:**
+```
+Cursor Agent CLI not found.
+Install Cursor Agent; it typically lands in ~/.local/bin/cursor-agent.
+Then authenticate: cursor-agent login
+On macOS, unlock the login keychain if even `cursor-agent --version` fails.
 ```
 
 **Copilot Missing:**
@@ -145,7 +202,8 @@ carrying duplicates, which is harmless, instead of briefly carrying nothing.
 `gemini` is in the list because that bridge was removed in 1.5.0 and an old
 registration may still be sitting there.
 
-This registers the MCP servers at user scope (available across all projects).
+The user-scoped plugin makes these dynamically configured servers available
+across projects; they are not separate user-scope `claude mcp add` entries.
 
 ## Step 3: Install Orchestration Rules
 
@@ -158,85 +216,65 @@ mkdir -p ~/.claude/rules/delegator && cp ${CLAUDE_PLUGIN_ROOT}/rules/*.md ~/.cla
 Run these checks and report results:
 
 ```bash
-# Check 1: CLI versions
-codex --version 2>&1 | head -1 || echo "Not installed"
-agy --version 2>&1 | head -1 || echo "Not installed"
-kimi --version 2>&1 | head -1 || echo "Not installed"
-grok --version 2>&1 | head -1 || echo "Not installed"
-cursor-agent --version 2>&1 | head -1 || echo "Not installed"
-copilot --version 2>&1 | head -1 || echo "Not installed"
+# Check 1: CLI versions, including the install-location fallbacks used by bridges.
+check_cli_version() {
+  label="$1"
+  cli="$2"
+  shift 2
+  binary=""
+  if command -v "$cli" >/dev/null 2>&1; then
+    binary="$cli"
+  else
+    for fallback in "$@"; do
+      if [ -x "$fallback" ]; then
+        binary="$fallback"
+        break
+      fi
+    done
+  fi
+  if [ -z "$binary" ]; then
+    echo "$label CLI: NOT INSTALLED"
+    return
+  fi
+  if version=$("$binary" --version 2>&1); then
+    echo "$label CLI: $(printf '%s\n' "$version" | head -1)"
+  else
+    echo "$label CLI: FAILED TO START"
+    printf '%s\n' "$version" | head -1
+  fi
+}
 
-# Check 2: Codex MCP server
-CODEX_CONFIG=$(claude mcp get codex 2>/dev/null)
-if echo "$CODEX_CONFIG" | grep -q "codex"; then
-  MODEL=$(echo "$CODEX_CONFIG" | grep -oE 'gpt-[0-9]+\.[0-9]+-?[a-z]*' | head -1)
-  echo "Codex: OK (model: ${MODEL:-unknown})"
-else
-  echo "Codex: NOT CONFIGURED"
-fi
+check_cli_version "Codex" "codex"
+check_cli_version "Agy" "agy" "$HOME/.local/bin/agy"
+check_cli_version "Kimi" "kimi" "$HOME/.kimi-code/bin/kimi"
+check_cli_version "Grok" "grok" "$HOME/.grok/bin/grok" "$HOME/.local/bin/grok"
+check_cli_version "Cursor" "cursor-agent" "$HOME/.local/bin/cursor-agent"
+check_cli_version "Copilot" "copilot" "$HOME/.local/bin/copilot"
 
-# Check 3: Agy MCP server (authentication is the Antigravity OAuth token, not an env var)
-AGY_CONFIG=$(claude mcp get agy 2>/dev/null)
-if echo "$AGY_CONFIG" | grep -q "server/agy/index.js"; then
-  echo "Agy: OK (using the Antigravity CLI OAuth configuration; verify with a live call)"
-else
-  echo "Agy: NOT CONFIGURED"
-fi
+# Check 2: all six plugin-owned MCP servers. `claude mcp get` exits zero and
+# prints the configured path even when connection failed, so only Status counts.
+for server in \
+  plugin:claude-delegator:codex \
+  plugin:claude-delegator:agy \
+  plugin:claude-delegator:kimi \
+  plugin:claude-delegator:copilot \
+  plugin:claude-delegator:grok \
+  plugin:claude-delegator:cursor
+do
+  config=$(claude mcp get "$server" 2>&1)
+  name=${server##*:}
+  if printf '%s\n' "$config" | grep -q 'Status: .*Connected'; then
+    echo "$name MCP: CONNECTED"
+  else
+    echo "$name MCP: FAILED"
+    printf '%s\n' "$config" | grep -E 'Status:|Issue:|No MCP server' || true
+  fi
+done
 
-# Check 4: Agy bridge health (initialize handshake)
-if echo "$AGY_CONFIG" | grep -q "server/agy/index.js"; then
-  BRIDGE_HEALTH=$(printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
-    | node "${CLAUDE_PLUGIN_ROOT}/server/agy/index.js" 2>/dev/null \
-    | grep -q '"id":"health"' && echo "Agy Bridge: HEALTHY" || echo "Agy Bridge: UNHEALTHY")
-  echo "$BRIDGE_HEALTH"
-else
-  echo "Agy Bridge: SKIPPED (Agy MCP not configured)"
-fi
-
-# Check 5: Grok, Cursor and Kimi MCP servers
-GROK_CONFIG=$(claude mcp get grok 2>/dev/null)
-if echo "$GROK_CONFIG" | grep -q "server/grok/index.js"; then
-  printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
-    | node "${CLAUDE_PLUGIN_ROOT}/server/grok/index.js" 2>/dev/null \
-    | head -1
-fi
-
-CURSOR_CONFIG=$(claude mcp get cursor 2>/dev/null)
-if echo "$CURSOR_CONFIG" | grep -q "server/cursor/index.js"; then
-  printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
-    | node "${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js" 2>/dev/null \
-    | head -1
-fi
-
-KIMI_CONFIG=$(claude mcp get kimi 2>/dev/null)
-if echo "$KIMI_CONFIG" | grep -q "server/kimi/index.js"; then
-  echo "Kimi: OK"
-else
-  echo "Kimi: NOT CONFIGURED"
-fi
-
-# Check 6: Copilot MCP server
-COPILOT_CONFIG=$(claude mcp get copilot 2>/dev/null)
-if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
-  echo "Copilot: OK"
-else
-  echo "Copilot: NOT CONFIGURED"
-fi
-
-# Check 7: Copilot bridge health (initialize handshake)
-if echo "$COPILOT_CONFIG" | grep -q "server/copilot/index.js"; then
-  BRIDGE_HEALTH=$(printf '{"jsonrpc":"2.0","id":"health","method":"initialize","params":{}}\n' \
-    | node "${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js" 2>/dev/null \
-    | grep -q '"id":"health"' && echo "Copilot Bridge: HEALTHY" || echo "Copilot Bridge: UNHEALTHY")
-  echo "$BRIDGE_HEALTH"
-else
-  echo "Copilot Bridge: SKIPPED (Copilot MCP not configured)"
-fi
-
-# Check 7: Rules installed (count files)
+# Check 3: Rules installed (count files)
 ls ~/.claude/rules/delegator/*.md 2>/dev/null | wc -l
 
-# Check 8: Codex auth status
+# Check 4: Codex auth status
 codex login status 2>&1 | head -1 || echo "Codex: Run 'codex login'"
 ```
 
@@ -250,15 +288,17 @@ claude-delegator Status
 Codex CLI:      [version from check 1]
 Agy CLI:        [version from check 1]
 Kimi CLI:       [version from check 1]
+Grok CLI:       [version from check 1]
+Cursor CLI:     [version from check 1]
 Copilot CLI:    [version from check 1]
 Codex MCP:      [status from check 2]
-Agy MCP:        [status from check 3]
-Kimi MCP:       [status from check 5]
-Agy Bridge:     [status from check 4]
-Copilot MCP:    [status from check 5]
-Copilot Bridge: [status from check 6]
-Rules:          ✓ [N] files in ~/.claude/rules/delegator/
-Codex Auth:     [status from check 8]
+Agy MCP:        [status from check 2]
+Kimi MCP:       [status from check 2]
+Grok MCP:       [status from check 2]
+Cursor MCP:     [status from check 2]
+Copilot MCP:    [status from check 2]
+Rules:          ✓ [N] files from check 3 in ~/.claude/rules/delegator/
+Codex Auth:     [status from check 4]
 ───────────────────────────────────────────────────
 ```
 
@@ -275,6 +315,8 @@ Next steps:
    - Codex: Run `codex login`
    - Agy: Run `agy` once to complete the Antigravity OAuth flow. There is no API-key variable; the token lives in the CLI's own user configuration.
    - Kimi: Set an `api_key` in `~/.kimi-code/config.toml` or export `KIMI_API_KEY`. Subscription signup via `kimi login` was not open as of 2026-08-17.
+   - Grok: Run `grok login`.
+   - Cursor: Run `cursor-agent login`; on macOS, unlock the login keychain if the CLI cannot start.
    - Copilot: Run `copilot login`
 
 Five experts available:
@@ -303,7 +345,7 @@ Five experts available:
 
 Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is enforced by a clear "do not modify" instruction, while `read-only` is an explicit opt-in.
 Expert is auto-detected based on your request.
-Explicit: "Ask GPT to...", "Ask Agy to...", "Ask Kimi to...", or "Ask Copilot to..."
+Explicit: "Ask GPT to...", "Ask Agy to...", "Ask Kimi to...", "Ask Grok to...", "Ask Cursor to...", or "Ask Copilot to..."
 ```
 
 ## Step 7: Ask About Starring

@@ -19,6 +19,16 @@
       "type": "stdio",
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/server/copilot/index.js"]
+    },
+    "grok": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/grok/index.js"]
+    },
+    "cursor": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/cursor/index.js"]
     }
   }
 }

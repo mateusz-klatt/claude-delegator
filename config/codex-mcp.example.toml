@@ -42,3 +42,19 @@ enabled_tools = ["copilot", "copilot-reply"]
 startup_timeout_sec = 20
 tool_timeout_sec = 3600
 required = false
+
+[mcp_servers.grok]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/grok/index.js"]
+enabled_tools = ["grok", "grok-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
+
+[mcp_servers.cursor]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/cursor/index.js"]
+enabled_tools = ["cursor", "cursor-reply"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+required = false
