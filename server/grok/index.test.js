@@ -600,7 +600,13 @@ test("binds the shared shim resolver to its own CLI name", () => {
 
 test("accepts only fully-qualified Windows home fallback roots", () => {
   const { cliFallbacks } = require("./index.js");
-  for (const home of ["relative\\home", "C:drive-relative", "\\root-relative"]) {
+  for (const home of [
+    "relative\\home",
+    "C:drive-relative",
+    "\\root-relative",
+    "C:\\profiles\\dev\\..\\Windows",
+    "\\\\fileserver\\profiles\\dev/../Windows"
+  ]) {
     assert.deepEqual(cliFallbacks({ home, isWindows: true }), [], home);
   }
   assert.deepEqual(cliFallbacks({ home: "C:\\Users\\dev", isWindows: true }), [

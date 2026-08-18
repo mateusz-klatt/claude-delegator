@@ -638,6 +638,16 @@ test("uses the measured Windows fallback and follows its sibling PowerShell laun
     cliFallbacks({ environment: { LOCALAPPDATA: "C:drive-relative" }, isWindows: true }),
     []
   );
+  for (const root of [
+    "C:\\profiles\\dev\\..\\Local",
+    "\\\\fileserver\\profiles\\dev/../Local"
+  ]) {
+    assert.deepEqual(
+      cliFallbacks({ environment: { LOCALAPPDATA: root }, isWindows: true }),
+      [],
+      root
+    );
+  }
   assert.deepEqual(
     cliFallbacks({
       environment: { LOCALAPPDATA: "\\\\fileserver\\profiles\\mateu\\Local" },

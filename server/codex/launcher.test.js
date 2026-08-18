@@ -216,7 +216,9 @@ test("explicit Codex override must be absolute on POSIX and Windows", () => {
     ["relative/codex.js", false],
     ["relative\\codex.cmd", true],
     ["C:drive-relative\\codex.exe", true],
-    ["\\projects\\codex.exe", true]
+    ["\\projects\\codex.exe", true],
+    ["C:\\profiles\\dev\\..\\codex.exe", true],
+    ["\\\\fileserver\\profiles\\dev/../codex.exe", true]
   ]) {
     assert.throws(
       () => resolveCodexBinary({
@@ -272,6 +274,13 @@ test("feeds the measured Windows Codex locations to the shared resolver as fallb
   }), []);
   assert.deepEqual(cliFallbacks({
     environment: { LOCALAPPDATA: "\\root-relative", APPDATA: "C:drive-relative" },
+    isWindows: true
+  }), []);
+  assert.deepEqual(cliFallbacks({
+    environment: {
+      LOCALAPPDATA: "C:\\profiles\\dev\\..\\Local",
+      APPDATA: "\\\\fileserver\\profiles\\dev/../Roaming"
+    },
     isWindows: true
   }), []);
   assert.deepEqual(cliFallbacks({

@@ -40,6 +40,16 @@ const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 function isFullyQualifiedWindowsPath(candidate) {
   if (typeof candidate !== "string" || candidate.length === 0) return false;
 
+  // Validate the root before a provider appends its stable suffix with
+  // path.win32.join(). That join normalises dot segments, so accepting
+  // `C:\\profiles\\..\\Windows` here would let an environment-derived root
+  // escape into a different directory before the resulting fallback reaches
+  // the resolver. Split on both Windows separators because Node accepts mixed
+  // slash paths and path.win32.join() normalises those too.
+  if (candidate.split(/[\\/]+/).some((segment) => segment === "." || segment === "..")) {
+    return false;
+  }
+
   // path.win32.isAbsolute() also accepts root-relative paths such as
   // `\projects\cli.exe`. Their drive is inherited from the current process,
   // which makes an environment override or fallback point somewhere different

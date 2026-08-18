@@ -784,7 +784,13 @@ test("parses assistant chunks, session id and provider errors from one JSONL str
 });
 
 test("accepts only fully-qualified Windows APPDATA fallback roots", () => {
-  for (const root of ["relative\\roaming", "C:drive-relative", "\\root-relative"]) {
+  for (const root of [
+    "relative\\roaming",
+    "C:drive-relative",
+    "\\root-relative",
+    "C:\\profiles\\dev\\..\\Roaming",
+    "\\\\fileserver\\profiles\\dev/../Roaming"
+  ]) {
     assert.deepEqual(bridge.cliFallbacks({
       environment: { APPDATA: root },
       isWindows: true

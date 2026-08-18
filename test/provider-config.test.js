@@ -647,6 +647,19 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   assert.match(verification, /check_cli_version "Cursor" "cursor-agent" "\$\{local_appdata:\+\$local_appdata\/cursor-agent\/cursor-agent\.cmd\}"/);
   assert.match(verification, /else[\s\S]+?check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/);
   assert.match(verification, /resolved_binary=\$\(command -v "\$cli" 2>\/dev\/null\)/);
+  assert.match(
+    verification,
+    /is_runnable_cli_candidate\(\) \{[\s\S]*?Windows_NT:\*\.\[Cc\]\[Mm\]\[Dd\][\s\S]*?Windows_NT:\*\.\[Bb\]\[Aa\]\[Tt\][\s\S]*?\[ -f "\$1" \][\s\S]*?\[ -x "\$1" \][\s\S]*?\n\}/,
+    "Windows command/batch shims must be regular files; native candidates must remain executable"
+  );
+  assert.match(
+    verification,
+    /is_shell_absolute_path "\$resolved_binary" && is_runnable_cli_candidate "\$resolved_binary"/
+  );
+  assert.match(
+    verification,
+    /is_shell_absolute_path "\$fallback" && is_runnable_cli_candidate "\$fallback"/
+  );
   assert.match(verification, /CODEX_BIN="\$binary"/);
   assert.match(setup, /codex_auth_output=\$\("\$CODEX_BIN" login status 2>&1\)/);
   assert.match(setup, /CODEX_AUTH_EXIT_STATUS=\$\?/);
@@ -664,6 +677,13 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   for (const block of windowsDependencyBlocks) {
     assert.match(block, /is_windows_fully_qualified_root/);
     assert.match(block, /core\.isFullyQualifiedWindowsPath/);
+    assert.match(block, /is_runnable_cli_candidate\(\)/);
+    assert.match(block, /Windows_NT:\*\.\[Cc\]\[Mm\]\[Dd\]/);
+    assert.match(block, /Windows_NT:\*\.\[Bb\]\[Aa\]\[Tt\]/);
+    assert.ok(
+      [...block.matchAll(/is_runnable_cli_candidate/g)].length >= 2,
+      "every Windows dependency check must apply the portable candidate predicate"
+    );
   }
   assert.match(setup, /read-only` is a provider-specific opt-in and is not universally\s+enforced/);
 });
@@ -672,7 +692,7 @@ test("setup reuses the resolved Codex binary and preserves auth exit status", {
   skip: process.platform === "win32"
 }, () => {
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
-  const resolver = /(is_shell_absolute_path\(\) \{[\s\S]*?\n\}\n\nis_windows_fully_qualified_root\(\) \{[\s\S]*?\n\}\n\nCODEX_BIN=""\ncheck_cli_version\(\) \{[\s\S]*?\n\})(?=\n\nif \[)/.exec(setup)?.[1];
+  const resolver = /(is_shell_absolute_path\(\) \{[\s\S]*?\n\}\n\nis_windows_fully_qualified_root\(\) \{[\s\S]*?\n\}\n\nis_runnable_cli_candidate\(\) \{[\s\S]*?\n\}\n\nCODEX_BIN=""\ncheck_cli_version\(\) \{[\s\S]*?\n\})(?=\n\nif \[)/.exec(setup)?.[1];
   const auth = /(# Check 4: Codex auth status[\s\S]*?\nfi)(?=\n```)/.exec(setup)?.[1];
   assert.ok(resolver, "could not extract the Codex resolver from setup");
   assert.ok(auth, "could not extract the Codex auth check from setup");
@@ -735,6 +755,52 @@ printf 'FIXTURE_BIN=%s\\nFIXTURE_STATUS=%s\\n' "$CODEX_BIN" "$CODEX_AUTH_EXIT_ST
   }
 });
 
+test("setup accepts non-executable Windows command shims without weakening native checks", {
+  skip: process.platform === "win32"
+}, () => {
+  const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
+  const predicate = /(is_runnable_cli_candidate\(\) \{[\s\S]*?\n\})/.exec(
+    /# Check 1: CLI versions[\s\S]+?(?=# Check 2:)/.exec(setup)?.[0] || ""
+  )?.[1];
+  assert.ok(predicate, "could not extract the portable CLI candidate predicate");
+
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "setup-candidate-fixture-"));
+  const fixtureDirectory = path.join(fixtureRoot, "Windows bin with spaces");
+  const commandShim = path.join(fixtureDirectory, "codex fixture.CmD");
+  const batchShim = path.join(fixtureDirectory, "copilot fixture.bAt");
+  const nativeExecutable = path.join(fixtureDirectory, "native executable");
+  const nativeNonExecutable = path.join(fixtureDirectory, "native not executable");
+  const missingShim = path.join(fixtureDirectory, "missing.cmd");
+  fs.mkdirSync(fixtureDirectory, { recursive: true });
+  for (const candidate of [commandShim, batchShim, nativeExecutable, nativeNonExecutable]) {
+    fs.writeFileSync(candidate, "fixture\n");
+  }
+  fs.chmodSync(commandShim, 0o644);
+  fs.chmodSync(batchShim, 0o644);
+  fs.chmodSync(nativeExecutable, 0o755);
+  fs.chmodSync(nativeNonExecutable, 0o644);
+
+  const check = (candidate, osName = "Windows_NT") => spawnSync(
+    "bash",
+    ["-c", `${predicate}\nis_runnable_cli_candidate "$FIXTURE_CANDIDATE"`],
+    {
+      encoding: "utf8",
+      env: { ...process.env, OS: osName, FIXTURE_CANDIDATE: candidate }
+    }
+  );
+
+  try {
+    assert.equal(check(commandShim).status, 0, "a .cmd regular file with spaces must be accepted on Git Bash");
+    assert.equal(check(batchShim).status, 0, "a case-insensitive .bat regular file must be accepted on Git Bash");
+    assert.equal(check(nativeExecutable).status, 0, "an executable native candidate must be accepted");
+    assert.equal(check(nativeNonExecutable).status, 1, "a non-executable native candidate must be rejected");
+    assert.equal(check(missingShim).status, 1, "a missing .cmd candidate must be rejected");
+    assert.equal(check(commandShim, "").status, 1, "POSIX must not treat a non-executable .cmd as runnable");
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
   const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
@@ -775,6 +841,68 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     /legacy_servers="\$\(\n\s+CLAUDE_PLUGIN_LIST_JSON="\$claude_plugin_list" node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
   const uninstallScanner = extractLegacyScanner(uninstallBlock);
   assert.ok(uninstallScanner, "uninstall must scan legacy registration provenance");
+  const canonicalPathSource = /(function canonicalAbsolutePath\(value, forceWindows = process\.platform === "win32"\) \{[\s\S]*?\n\})(?=\nconst canonicalInstall)/.exec(
+    uninstallScanner
+  )?.[1];
+  const historicalEntrypointSource = /(function isHistoricalEntrypoint\(value, name\) \{[\s\S]*?\n\})(?=\nfor \(const name)/.exec(
+    uninstallScanner
+  )?.[1];
+  assert.ok(canonicalPathSource, "legacy scanner canonical path classifier missing");
+  assert.ok(historicalEntrypointSource, "legacy scanner entrypoint predicate missing");
+  const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
+  const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  const canonicalAbsolutePath = Function(
+    "path",
+    "invalidUncComponent",
+    `"use strict";\n${canonicalPathSource}\nreturn canonicalAbsolutePath;`
+  )(path, invalidUncComponent);
+  const historicalEntrypointFor = (pathApi, versionsRoot) => Function(
+    "path",
+    "pathApi",
+    "versionsRoot",
+    "cacheVersion",
+    "invalidUncComponent",
+    `"use strict";\n${canonicalPathSource}\n${historicalEntrypointSource}\nreturn isHistoricalEntrypoint;`
+  )(path, pathApi, versionsRoot, cacheVersion, invalidUncComponent);
+
+  // path.win32.resolve inherits a drive for root-relative values. On a C: host,
+  // the old isAbsolute -> normalize -> relative sequence could therefore turn
+  // this unqualified argv[0] into the exact owned lineage. Exercise the bypass
+  // deterministically instead of relying on the test runner's platform/cwd.
+  const windowsVersionsRoot = String.raw`C:\Users\alice\.claude\plugins\cache\jarrodwatts-claude-delegator\claude-delegator`;
+  const rootRelative = String.raw`\Users\alice\.claude\plugins\cache\jarrodwatts-claude-delegator\claude-delegator\1.6.5\server\agy\index.js`;
+  const slashRootRelative = "/Users/alice/.claude/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.6.5/server/agy/index.js";
+  const inheritedDrivePath = path.win32.resolve(String.raw`C:\host\working-directory`, rootRelative);
+  assert.equal(
+    path.win32.relative(windowsVersionsRoot, inheritedDrivePath),
+    String.raw`1.6.5\server\agy\index.js`,
+    "same-drive resolution reproduces the historical root-relative bypass"
+  );
+  const windowsHistoricalEntrypoint = historicalEntrypointFor(path.win32, windowsVersionsRoot);
+  const drivePositive = String.raw`C:\Users\alice\.claude\plugins\cache\jarrodwatts-claude-delegator\claude-delegator\1.6.5\server\agy\index.js`;
+  assert.equal(windowsHistoricalEntrypoint(drivePositive, "agy"), true);
+  assert.equal(windowsHistoricalEntrypoint(rootRelative, "agy"), false);
+  assert.equal(windowsHistoricalEntrypoint(slashRootRelative, "agy"), false);
+  assert.equal(canonicalAbsolutePath(rootRelative, true), null);
+  assert.equal(canonicalAbsolutePath(slashRootRelative, true), null);
+  assert.equal(canonicalAbsolutePath(String.raw`C:Users\alice\entrypoint.js`, true), null);
+  assert.equal(canonicalAbsolutePath(String.raw`\\?\C:\Users\alice\entrypoint.js`, true), null);
+  assert.equal(canonicalAbsolutePath(String.raw`\\server`, true), null);
+  assert.equal(canonicalAbsolutePath(String.raw`\\server?\share\entrypoint.js`, true), null);
+  assert.equal(
+    canonicalAbsolutePath(String.raw`C:\Users\alice\cache\1.9.1\..\1.6.5\server\agy\index.js`, true),
+    null
+  );
+
+  const uncVersionsRoot = String.raw`\\server\share\cache\jarrodwatts-claude-delegator\claude-delegator`;
+  const uncPositive = String.raw`\\server\share\cache\jarrodwatts-claude-delegator\claude-delegator\1.6.5\server\agy\index.js`;
+  assert.equal(historicalEntrypointFor(path.win32, uncVersionsRoot)(uncPositive, "agy"), true);
+  assert.equal(canonicalAbsolutePath(uncPositive, true)?.pathApi, path.win32);
+
+  const posixVersionsRoot = "/home/alice/.claude/plugins/cache/jarrodwatts-claude-delegator/claude-delegator";
+  const posixPositive = `${posixVersionsRoot}/1.6.5/server/agy/index.js`;
+  assert.equal(historicalEntrypointFor(path.posix, posixVersionsRoot)(posixPositive, "agy"), true);
+  assert.equal(canonicalAbsolutePath(posixPositive, false)?.pathApi, path.posix);
   const extractMigrationBlock = (source, heading) => {
     const normalized = source.replace(/\r\n?/g, "\n");
     return new RegExp(`${heading}[\\s\\S]*?\`\`\`bash\\n([\\s\\S]*?)\\n\`\`\``).exec(normalized)?.[1];
@@ -833,10 +961,14 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     assert.match(block, /records\[0\]\.version !== activeVersion/);
     assert.match(block, /process\.platform === "win32"/);
     assert.match(block, /const windowsDevice =/);
+    assert.match(block, /function canonicalAbsolutePath\(value, forceWindows/);
     assert.match(block, /pathApi\.basename\(versionsRoot\) !== "claude-delegator"/);
     assert.match(block, /pathApi\.basename\(marketplaceRoot\) !== "jarrodwatts-claude-delegator"/);
     assert.doesNotMatch(block, /pathApi\.basename\(cacheRoot\) !== "cache"/);
-    assert.match(block, /pathApi\.relative\(versionsRoot, pathApi\.normalize\(value\)\)/);
+    assert.match(block, /canonicalAbsolutePath\(value, pathApi === path\.win32\)/);
+    assert.match(block, /canonicalValue\.pathApi !== pathApi/);
+    assert.match(block, /pathApi\.relative\(versionsRoot, canonicalValue\.normalized\)/);
+    assert.doesNotMatch(block, /pathApi\.relative\(versionsRoot, pathApi\.normalize\(value\)\)/);
     assert.match(block, /activeManifest\.mcpServers/);
     assert.match(block, /activeManifest\.name !== "claude-delegator"/);
     assert.match(block, /activeManifest\.version !== activeVersion/);

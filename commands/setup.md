@@ -41,6 +41,12 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   local_appdata="${LOCALAPPDATA:-}"
   local_appdata="${local_appdata//\\//}"
   appdata="${APPDATA:-}"
@@ -49,7 +55,7 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
   if ! is_windows_fully_qualified_root "$appdata"; then appdata=""; fi
   codex_fallback=""
   for candidate in "${local_appdata:+$local_appdata/Programs/OpenAI/Codex/bin/codex.exe}" "${appdata:+$appdata/npm/codex.cmd}"; do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    if [ -n "$candidate" ] && is_runnable_cli_candidate "$candidate"; then
       codex_fallback="$candidate"
       break
     fi
@@ -73,6 +79,12 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   agy_root="${LOCALAPPDATA:-}"
   agy_root="${agy_root//\\//}"
   if is_windows_fully_qualified_root "$agy_root"; then
@@ -80,7 +92,7 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
   else
     agy_fallback=""
   fi
-  if [ -n "$agy_fallback" ] && [ -x "$agy_fallback" ]; then
+  if [ -n "$agy_fallback" ] && is_runnable_cli_candidate "$agy_fallback"; then
     "$agy_fallback" --version 2>&1 | head -1
   else
     echo "AGY_MISSING"
@@ -101,6 +113,12 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   windows_home="${USERPROFILE:-$HOME}"
   windows_home="${windows_home//\\//}"
   kimi_fallback=""
@@ -109,7 +127,7 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
   fi
   for candidate in "${windows_home:+$windows_home/.kimi-code/bin/kimi.exe}" "${windows_home:+$windows_home/.kimi-code/bin/kimi.cmd}"; do
     [ -n "$candidate" ] || continue
-    if [ -x "$candidate" ]; then
+    if is_runnable_cli_candidate "$candidate"; then
       kimi_fallback="$candidate"
       break
     fi
@@ -135,12 +153,18 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   windows_home="${USERPROFILE:-$HOME}"
   windows_home="${windows_home//\\//}"
   if ! is_windows_fully_qualified_root "$windows_home"; then
     windows_home=""
   fi
-  if [ -n "$windows_home" ] && [ -x "$windows_home/.grok/bin/grok.exe" ]; then
+  if [ -n "$windows_home" ] && is_runnable_cli_candidate "$windows_home/.grok/bin/grok.exe"; then
     "$windows_home/.grok/bin/grok.exe" --version 2>&1 | head -1
   else
     echo "GROK_MISSING"
@@ -165,6 +189,12 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   cursor_root="${LOCALAPPDATA:-}"
   cursor_root="${cursor_root//\\//}"
   if is_windows_fully_qualified_root "$cursor_root"; then
@@ -172,7 +202,7 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
   else
     cursor_fallback=""
   fi
-  if [ -n "$cursor_fallback" ] && [ -x "$cursor_fallback" ]; then
+  if [ -n "$cursor_fallback" ] && is_runnable_cli_candidate "$cursor_fallback"; then
     "$cursor_fallback" --version 2>&1 | head -1
   else
     echo "CURSOR_MISSING"
@@ -193,6 +223,12 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
     node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
       "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
   }
+  is_runnable_cli_candidate() {
+    case "${OS:-}:$1" in
+      Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+      *) [ -x "$1" ] ;;
+    esac
+  }
   copilot_root="${APPDATA:-}"
   copilot_root="${copilot_root//\\//}"
   if is_windows_fully_qualified_root "$copilot_root"; then
@@ -200,7 +236,7 @@ elif [ "${OS:-}" = "Windows_NT" ]; then
   else
     copilot_fallback=""
   fi
-  if [ -n "$copilot_fallback" ] && [ -x "$copilot_fallback" ]; then
+  if [ -n "$copilot_fallback" ] && is_runnable_cli_candidate "$copilot_fallback"; then
     "$copilot_fallback" --version 2>&1 | head -1
   else
     echo "COPILOT_MISSING"
@@ -356,26 +392,29 @@ const records = pluginList.filter((record) =>
 if (records.length !== 1 || typeof records[0].installPath !== "string") {
   throw new Error("expected exactly one active user-scope claude-delegator install");
 }
-const installPath = records[0].installPath;
-const windowsDrive = /^[A-Za-z]:[\\/]/.test(installPath);
-const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(installPath);
-const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(installPath);
 const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
-const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
-  component !== "." && component !== ".." && !component.endsWith(".") &&
-  !component.endsWith(" ") && !invalidUncComponent.test(component));
-const windowsShaped = process.platform === "win32" || /^[A-Za-z]:/.test(installPath) ||
-  /^[\\]/.test(installPath) || /^\/\//.test(installPath);
-const rawParts = installPath.replaceAll("\\", "/").split("/");
-if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
-    installPath.trim() !== installPath || rawParts.some((part) => part === "." || part === "..")) {
+function canonicalAbsolutePath(value, forceWindows = process.platform === "win32") {
+  if (typeof value !== "string") return null;
+  const windowsDrive = /^[A-Za-z]:[\\/]/.test(value);
+  const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(value);
+  const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(value);
+  const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
+    component !== "." && component !== ".." && !component.endsWith(".") &&
+    !component.endsWith(" ") && !invalidUncComponent.test(component));
+  const windowsShaped = forceWindows || /^[A-Za-z]:/.test(value) ||
+    /^[\\]/.test(value) || /^\/\//.test(value);
+  const rawParts = value.replaceAll("\\", "/").split("/");
+  if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
+      value.trim() !== value || rawParts.some((part) => part === "." || part === "..")) return null;
+  const valuePathApi = windowsShaped ? path.win32 : path.posix;
+  if (!valuePathApi.isAbsolute(value)) return null;
+  return { pathApi: valuePathApi, normalized: valuePathApi.normalize(value) };
+}
+const canonicalInstall = canonicalAbsolutePath(records[0].installPath);
+if (!canonicalInstall) {
   throw new Error("active plugin installPath is not canonical and fully qualified");
 }
-const pathApi = windowsShaped ? path.win32 : path.posix;
-if (!pathApi.isAbsolute(installPath)) {
-  throw new Error("active plugin installPath is not canonical and fully qualified");
-}
-const normalizedInstall = pathApi.normalize(installPath);
+const { pathApi, normalized: normalizedInstall } = canonicalInstall;
 const activeVersion = pathApi.basename(normalizedInstall);
 const versionsRoot = pathApi.dirname(normalizedInstall);
 const marketplaceRoot = pathApi.dirname(versionsRoot);
@@ -401,8 +440,9 @@ try {
   throw error;
 }
 function isHistoricalEntrypoint(value, name) {
-  if (typeof value !== "string" || !pathApi.isAbsolute(value)) return false;
-  const relative = pathApi.relative(versionsRoot, pathApi.normalize(value));
+  const canonicalValue = canonicalAbsolutePath(value, pathApi === path.win32);
+  if (!canonicalValue || canonicalValue.pathApi !== pathApi) return false;
+  const relative = pathApi.relative(versionsRoot, canonicalValue.normalized);
   if (!relative || relative === ".." || relative.startsWith(`..${pathApi.sep}`) ||
       pathApi.isAbsolute(relative)) return false;
   const parts = relative.split(pathApi.sep);
@@ -517,6 +557,13 @@ is_windows_fully_qualified_root() {
     "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
 }
 
+is_runnable_cli_candidate() {
+  case "${OS:-}:$1" in
+    Windows_NT:*.[Cc][Mm][Dd] | Windows_NT:*.[Bb][Aa][Tt]) [ -f "$1" ] ;;
+    *) [ -x "$1" ] ;;
+  esac
+}
+
 CODEX_BIN=""
 check_cli_version() {
   label="$1"
@@ -524,12 +571,12 @@ check_cli_version() {
   shift 2
   binary=""
   resolved_binary=$(command -v "$cli" 2>/dev/null) || resolved_binary=""
-  if [ -n "$resolved_binary" ] && is_shell_absolute_path "$resolved_binary" && [ -x "$resolved_binary" ]; then
+  if [ -n "$resolved_binary" ] && is_shell_absolute_path "$resolved_binary" && is_runnable_cli_candidate "$resolved_binary"; then
     binary="$resolved_binary"
   fi
   if [ -z "$binary" ]; then
     for fallback in "$@"; do
-      if [ -n "$fallback" ] && is_shell_absolute_path "$fallback" && [ -x "$fallback" ]; then
+      if [ -n "$fallback" ] && is_shell_absolute_path "$fallback" && is_runnable_cli_candidate "$fallback"; then
         binary="$fallback"
         break
       fi

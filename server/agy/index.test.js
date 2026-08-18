@@ -714,7 +714,13 @@ test("parses only complete JSON candidates that look like an agy result", () => 
 });
 
 test("accepts only fully-qualified Windows LOCALAPPDATA fallback roots", () => {
-  for (const root of ["relative\\local", "C:drive-relative", "\\root-relative"]) {
+  for (const root of [
+    "relative\\local",
+    "C:drive-relative",
+    "\\root-relative",
+    "C:\\profiles\\dev\\..\\Windows",
+    "\\\\fileserver\\profiles\\dev/../Windows"
+  ]) {
     assert.deepEqual(bridge.cliFallbacks({
       environment: { LOCALAPPDATA: root },
       isWindows: true

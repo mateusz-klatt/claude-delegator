@@ -241,26 +241,29 @@ const records = pluginList.filter((record) =>
 if (records.length !== 1 || typeof records[0].installPath !== "string") {
   throw new Error("expected exactly one active user-scope claude-delegator install");
 }
-const installPath = records[0].installPath;
-const windowsDrive = /^[A-Za-z]:[\\/]/.test(installPath);
-const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(installPath);
-const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(installPath);
 const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
-const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
-  component !== "." && component !== ".." && !component.endsWith(".") &&
-  !component.endsWith(" ") && !invalidUncComponent.test(component));
-const windowsShaped = process.platform === "win32" || /^[A-Za-z]:/.test(installPath) ||
-  /^[\\]/.test(installPath) || /^\/\//.test(installPath);
-const rawParts = installPath.replaceAll("\\", "/").split("/");
-if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
-    installPath.trim() !== installPath || rawParts.some((part) => part === "." || part === "..")) {
+function canonicalAbsolutePath(value, forceWindows = process.platform === "win32") {
+  if (typeof value !== "string") return null;
+  const windowsDrive = /^[A-Za-z]:[\\/]/.test(value);
+  const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(value);
+  const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(value);
+  const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
+    component !== "." && component !== ".." && !component.endsWith(".") &&
+    !component.endsWith(" ") && !invalidUncComponent.test(component));
+  const windowsShaped = forceWindows || /^[A-Za-z]:/.test(value) ||
+    /^[\\]/.test(value) || /^\/\//.test(value);
+  const rawParts = value.replaceAll("\\", "/").split("/");
+  if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
+      value.trim() !== value || rawParts.some((part) => part === "." || part === "..")) return null;
+  const valuePathApi = windowsShaped ? path.win32 : path.posix;
+  if (!valuePathApi.isAbsolute(value)) return null;
+  return { pathApi: valuePathApi, normalized: valuePathApi.normalize(value) };
+}
+const canonicalInstall = canonicalAbsolutePath(records[0].installPath);
+if (!canonicalInstall) {
   throw new Error("active plugin installPath is not canonical and fully qualified");
 }
-const pathApi = windowsShaped ? path.win32 : path.posix;
-if (!pathApi.isAbsolute(installPath)) {
-  throw new Error("active plugin installPath is not canonical and fully qualified");
-}
-const normalizedInstall = pathApi.normalize(installPath);
+const { pathApi, normalized: normalizedInstall } = canonicalInstall;
 const activeVersion = pathApi.basename(normalizedInstall);
 const versionsRoot = pathApi.dirname(normalizedInstall);
 const marketplaceRoot = pathApi.dirname(versionsRoot);
@@ -286,8 +289,9 @@ try {
   throw error;
 }
 function isHistoricalEntrypoint(value, name) {
-  if (typeof value !== "string" || !pathApi.isAbsolute(value)) return false;
-  const relative = pathApi.relative(versionsRoot, pathApi.normalize(value));
+  const canonicalValue = canonicalAbsolutePath(value, pathApi === path.win32);
+  if (!canonicalValue || canonicalValue.pathApi !== pathApi) return false;
+  const relative = pathApi.relative(versionsRoot, canonicalValue.normalized);
   if (!relative || relative === ".." || relative.startsWith(`..${pathApi.sep}`) ||
       pathApi.isAbsolute(relative)) return false;
   const parts = relative.split(pathApi.sep);

@@ -316,8 +316,12 @@ test("Windows paths require a drive or a complete valid UNC root", () => {
   for (const valid of [
     "C:\\projects\\codex.exe",
     "z:/tools/cursor-agent.cmd",
+    "D:\\profiles\\dev.name\\bin\\agy.exe",
+    "E:/profiles/dev..name/bin/kimi.exe",
     "\\\\fileserver\\profiles\\codex.exe",
-    "//fileserver/profiles/cursor-agent.cmd"
+    "//fileserver/profiles/cursor-agent.cmd",
+    "\\\\fileserver\\profiles\\dev.name\\grok.exe",
+    "//fileserver/profiles/dev..name/copilot.cmd"
   ]) {
     assert.equal(core.isFullyQualifiedWindowsPath(valid), true, valid);
   }
@@ -333,6 +337,13 @@ test("Windows paths require a drive or a complete valid UNC root", () => {
     "\\\\.\\pipe\\codex",
     "\\\\..\\share\\codex.exe",
     "\\\\fileserver\\invalid?share\\codex.exe",
+    "C:\\.\\codex.exe",
+    "C:\\profiles\\..\\Windows\\codex.exe",
+    "C:/profiles\\..\\Windows/codex.exe",
+    "C:\\profiles/./codex.exe",
+    "\\\\fileserver\\profiles\\..\\other\\codex.exe",
+    "\\\\fileserver/profiles\\dev/../codex.exe",
+    "//fileserver/profiles/./cursor-agent.cmd",
     ""
   ]) {
     assert.equal(core.isFullyQualifiedWindowsPath(invalid), false, invalid);

@@ -8,6 +8,27 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "files": [
+    ".claude-plugin/*.json",
+    "commands/*.md",
+    "config/*.json",
+    "config/*.toml",
+    "prompts/*.md",
+    "rules/*.md",
+    "server/*/index.js",
+    "server/codex/launcher.js",
+    "server/shared/bridge.js",
+    "server/shared/coordination.js",
+    "server/shared/environment.js",
+    "server/shared/provider-runtime.js",
+    "server/shared/result.js",
+    "test/mcp-probe.mjs",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "claude-delegator.png"
+  ],
   "scripts": {
     "test": "node --test \"test/**/*.test.js\" \"server/**/*.test.js\"",
     "test:coverage": "c8 npm test"

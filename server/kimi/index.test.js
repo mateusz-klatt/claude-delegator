@@ -584,7 +584,13 @@ test("stamps the delegation depth while scrubbing caller Agent Mail identity", (
 });
 
 test("accepts only fully-qualified Windows home fallback roots", () => {
-  for (const home of ["relative\\home", "C:drive-relative", "\\root-relative"]) {
+  for (const home of [
+    "relative\\home",
+    "C:drive-relative",
+    "\\root-relative",
+    "C:\\profiles\\dev\\..\\Windows",
+    "\\\\fileserver\\profiles\\dev/../Windows"
+  ]) {
     assert.deepEqual(bridge.cliFallbacks({ home, isWindows: true }), [], home);
   }
   assert.deepEqual(bridge.cliFallbacks({
