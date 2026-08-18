@@ -59,6 +59,22 @@ if (process.env.CLAUDE_STUB_HANG === "1") {
   setInterval(() => {}, 1_000);
   return;
 }
+if (process.env.CLAUDE_STUB_SPEND_LIMIT === "1") {
+  process.stdout.write(JSON.stringify({
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+    result: "You've hit your monthly spend limit",
+    session_id: "session-spend-limit"
+  }) + "\\n");
+  process.stderr.write("SessionEnd hook error: Hook cancelled\\n");
+  process.exit(1);
+}
+if (process.env.CLAUDE_STUB_UNSTRUCTURED_FAILURE === "1") {
+  process.stdout.write("terminal startup noise, but no result object\\n");
+  process.stderr.write("Claude transport failed before producing a result\\n");
+  process.exit(7);
+}
 const isReply = args.includes("--resume");
 const result = {
   type: "result",
@@ -395,6 +411,32 @@ test("rejects invalid catalog and coordination inputs before invoking Claude", a
   assert.equal(invalidTimeout.error.code, -32602);
   assert.match(invalidTimeout.error.message, /10000/);
   assert.equal(fs.existsSync(server.capturePath), false);
+  await server.close();
+});
+
+test("surfaces a structured spend-limit error instead of SessionEnd hook noise", async () => {
+  const server = startServer({ CLAUDE_STUB_SPEND_LIMIT: "1" });
+  const response = await server.request("tools/call", {
+    name: "claude",
+    arguments: { prompt: "hit the provider limit" }
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.match(response.result.content[0].text, /monthly spend limit/);
+  assert.doesNotMatch(response.result.content[0].text, /SessionEnd|Hook cancelled/);
+  await server.close();
+});
+
+test("keeps stderr diagnostics when a failed Claude process has no result object", async () => {
+  const server = startServer({ CLAUDE_STUB_UNSTRUCTURED_FAILURE: "1" });
+  const response = await server.request("tools/call", {
+    name: "claude",
+    arguments: { prompt: "fail before a structured result" }
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.match(response.result.content[0].text, /Claude transport failed before producing a result/);
+  assert.doesNotMatch(response.result.content[0].text, /Parse error|terminal startup noise/);
   await server.close();
 });
 

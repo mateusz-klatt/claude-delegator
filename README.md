@@ -1,6 +1,6 @@
 # Claude Delegator
 
-Multi-provider expert subagents over MCP. Claude Code can orchestrate Codex, Agy, Kimi, Copilot, Grok, and Cursor; Codex and other MCP clients can invoke Claude through the same start/reply contract.
+Multi-provider expert subagents over MCP. Claude Code can orchestrate Codex, Agy, Kimi, Copilot, Grok, and Cursor; Codex and other MCP clients can invoke all seven targets, including Claude, through the same start/reply contract.
 
 [![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
@@ -139,7 +139,7 @@ The orchestrator selects the mode based on your request.
 
 ### Configuration Defaults
 
-The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The six custom bridges default to their non-interactive `workspace-write` path so a nested approval prompt cannot suspend both CLIs. Their explicit `read-only` behavior is provider-specific: Claude and Copilot use provider permission modes, Grok adds explicit built-in write/shell denials, Agy only soft-denies shell, Cursor's ask mode deflects but does not deny, and Kimi refuses the value because print mode has no permission tier. Advisory intent is always carried in the expert instruction too.
+The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The six custom bridges default to their non-interactive `workspace-write` modes so a nested approval prompt cannot suspend both CLIs; advisory intent is always carried in the expert instruction. Explicit `read-only` behavior is provider-specific: Claude uses plan mode, Grok adds deny rules for its built-in write and shell tools, Copilot denies shell/write/edit, Agy soft-denies shell but not file writes or network access, Cursor's ask mode deflects but does not enforce, and Kimi refuses the value because print mode has no permission tier.
 
 ### Supported Models
 
@@ -262,7 +262,7 @@ You need at least one of the following target CLIs configured:
 | Command | Description |
 |---------|-------------|
 | `/claude-delegator:setup` | Configure MCP server and install rules |
-| `/claude-delegator:uninstall` | Remove MCP config and rules |
+| `/claude-delegator:uninstall` | Remove the plugin, legacy MCP registrations, and copied rules |
 
 ---
 

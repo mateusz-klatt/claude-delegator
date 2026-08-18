@@ -108,6 +108,13 @@ if (prompt.includes("WRONG_SESSION")) {
   }) + "\\n");
   process.exit(0);
 }
+if (prompt.includes("MISSING_SESSION_ID")) {
+  process.stdout.write(JSON.stringify({
+    type: "result", subtype: "success", is_error: false,
+    result: "unverifiable reply"
+  }) + "\\n");
+  process.exit(0);
+}
 
 const suffix = requestedSession ? "reply" : "start";
 process.stdout.write(JSON.stringify({
@@ -328,6 +335,7 @@ test("advertises the uniform cursor/cursor-reply MCP contract", async () => {
   assert.equal(start.inputSchema.properties.effort, undefined);
   assert.equal(reply.inputSchema.properties.effort, undefined);
   assert.equal(reply.inputSchema.properties.model, undefined);
+  assert.match(reply.inputSchema.properties.cwd.description, /same cwd used by the start call/);
 });
 
 test("maps read-only to a mode that deflects, and never to one that lies", async () => {
@@ -455,6 +463,17 @@ test("fails loudly when Cursor resumes a different session", async () => {
   });
   assert.equal(response.result.isError, true);
   assert.match(response.result.content[0].text, /resumed a different session/);
+
+  const missing = await server.request("tools/call", {
+    name: "cursor-reply",
+    arguments: {
+      threadId: "sess-start",
+      prompt: "MISSING_SESSION_ID",
+      cwd: server.workspacePath
+    }
+  });
+  assert.equal(missing.result.isError, true);
+  assert.match(missing.result.content[0].text, /returned no session_id/);
 });
 
 test("parses one JSON object and tolerates nothing that is not one", () => {
@@ -474,6 +493,16 @@ test("parses one JSON object and tolerates nothing that is not one", () => {
   assert.deepEqual(parseCursorOutput("Connection lost, reconnecting (attempt 1)\n" + object), expected);
   assert.deepEqual(parseCursorOutput(object + "\nSome trailing warning"), expected);
   assert.deepEqual(parseCursorOutput("warn before\n" + object + "\nwarn after"), expected);
+
+  // Structured hook/system events can trail the result too. They may carry
+  // similarly named fields, but they are not the answer for this turn.
+  const trailingHook = JSON.stringify({
+    type: "system",
+    subtype: "hook",
+    result: "old or foreign output",
+    session_id: "s1"
+  });
+  assert.deepEqual(parseCursorOutput(object + "\n" + trailingHook), expected);
 
   // Not-JSON is a null, not a throw: the caller decides what the absence means,
   // and both non-JSON shapes (exit 1 and exit 0) reach that decision together.

@@ -64,6 +64,8 @@ function validateCommonArguments(args) {
 
 // --- Claude CLI Wrapper ---
 
+class ClaudeProviderError extends Error {}
+
 
 
 function parseClaudeOutput(stdout, fallbackThreadId) {
@@ -93,7 +95,9 @@ function parseClaudeOutput(stdout, fallbackThreadId) {
     throw new Error(`no Claude result object found\nRaw output was: ${stdout}`);
   }
   if (data.is_error === true || data.subtype === "error") {
-    throw new Error(typeof data.result === "string" ? data.result : "Claude session failed");
+    throw new ClaudeProviderError(
+      typeof data.result === "string" ? data.result : "Claude session failed"
+    );
   }
 
   const response = typeof data.result === "string" && data.result.trim()
@@ -118,7 +122,18 @@ async function runClaude(args, cwd, timeoutMs, fallbackThreadId, abortSignal) {
     notFoundHint: "Install Claude Code first.",
     timeoutMs,
     onClose: ({ code, stderr, stdout }) => {
-      if (code !== 0) throw new Error(stderr.trim() || `Claude exited with code ${code}`);
+      if (code !== 0) {
+        try {
+          // Claude can emit a structured provider error on stdout and then run
+          // SessionEnd hooks whose failure is written to stderr. The structured
+          // result is the cause of the failed call; hook output is only teardown
+          // noise and must not mask it.
+          parseClaudeOutput(stdout, fallbackThreadId);
+        } catch (error) {
+          if (error instanceof ClaudeProviderError) throw error;
+        }
+        throw new Error(stderr.trim() || `Claude exited with code ${code}`);
+      }
       try {
         return parseClaudeOutput(stdout, fallbackThreadId);
       } catch (error) {
@@ -352,4 +367,3 @@ module.exports = {
   sandboxArguments,
   toolDefinitions: CLAUDE_TOOLS
 };
-

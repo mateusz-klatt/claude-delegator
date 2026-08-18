@@ -75,8 +75,15 @@ function parseCursorOutput(stdout) {
     const candidate = line.trim();
     if (!candidate.startsWith("{")) continue;
     try {
-      data = JSON.parse(candidate);
-      break;
+      const parsed = JSON.parse(candidate);
+      // Cursor may print other structured events after the final answer. Only
+      // the result record belongs to this tool call; accepting a trailing hook
+      // or system record could return unrelated text with a plausible-looking
+      // session id.
+      if (isObject(parsed) && parsed.type === "result") {
+        data = parsed;
+        break;
+      }
     } catch {
       // Not this line; keep scanning outward.
     }
@@ -166,7 +173,12 @@ async function runCursor(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
       if (!parsed.response) {
         throw new Error(stderr.trim() || `Cursor produced no text. Raw output was: ${stdout}`);
       }
-      if (expectedThreadId && parsed.sessionId !== "unknown" && parsed.sessionId !== expectedThreadId) {
+      if (expectedThreadId && parsed.sessionId === "unknown") {
+        throw new Error(
+          `Cursor reply for session ${expectedThreadId} returned no session_id. Continuity could not be verified.`
+        );
+      }
+      if (expectedThreadId && parsed.sessionId !== expectedThreadId) {
         throw new Error(
           `Cursor resumed a different session: requested ${expectedThreadId}, received ${parsed.sessionId}. The original session was not continued.`
         );
@@ -202,6 +214,11 @@ const CWD_DESCRIPTION =
   "Working directory, which also becomes the workspace. --add-dir is never passed: it adds workspace " +
   "roots and widens rules discovery, and cwd alone already grants file access — the same reasoning as " +
   "the Agy bridge.";
+
+const REPLY_CWD_DESCRIPTION =
+  CWD_DESCRIPTION + " Pass the same cwd used by the start call: Cursor stores sessions per workspace. " +
+  "Omitting cwd is retained for compatibility and only works when the bridge process already runs in " +
+  "that same workspace.";
 
 const CURSOR_TOOLS = [
   {
@@ -242,7 +259,7 @@ const CURSOR_TOOLS = [
           default: "workspace-write",
           description: SANDBOX_DESCRIPTION
         },
-        cwd: { type: "string", minLength: 1, description: CWD_DESCRIPTION },
+        cwd: { type: "string", minLength: 1, description: REPLY_CWD_DESCRIPTION },
         timeout: timeoutSchema(),
         coordination: coordinationSchema
       },

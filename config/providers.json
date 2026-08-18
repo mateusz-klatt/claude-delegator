@@ -192,7 +192,7 @@
       "name": "Grok",
       "description": "xAI Grok models via the Grok CLI - specialized expert subagents",
       "cli": "grok",
-      "install": "install the Grok CLI; it lands in ~/.local/bin/grok on Unix and ~\\.grok\\bin\\grok.exe on Windows",
+      "install": "install the Grok CLI; its stable launcher is ~/.grok/bin/grok on Unix and ~\\.grok\\bin\\grok.exe on Windows; some Unix installs also expose ~/.local/bin/grok as a symlink",
       "auth": "`grok login` (grok.com account). A free account has a usage limit that returns a JSON error object rather than an exit code.",
       "mcp": {
         "type": "stdio",

@@ -9,8 +9,61 @@ const providers = require("../config/providers.json");
 const mcpServers = require("../config/mcp-servers.example.json");
 const manifest = require("../.claude-plugin/plugin.json");
 
-const EXPECTED_PLUGIN_SERVERS = ["codex", "agy", "kimi", "copilot", "grok", "cursor"];
-const EXPECTED_CODEX_SERVERS = ["claude", ...EXPECTED_PLUGIN_SERVERS];
+const CODEX_MCP_EXAMPLE = fs.readFileSync(
+  path.resolve(__dirname, "../config/codex-mcp.example.toml"),
+  "utf8"
+);
+
+function parseCodexMcpExample(source) {
+  const servers = {};
+  let current;
+
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const section = line.match(/^\[mcp_servers\.([a-z0-9_-]+)\]$/i);
+    if (section) {
+      current = {};
+      servers[section[1]] = current;
+      continue;
+    }
+
+    assert.ok(current, `property outside an mcp_servers table: ${line}`);
+    const property = line.match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
+    assert.ok(property, `cannot parse Codex MCP example line: ${line}`);
+    const [, key, literal] = property;
+    if (literal.startsWith('"') || literal.startsWith("[")) {
+      current[key] = JSON.parse(literal);
+    } else if (literal === "true" || literal === "false") {
+      current[key] = literal === "true";
+    } else {
+      const value = Number(literal);
+      assert.ok(Number.isFinite(value), `unsupported Codex MCP value: ${literal}`);
+      current[key] = value;
+    }
+  }
+
+  return servers;
+}
+
+function normalizeEntrypoint(args) {
+  const normalized = [...args];
+  normalized[0] = normalized[0].replace(
+    /^(?:\$\{CLAUDE_PLUGIN_ROOT\}|\/absolute\/path\/to\/claude-delegator)[\\/]/,
+    ""
+  );
+  return normalized;
+}
+
+function withoutCodexSelfDisable(args) {
+  const normalized = [...args];
+  const override = normalized.indexOf("mcp_servers.codex.enabled=false");
+  assert.ok(override > 0, "nested Codex must disable its inherited self-target");
+  assert.equal(normalized[override - 1], "-c");
+  normalized.splice(override - 1, 2);
+  return normalized;
+}
 
 // `-c mcp_servers.codex.enabled=false` is deliberately absent. A `-c` override
 // CREATES `mcp_servers.codex` when config.toml has no such section, and Codex
@@ -44,52 +97,47 @@ test("distributed configurations run native Codex through the identity-boundary 
   assertTransparentCodexLauncher(mcpServers.mcpServers.codex);
 });
 
-test("distributed MCP examples register every supported target", () => {
-  assert.deepEqual(mcpServers.mcpServers, manifest.mcpServers);
-  assert.deepEqual(Object.keys(providers.providers).sort(), [...EXPECTED_CODEX_SERVERS].sort());
+test("provider catalog, plugin manifest and MCP examples stay in parity", () => {
+  const canonical = Object.keys(providers.providers);
+  const claudeCodeTargets = canonical.filter((name) => name !== "claude");
+  const codexExample = parseCodexMcpExample(CODEX_MCP_EXAMPLE);
 
-  const codexExample = fs.readFileSync(
-    path.resolve(__dirname, "../config/codex-mcp.example.toml"),
-    "utf8"
-  );
-  const headers = [...codexExample.matchAll(/^\[mcp_servers\.([^\]]+)\]\s*$/gm)];
-  const sections = headers.map((match) => match[1]);
-  assert.deepEqual(
-    sections.sort(),
-    Object.keys(providers.providers).sort(),
-    "Codex-side TOML must contain all targets, including Claude"
-  );
+  // Claude Code must not target itself. Codex can target Claude, and the
+  // self-target Codex table remains available for explicitly nested runs.
+  assert.deepEqual(Object.keys(manifest.mcpServers).sort(), claudeCodeTargets.sort());
+  assert.deepEqual(Object.keys(mcpServers.mcpServers).sort(), claudeCodeTargets.sort());
+  assert.deepEqual(Object.keys(codexExample).sort(), canonical.sort());
+  assert.equal(Object.hasOwn(manifest.mcpServers, "claude"), false);
+  assert.equal(Object.hasOwn(mcpServers.mcpServers, "claude"), false);
+  assert.ok(Object.hasOwn(codexExample, "claude"));
 
-  const blocks = new Map(headers.map((match, index) => [
-    match[1],
-    codexExample.slice(match.index, headers[index + 1]?.index ?? codexExample.length)
-  ]));
-  for (const name of EXPECTED_CODEX_SERVERS) {
-    const block = blocks.get(name);
-    assert.ok(block, `${name} needs a Codex MCP table`);
-    assert.match(block, /^command = "node"$/m, name);
-    assert.match(block, /^startup_timeout_sec = 20$/m, name);
-    assert.match(block, /^tool_timeout_sec = 3600$/m, name);
-    assert.match(block, /^required = false$/m, name);
+  for (const name of claudeCodeTargets) {
+    assert.deepEqual(
+      manifest.mcpServers[name],
+      providers.providers[name].mcp,
+      `${name}: plugin manifest must match the canonical provider transport`
+    );
+    assert.deepEqual(
+      mcpServers.mcpServers[name],
+      providers.providers[name].mcp,
+      `${name}: JSON example must match the canonical provider transport`
+    );
+  }
 
-    const args = JSON.parse(block.match(/^args = (\[.*\])$/m)[1]);
-    const enabledTools = JSON.parse(block.match(/^enabled_tools = (\[.*\])$/m)[1]);
-    assert.deepEqual(enabledTools, [name, `${name}-reply`], name);
+  for (const name of canonical) {
+    const server = codexExample[name];
+    assert.equal(server.command, providers.providers[name].mcp.command, `${name}: command`);
+    assert.deepEqual(server.enabled_tools, [name, `${name}-reply`], `${name}: enabled tools`);
+    assert.equal(server.startup_timeout_sec, 20, `${name}: startup timeout`);
+    assert.equal(server.tool_timeout_sec, 3600, `${name}: tool timeout`);
+    assert.equal(server.required, false, `${name}: optional server`);
 
-    if (name === "codex") {
-      assert.equal(args[0], "/absolute/path/to/claude-delegator/server/codex/launcher.js");
-      assert.deepEqual(args.slice(1), [
-        ...EXPECTED_CODEX_ARGS.slice(0, -1),
-        "-c", "mcp_servers.codex.enabled=false",
-        "mcp-server"
-      ]);
-    } else {
-      assert.deepEqual(
-        args,
-        [`/absolute/path/to/claude-delegator/server/${name}/index.js`],
-        name
-      );
-    }
+    const actualArgs = name === "codex" ? withoutCodexSelfDisable(server.args) : server.args;
+    assert.deepEqual(
+      normalizeEntrypoint(actualArgs),
+      normalizeEntrypoint(providers.providers[name].mcp.args),
+      `${name}: Codex example must use the canonical provider entrypoint`
+    );
   }
 });
 
@@ -287,7 +335,8 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   // died the moment the version directory did: three bridges failed with
   // CONNECTION_CLOSED after a routine cache cleanup, with nothing explaining why.
   // Declared here instead, Claude Code resolves the variable on every launch.
-  assert.deepEqual(Object.keys(servers).sort(), [...EXPECTED_PLUGIN_SERVERS].sort());
+  const expected = Object.keys(providers.providers).filter((name) => name !== "claude");
+  assert.deepEqual(Object.keys(servers).sort(), [...expected].sort());
 
   for (const [name, server] of Object.entries(servers)) {
     assert.equal(server.type, "stdio", name);
@@ -320,6 +369,11 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   assert.match(setup, /claude mcp get "\$server"/);
   assert.match(setup, /grep -q 'Status: \.\*Connected'/);
   assert.doesNotMatch(setup, /grep -q ["']server\//);
+  assert.match(
+    setup,
+    /"\$HOME\/\.grok\/bin\/grok" --version/,
+    "setup must probe Grok's stable launcher even when it is absent from PATH"
+  );
 });
 
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
@@ -336,8 +390,7 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   assert.match(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
 });
 
-test("configs without a guaranteed Codex table do not create one with -c", () => {
-
+test("no distributed config passes a -c override that would CREATE a config table", () => {
   // Stated as a property rather than by comparing against EXPECTED_CODEX_ARGS,
   // because that literal is exactly the construction which entrenched the defect:
   // adding the flag back to both the literal and the manifest would keep a

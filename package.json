@@ -2,7 +2,7 @@
   "name": "claude-delegator",
   "version": "1.9.1",
   "private": true,
-  "description": "MCP bridges for delegating work between Claude, Codex, Agy, Kimi, and Copilot CLIs.",
+  "description": "MCP bridges for delegating work between Claude, Codex, Agy, Kimi, Grok, Cursor, and Copilot CLIs.",
   "license": "MIT",
   "type": "commonjs",
   "engines": {

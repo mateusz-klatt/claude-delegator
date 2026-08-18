@@ -1,6 +1,6 @@
 {
   "name": "claude-delegator",
-  "description": "Claude, GPT, and Gemini expert subagents over MCP via Claude, Codex, Agy, Kimi, or Copilot CLI. Five specialized experts with optional Agent Mail progress reporting.",
+  "description": "Expert subagents over MCP via Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot CLI. Five specialized roles with optional Agent Mail progress reporting.",
   "version": "1.9.1",
   "author": {
     "name": "Jarrod Watts",
@@ -21,6 +21,9 @@
     "antigravity",
     "kimi",
     "moonshot",
+    "grok",
+    "xai",
+    "cursor",
     "copilot",
     "github",
     "experts",

@@ -1,17 +1,17 @@
 ---
 name: uninstall
-description: Uninstall claude-delegator (remove MCP config and rules)
+description: Uninstall claude-delegator (remove plugin, legacy MCP registrations, and installed rules)
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 30000
 ---
 
 # Uninstall
 
-Remove claude-delegator from Claude Code.
+Remove the claude-delegator plugin from Claude Code together with legacy user-scoped MCP registrations and copied orchestration rules.
 
 ## Confirm Removal
 
-**Question**: "Remove the Codex/Agy/Kimi/Copilot/Grok/Cursor MCP plugin and its rules?"
+**Question**: "Remove the Codex/Agy/Kimi/Copilot/Grok/Cursor MCP plugin, legacy registrations, and its rules?"
 **Options**:
 - "Yes, uninstall"
 - "No, cancel"
@@ -22,7 +22,7 @@ If cancelled, stop here.
 
 ```bash
 # The MCP servers are declared by the plugin, so uninstalling it removes them.
-# These lines only clear hand-added registrations from a setup before 1.9.0,
+# Clear legacy hand-added registrations from a setup before 1.9.0,
 # which wrote a version-stamped cache path and would otherwise linger.
 for s in codex agy kimi copilot grok cursor gemini; do
   claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
@@ -42,6 +42,7 @@ rm -rf ~/.claude/rules/delegator/
 
 ```
 ✓ Removed the claude-delegator plugin and its MCP servers
+✓ Removed legacy user-scoped MCP registrations
 ✓ Removed rules from ~/.claude/rules/delegator/
 
 Restart Claude Code to unload any tools retained by the current process.
