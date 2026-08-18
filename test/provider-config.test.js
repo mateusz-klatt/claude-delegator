@@ -641,12 +641,98 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   assert.match(verification, /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then/);
   assert.match(verification, /check_cli_version "Codex" "codex" "\$\{local_appdata:\+\$local_appdata\/Programs\/OpenAI\/Codex\/bin\/codex\.exe\}" "\$\{appdata:\+\$appdata\/npm\/codex\.cmd\}"/);
   assert.match(verification, /check_cli_version "Agy" "agy" "\$\{local_appdata:\+\$local_appdata\/agy\/bin\/agy\.exe\}"/);
-  assert.match(verification, /check_cli_version "Kimi" "kimi" "\$windows_home\/\.kimi-code\/bin\/kimi\.exe" "\$windows_home\/\.kimi-code\/bin\/kimi\.cmd"/);
-  assert.match(verification, /check_cli_version "Grok" "grok" "\$windows_home\/\.grok\/bin\/grok\.exe"/);
+  assert.match(verification, /check_cli_version "Kimi" "kimi" "\$\{windows_home:\+\$windows_home\/\.kimi-code\/bin\/kimi\.exe\}" "\$\{windows_home:\+\$windows_home\/\.kimi-code\/bin\/kimi\.cmd\}"/);
+  assert.match(verification, /check_cli_version "Grok" "grok" "\$\{windows_home:\+\$windows_home\/\.grok\/bin\/grok\.exe\}"/);
   assert.match(verification, /check_cli_version "Copilot" "copilot" "\$\{appdata:\+\$appdata\/npm\/copilot\.cmd\}"/);
   assert.match(verification, /check_cli_version "Cursor" "cursor-agent" "\$\{local_appdata:\+\$local_appdata\/cursor-agent\/cursor-agent\.cmd\}"/);
   assert.match(verification, /else[\s\S]+?check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/);
+  assert.match(verification, /resolved_binary=\$\(command -v "\$cli" 2>\/dev\/null\)/);
+  assert.match(verification, /CODEX_BIN="\$binary"/);
+  assert.match(setup, /codex_auth_output=\$\("\$CODEX_BIN" login status 2>&1\)/);
+  assert.match(setup, /CODEX_AUTH_EXIT_STATUS=\$\?/);
+  assert.doesNotMatch(setup, /(?:^|\n)codex login status|login status[^\n]*\|/);
+  assert.match(
+    verification,
+    /core\.isFullyQualifiedWindowsPath\(process\.argv\[2\]\)/,
+    "setup must reuse the runtime's drive/UNC validator"
+  );
+  assert.doesNotMatch(verification, /\^\/\/\[\^\/\]\+\/\[\^\/\]\+/);
+  const windowsDependencyBlocks = [...setup.matchAll(
+    /elif \[ "\$\{OS:-\}" = "Windows_NT" \]; then([\s\S]*?)(?=\n(?:elif|else|fi)\b)/g
+  )].map((match) => match[1]);
+  assert.equal(windowsDependencyBlocks.length, 6, "every provider dependency check needs a Windows branch");
+  for (const block of windowsDependencyBlocks) {
+    assert.match(block, /is_windows_fully_qualified_root/);
+    assert.match(block, /core\.isFullyQualifiedWindowsPath/);
+  }
   assert.match(setup, /read-only` is a provider-specific opt-in and is not universally\s+enforced/);
+});
+
+test("setup reuses the resolved Codex binary and preserves auth exit status", {
+  skip: process.platform === "win32"
+}, () => {
+  const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
+  const resolver = /(is_shell_absolute_path\(\) \{[\s\S]*?\n\}\n\nis_windows_fully_qualified_root\(\) \{[\s\S]*?\n\}\n\nCODEX_BIN=""\ncheck_cli_version\(\) \{[\s\S]*?\n\})(?=\n\nif \[)/.exec(setup)?.[1];
+  const auth = /(# Check 4: Codex auth status[\s\S]*?\nfi)(?=\n```)/.exec(setup)?.[1];
+  assert.ok(resolver, "could not extract the Codex resolver from setup");
+  assert.ok(auth, "could not extract the Codex auth check from setup");
+
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "codex-auth-fixture-"));
+  const fixtureDirectory = path.join(fixtureRoot, "fallback bin with spaces");
+  const fixtureBinary = path.join(fixtureDirectory, "codex fixture");
+  fs.mkdirSync(fixtureDirectory, { recursive: true });
+  fs.writeFileSync(fixtureBinary, `#!/bin/sh
+if [ "$1" = "--version" ]; then printf '%s\\n' 'codex fixture 1.0'; exit 0; fi
+if [ "$1" = "login" ] && [ "$2" = "status" ]; then
+  case "\${AUTH_MODE:-success}" in
+    success) printf '%s\\n' 'Logged in from fallback'; exit 0 ;;
+    failure) printf '%s\\n' 'fixture auth rejected'; exit 7 ;;
+    silent) exit 9 ;;
+  esac
+fi
+exit 64
+`);
+  fs.chmodSync(fixtureBinary, 0o755);
+
+  const harness = `${resolver}
+check_cli_version "Codex" "codex-not-on-path" "$FIXTURE_CODEX" || true
+${auth}
+printf 'FIXTURE_BIN=%s\\nFIXTURE_STATUS=%s\\n' "$CODEX_BIN" "$CODEX_AUTH_EXIT_STATUS"
+`;
+  const run = (mode, binary = fixtureBinary) => spawnSync("bash", ["-c", harness], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: "/usr/bin:/bin",
+      AUTH_MODE: mode,
+      FIXTURE_CODEX: binary
+    }
+  });
+
+  try {
+    const success = run("success");
+    assert.equal(success.status, 0, success.stderr);
+    assert.match(success.stdout, /Codex auth: Logged in from fallback/);
+    assert.ok(success.stdout.includes(`FIXTURE_BIN=${fixtureBinary}`));
+    assert.match(success.stdout, /FIXTURE_STATUS=0/);
+
+    const failure = run("failure");
+    assert.equal(failure.status, 0, failure.stderr);
+    assert.match(failure.stdout, /Codex auth: FAILED \(exit 7\): fixture auth rejected/);
+    assert.match(failure.stdout, /FIXTURE_STATUS=7/);
+
+    const silent = run("silent");
+    assert.equal(silent.status, 0, silent.stderr);
+    assert.match(silent.stdout, /Codex auth: FAILED \(exit 9\): \(no output\)/);
+    assert.match(silent.stdout, /FIXTURE_STATUS=9/);
+
+    const missing = run("success", path.join(fixtureRoot, "missing codex"));
+    assert.equal(missing.status, 0, missing.stderr);
+    assert.match(missing.stdout, /Codex auth: SKIPPED \(no verified Codex binary from Check 1\)/);
+    assert.match(missing.stdout, /FIXTURE_BIN=\s*\nFIXTURE_STATUS=127/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
@@ -682,8 +768,11 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   )?.[1];
   assert.ok(uninstallBlock, "uninstall MCP block missing");
   assert.match(uninstallBlock, /for s in \$legacy_servers; do/);
+  assert.match(uninstallBlock, /claude_plugin_list=\$\(claude plugin list --json/);
+  assert.match(uninstallBlock, /legacy_scan_status=\$\?/);
+  assert.match(uninstallBlock, /preserving all bare MCP registrations/);
   const extractLegacyScanner = (block) =>
-    /legacy_servers="\$\(\n\s+node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
+    /legacy_servers="\$\(\n\s+CLAUDE_PLUGIN_LIST_JSON="\$claude_plugin_list" node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
   const uninstallScanner = extractLegacyScanner(uninstallBlock);
   assert.ok(uninstallScanner, "uninstall must scan legacy registration provenance");
   const extractMigrationBlock = (source, heading) => {
@@ -736,17 +825,25 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
       assert.ok(manifestGuard.includes(`"${server}"`), `${label}: manifest guard omits ${server}`);
     }
 
-    assert.match(block, /legacy_servers="\$\(\n\s+node - <<'NODE'/);
+    assert.match(block, /legacy_servers="\$\(\n\s+CLAUDE_PLUGIN_LIST_JSON="\$claude_plugin_list" node - <<'NODE'/);
     assert.match(block, /process\.env\.CLAUDE_CONFIG_DIR[\s\S]+?\.claude\.json/);
     assert.match(block, /user\.mcpServers\?\.\[name\]/);
     assert.match(block, /function isHistoricalEntrypoint\(value, name\)/);
-    assert.match(block, /parts\[i\] !== "plugins" \|\| parts\[i \+ 1\] !== "cache"/);
-    assert.match(block, /parts\[i \+ 2\] !== "jarrodwatts-claude-delegator"/);
-    assert.match(block, /parts\[i \+ 3\] !== "claude-delegator"/);
-    assert.match(block, /cacheVersion\.test\(parts\[i \+ 4\]\)/);
+    assert.match(block, /records\[0\]\.installPath/);
+    assert.match(block, /records\[0\]\.version !== activeVersion/);
+    assert.match(block, /process\.platform === "win32"/);
+    assert.match(block, /const windowsDevice =/);
+    assert.match(block, /pathApi\.basename\(versionsRoot\) !== "claude-delegator"/);
+    assert.match(block, /pathApi\.basename\(marketplaceRoot\) !== "jarrodwatts-claude-delegator"/);
+    assert.doesNotMatch(block, /pathApi\.basename\(cacheRoot\) !== "cache"/);
+    assert.match(block, /pathApi\.relative\(versionsRoot, pathApi\.normalize\(value\)\)/);
+    assert.match(block, /activeManifest\.mcpServers/);
+    assert.match(block, /activeManifest\.name !== "claude-delegator"/);
+    assert.match(block, /activeManifest\.version !== activeVersion/);
+    assert.match(block, /entry\.command !== "node"/);
+    assert.match(block, /isHistoricalEntrypoint\(entry\.args\[0\], name\)/);
     assert.match(block, /allowedEntrypoints = name === "codex" \? \["launcher\.js", "index\.js"\]/);
-    assert.match(block, /i \+ 8 === parts\.length && allowedEntrypoints\.includes\(parts\[i \+ 7\]\)/);
-    assert.doesNotMatch(block, /value\.split\("\/"\)\.includes\("claude-delegator"\)/);
+    assert.doesNotMatch(block, /const candidates = \[entry\.command/);
     assert.equal([...block.matchAll(/for s in \$legacy_servers; do/g)].length, 2);
     assert.match(block, /\[ "\$s" = "gemini" \] && replacement="agy"/);
     assert.match(block, /server="plugin:claude-delegator:\$replacement"/);
@@ -787,60 +884,142 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
       `${label}: repair and uninstall must apply the same provenance boundary`
     );
     const fixtureHome = fs.mkdtempSync(path.join(os.tmpdir(), "claude-delegator-legacy-"));
+    const pluginRecord = (installPath, version = manifest.version) => ({
+      id: "claude-delegator@jarrodwatts-claude-delegator",
+      scope: "user",
+      version,
+      installPath
+    });
+    const writeVerifiedInstall = (installPath, overrides = {}) => {
+      const manifestDirectory = path.join(installPath, ".claude-plugin");
+      fs.mkdirSync(manifestDirectory, { recursive: true });
+      fs.writeFileSync(path.join(manifestDirectory, "plugin.json"), JSON.stringify({
+        name: "claude-delegator",
+        version: path.basename(installPath),
+        mcpServers: manifest.mcpServers,
+        ...overrides
+      }));
+    };
+    const runScanner = ({ profile = "", pluginList }) => spawnSync(process.execPath, ["-e", scanner], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: fixtureHome,
+        USERPROFILE: fixtureHome,
+        CLAUDE_CONFIG_DIR: profile,
+        CLAUDE_PLUGIN_LIST_JSON: JSON.stringify(pluginList)
+      }
+    });
+    const outputNames = (scan) => scan.stdout.trim().split(/\r?\n/).filter(Boolean);
     try {
+      const defaultVersionsRoot = path.join(
+        fixtureHome, ".claude", "plugins", "cache",
+        "jarrodwatts-claude-delegator", "claude-delegator"
+      );
+      const activeInstall = path.join(defaultVersionsRoot, manifest.version);
+      writeVerifiedInstall(activeInstall);
+      const historical = (root, version, name, entrypoint = "index.js") =>
+        path.join(root, version, "server", name, entrypoint);
+      const foreignVersionsRoot = path.join(
+        fixtureHome, "foreign-prefix", "plugins", "cache",
+        "jarrodwatts-claude-delegator", "claude-delegator"
+      );
       fs.writeFileSync(path.join(fixtureHome, ".claude.json"), JSON.stringify({
         mcpServers: {
           codex: {
             command: "node",
-            args: ["C:\\Users\\dev\\.claude\\plugins\\cache\\jarrodwatts-claude-delegator\\claude-delegator\\1.6.5\\server\\codex\\launcher.js"]
+            args: [historical(defaultVersionsRoot, "1.6.5", "codex", "launcher.js")]
           },
-          agy: { command: "node", args: ["/opt/unrelated/server/agy/index.js"] },
-          kimi: { command: "node", args: ["/work/claude-delegator-fork/server/kimi/index.js"] },
-          copilot: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/01.02.03/server/copilot/index.js"] },
-          grok: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.6.5/server/grok/index.js/extra"] },
-          gemini: { command: "node", args: ["/work/claude-delegator/server/gemini/index.js"] }
+          // Exact terminal marketplace lineage under another root is foreign.
+          agy: { command: "node", args: [historical(foreignVersionsRoot, "1.6.5", "agy")] },
+          // The historical command always placed the entrypoint in argv[0].
+          kimi: { command: "node", args: ["--loader", historical(defaultVersionsRoot, "1.6.5", "kimi")] },
+          // The historical transport used literal `node`, never an absolute lookalike.
+          copilot: { command: path.join(fixtureHome, "bin", "node"), args: [historical(defaultVersionsRoot, "1.6.5", "copilot")] },
+          grok: { command: "node", args: [`${historical(defaultVersionsRoot, "1.6.5", "grok")}${path.sep}extra`] },
+          cursor: { command: "node", args: [historical(defaultVersionsRoot, "01.02.03", "cursor")] },
+          gemini: { command: "node", args: [path.join(fixtureHome, "work", "claude-delegator", "server", "gemini", "index.js")] }
         }
       }));
-      const scan = spawnSync(process.execPath, ["-e", scanner], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          HOME: fixtureHome,
-          USERPROFILE: fixtureHome,
-          CLAUDE_CONFIG_DIR: ""
-        }
-      });
+      const defaultRecord = pluginRecord(activeInstall);
+      const scan = runScanner({ pluginList: [defaultRecord] });
       assert.equal(scan.status, 0, `${label}: scanner failed: ${scan.stderr}`);
       assert.deepEqual(
-        scan.stdout.trim().split(/\r?\n/).filter(Boolean),
+        outputNames(scan),
         ["codex"],
-        `${label}: scan must select only exact historical cache entries and preserve independent clones`
+        `${label}: only argv[0] below the verified cache family is owned`
       );
 
       const customProfile = path.join(fixtureHome, "custom-profile");
       fs.mkdirSync(customProfile);
+      // CLAUDE_CODE_PLUGIN_CACHE_DIR can point directly at an arbitrary cache
+      // root; requiring literal plugins/cache ancestors would reject this.
+      const customVersionsRoot = path.join(
+        fixtureHome, "overridden-plugin-cache",
+        "jarrodwatts-claude-delegator", "claude-delegator"
+      );
+      const customInstall = path.join(customVersionsRoot, manifest.version);
+      writeVerifiedInstall(customInstall);
       fs.writeFileSync(path.join(customProfile, ".claude.json"), JSON.stringify({
         mcpServers: {
-          cursor: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.8.0/server/cursor/index.js"] },
-          copilot: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.9.0-rc.1+build.5/server/copilot/index.js"] },
-          gemini: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.4.0/server/gemini/index.js"] }
+          cursor: { command: "node", args: [historical(customVersionsRoot, "1.8.0", "cursor")] },
+          copilot: { command: "node", args: [historical(customVersionsRoot, "1.9.0-rc.1+build.5", "copilot")] },
+          gemini: { command: "node", args: [historical(customVersionsRoot, "1.4.0", "gemini")] },
+          agy: { command: "node", args: [historical(foreignVersionsRoot, "1.8.0", "agy")] }
         }
       }));
-      const customScan = spawnSync(process.execPath, ["-e", scanner], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          HOME: fixtureHome,
-          USERPROFILE: fixtureHome,
-          CLAUDE_CONFIG_DIR: customProfile
-        }
+      const customScan = runScanner({
+        profile: customProfile,
+        pluginList: [pluginRecord(customInstall)]
       });
       assert.equal(customScan.status, 0, `${label}: custom-profile scanner failed: ${customScan.stderr}`);
       assert.deepEqual(
-        customScan.stdout.trim().split(/\r?\n/).filter(Boolean),
+        outputNames(customScan),
         ["copilot", "cursor", "gemini"],
-        `${label}: CLAUDE_CONFIG_DIR must override the default state and retain exact Gemini provenance`
+        `${label}: profile and cache overrides must stay independent and authoritative`
       );
+
+      const invalidRoots = [
+        ["zero active records", []],
+        ["ambiguous active records", [defaultRecord, { ...defaultRecord }]],
+        ["noncanonical installPath", [pluginRecord(`${activeInstall}${path.sep}..${path.sep}${manifest.version}`)]],
+        ["malformed installPath", [pluginRecord(path.join(fixtureHome, "unowned", manifest.version))]],
+        ["root-relative Windows installPath", [pluginRecord("\\plugins\\cache\\jarrodwatts-claude-delegator\\claude-delegator\\1.9.1")]],
+        ["device-namespace installPath", [pluginRecord("//?/C:/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.9.1")]]
+      ];
+      if (process.platform === "win32") {
+        invalidRoots.push([
+          "forward-slash root-relative Windows installPath",
+          [pluginRecord("/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.9.1")]
+        ]);
+      }
+      for (const [caseName, pluginList] of invalidRoots) {
+        const failed = runScanner({ pluginList });
+        assert.notEqual(failed.status, 0, `${label}: ${caseName} must fail closed`);
+        assert.deepEqual(outputNames(failed), [], `${label}: ${caseName} emitted a removal candidate`);
+        if (/root-relative|device-namespace|noncanonical/.test(caseName)) {
+          assert.match(failed.stderr, /not canonical and fully qualified/);
+          assert.doesNotMatch(failed.stderr, /ENOENT/);
+        }
+      }
+
+      const missingManifestInstall = path.join(
+        fixtureHome, "missing-manifest-cache",
+        "jarrodwatts-claude-delegator", "claude-delegator", manifest.version
+      );
+      fs.mkdirSync(missingManifestInstall, { recursive: true });
+      const missingManifest = runScanner({ pluginList: [pluginRecord(missingManifestInstall)] });
+      assert.notEqual(missingManifest.status, 0, `${label}: missing active manifest must fail closed`);
+      assert.deepEqual(outputNames(missingManifest), []);
+
+      const mismatchInstall = path.join(
+        fixtureHome, "mismatch-cache",
+        "jarrodwatts-claude-delegator", "claude-delegator", manifest.version
+      );
+      writeVerifiedInstall(mismatchInstall, { mcpServers: { codex: manifest.mcpServers.codex } });
+      const mismatchedManifest = runScanner({ pluginList: [pluginRecord(mismatchInstall)] });
+      assert.notEqual(mismatchedManifest.status, 0, `${label}: incomplete active manifest must fail closed`);
+      assert.deepEqual(outputNames(mismatchedManifest), []);
     } finally {
       fs.rmSync(fixtureHome, { recursive: true, force: true });
     }
@@ -891,7 +1070,12 @@ test("maintenance docs describe the active profile and conditional Codex self-di
   assert.doesNotMatch(readme, /Codex entry disables its own nested/);
   assert.match(readme, /static plugin manifest cannot safely disable `mcp_servers\.codex`/i);
   assert.match(readme, /add `-c mcp_servers\.codex\.enabled=false`/);
-  assert.match(readme, /`CODEX_DELEGATOR_CODEX_BIN` override must be an absolute/);
+  assert.match(
+    readme,
+    /`CODEX_DELEGATOR_CODEX_BIN` override must be a POSIX absolute path or a fully-qualified Windows drive\/UNC path/
+  );
+  assert.match(readme, /root-relative \(`\\path`\) and drive-relative \(`C:path`\) values are rejected/);
+  assert.match(readme, /device-namespace, malformed UNC, and\s+dot-segment roots are ignored/);
   assert.match(
     maintainerGuide,
     /`server\/shared\/provider-runtime\.js` \| Shared custom-provider runtime/

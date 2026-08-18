@@ -21,8 +21,8 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
-  IS_WINDOWS, clampTimeout, isNonEmptyString, isObject, resolveCli,
-  superviseChild, timeoutSchema
+  IS_WINDOWS, clampTimeout, isFullyQualifiedWindowsPath, isNonEmptyString,
+  isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_AGY_DEPTH");
@@ -261,13 +261,20 @@ const AGY_TOOLS = [
   }
 ];
 
-function cliFallbacks() {
+function cliFallbacks({
+  environment = process.env,
+  home = os.homedir(),
+  isWindows = IS_WINDOWS
+} = {}) {
   // The official installer targets these; an MCP server inherits a minimal PATH
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
-  if (!IS_WINDOWS) return [path.join(os.homedir(), ".local", "bin", "agy")];
-  return process.env.LOCALAPPDATA
-    ? [path.join(process.env.LOCALAPPDATA, "agy", "bin", "agy.exe")]
+  if (!isWindows) return [path.join(home, ".local", "bin", "agy")];
+  const localAppData = typeof environment.LOCALAPPDATA === "string"
+    ? environment.LOCALAPPDATA.trim()
+    : "";
+  return isFullyQualifiedWindowsPath(localAppData)
+    ? [path.win32.join(localAppData, "agy", "bin", "agy.exe")]
     : [];
 }
 

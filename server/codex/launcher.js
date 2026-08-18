@@ -15,6 +15,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const {
+  isFullyQualifiedWindowsPath,
   killProcessTree,
   resolveCli,
   resolveWindowsShim,
@@ -31,7 +32,7 @@ function cliFallbacks({ environment = process.env, isWindows = IS_WINDOWS } = {}
   const fallbacks = [];
   const localAppData = environment.LOCALAPPDATA;
   const localRoot = typeof localAppData === "string" ? localAppData.trim() : "";
-  if (localRoot && path.win32.isAbsolute(localRoot)) {
+  if (isFullyQualifiedWindowsPath(localRoot)) {
     // Measured native installer location. Keep the stable product path, never a
     // version-stamped package directory.
     fallbacks.push(path.win32.join(
@@ -41,7 +42,7 @@ function cliFallbacks({ environment = process.env, isWindows = IS_WINDOWS } = {}
 
   const appData = environment.APPDATA;
   const roamingRoot = typeof appData === "string" ? appData.trim() : "";
-  if (roamingRoot && path.win32.isAbsolute(roamingRoot)) {
+  if (isFullyQualifiedWindowsPath(roamingRoot)) {
     // npm's stable global shim. resolveCli expands it to its JS loader before
     // spawn, with shell:false.
     fallbacks.push(path.win32.join(roamingRoot, "npm", "codex.cmd"));
@@ -58,7 +59,10 @@ function resolveCodexBinary({
   if (typeof explicit === "string" && explicit.trim()) {
     const platformPath = isWindows ? path.win32 : path;
     const configured = explicit.trim();
-    if (!platformPath.isAbsolute(configured)) {
+    const isAbsolute = isWindows
+      ? isFullyQualifiedWindowsPath(configured)
+      : platformPath.isAbsolute(configured);
+    if (!isAbsolute) {
       throw new Error(`${OVERRIDE_ENV} must be an absolute path`);
     }
     let candidate = platformPath.normalize(configured);
@@ -74,7 +78,10 @@ function resolveCodexBinary({
 
   // The shared resolver scans PATH as data, validates POSIX X_OK, follows
   // Windows npm shims without a shell, and never executes `which`/`where`.
-  return resolver("codex", { fallbacks: cliFallbacks({ environment, isWindows }) });
+  return resolver("codex", {
+    environment,
+    fallbacks: cliFallbacks({ environment, isWindows })
+  });
 }
 
 function main() {

@@ -783,6 +783,23 @@ test("parses assistant chunks, session id and provider errors from one JSONL str
   assert.equal(bridge.parseCopilotOutput("").sessionId, "unknown");
 });
 
+test("accepts only fully-qualified Windows APPDATA fallback roots", () => {
+  for (const root of ["relative\\roaming", "C:drive-relative", "\\root-relative"]) {
+    assert.deepEqual(bridge.cliFallbacks({
+      environment: { APPDATA: root },
+      isWindows: true
+    }), [], root);
+  }
+  assert.deepEqual(bridge.cliFallbacks({
+    environment: { APPDATA: "C:\\Users\\dev\\AppData\\Roaming" },
+    isWindows: true
+  }), ["C:\\Users\\dev\\AppData\\Roaming\\npm\\copilot.cmd"]);
+  assert.deepEqual(bridge.cliFallbacks({
+    environment: { APPDATA: "\\\\fileserver\\profiles\\dev\\Roaming" },
+    isWindows: true
+  }), ["\\\\fileserver\\profiles\\dev\\Roaming\\npm\\copilot.cmd"]);
+});
+
 test("binds the shared shim resolver to its own CLI name", () => {
   // The shim shapes themselves are covered once, in server/shared/bridge.test.js.
   // What is per-bridge is only which command name gets baked in, and that is what

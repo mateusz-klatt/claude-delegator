@@ -8,6 +8,7 @@ const { spawn } = require("node:child_process");
 const { afterEach, test } = require("node:test");
 
 const bridge = require("./index.js");
+const core = require("../shared/bridge.js");
 
 const SERVER_PATH = path.join(__dirname, "index.js");
 const temporaryDirectories = [];
@@ -39,6 +40,7 @@ function createCursorStub() {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cursor-bridge-test-")));
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "calls.jsonl");
+  const probeCapturePath = path.join(directory, "probe-capture.json");
   const workspacePath = path.join(directory, "workspace");
   // Must contain the command name: resolveWindowsShim only accepts a quoted
   // target whose path contains "cursor-agent" (or the "agent" alias), so a stub
@@ -53,6 +55,14 @@ function createCursorStub() {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 if (args.includes("--version")) {
+  const keys = Object.keys(process.env).map((key) => key.toLowerCase());
+  const pathEntry = Object.entries(process.env).find(([key]) => key.toLowerCase() === "path");
+  fs.writeFileSync(process.env.CURSOR_STUB_PROBE_CAPTURE, JSON.stringify({
+    keys,
+    path: pathEntry && pathEntry[1],
+    providerAuth: process.env.CURSOR_API_KEY,
+    preserved: process.env.PRESERVED_VALUE
+  }));
   process.stdout.write("2026.08.11-e8db854\\n");
   process.exit(0);
 }
@@ -142,16 +152,21 @@ process.stdout.write(JSON.stringify({
   const systemBinaryPath = process.platform === "win32"
     ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
     : "/usr/bin:/bin";
+  const stubPath = [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter);
   return {
     capturePath,
+    expectedPath: stubPath,
+    probeCapturePath,
     workspacePath,
     env: {
-      ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
+      ...withPath(process.env, stubPath),
       CURSOR_STUB_CAPTURE: capturePath,
+      CURSOR_STUB_PROBE_CAPTURE: probeCapturePath,
       CLAUDECODE: "nested-session-marker",
       AGENT_NAME: "CallerAgent",
       AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
       HTTP_BEARER_TOKEN: "caller-http-token",
+      CURSOR_API_KEY: "provider-auth",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_CURSOR_DEPTH: ""
     }
@@ -251,6 +266,8 @@ function startServer(extraEnv = {}) {
 
   return {
     capturePath: stub.capturePath,
+    expectedPath: stub.expectedPath,
+    probeCapturePath: stub.probeCapturePath,
     workspacePath: stub.workspacePath,
     request,
     requestAndCancelInSingleWrite,
@@ -538,6 +555,24 @@ test("severs caller identity but preserves unrelated environment", async () => {
   assert.equal(call.delegationDepth, "1");
 });
 
+test("scrubs caller credentials from the provider runtime startup probe", async () => {
+  const server = startServer();
+  await server.request("initialize");
+  const captured = JSON.parse(fs.readFileSync(server.probeCapturePath, "utf8"));
+  for (const key of [
+    "agent_name",
+    "agent_mail_registration_token",
+    "http_bearer_token",
+    "claudecode"
+  ]) {
+    assert.equal(captured.keys.includes(key), false, key);
+  }
+  assert.equal(captured.path, server.expectedPath);
+  assert.equal(captured.providerAuth, "provider-auth");
+  assert.equal(captured.preserved, "keep-me");
+  await server.close();
+});
+
 test("rejects invalid inputs before invoking Cursor", async () => {
   const server = startServer();
   const cases = [
@@ -562,7 +597,7 @@ test("falls back to the stable launcher and never to a versioned path", () => {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA;
     const root = typeof localAppData === "string" ? localAppData.trim() : "";
-    const expected = root && path.win32.isAbsolute(root)
+    const expected = core.isFullyQualifiedWindowsPath(root)
       ? [path.win32.join(root, "cursor-agent", "cursor-agent.cmd")]
       : [];
     assert.deepEqual(fallbacks, expected);
@@ -594,6 +629,21 @@ test("uses the measured Windows fallback and follows its sibling PowerShell laun
   assert.deepEqual(
     cliFallbacks({ environment: { LOCALAPPDATA: "relative\\profile" }, isWindows: true }),
     []
+  );
+  assert.deepEqual(
+    cliFallbacks({ environment: { LOCALAPPDATA: "\\root-relative" }, isWindows: true }),
+    []
+  );
+  assert.deepEqual(
+    cliFallbacks({ environment: { LOCALAPPDATA: "C:drive-relative" }, isWindows: true }),
+    []
+  );
+  assert.deepEqual(
+    cliFallbacks({
+      environment: { LOCALAPPDATA: "\\\\fileserver\\profiles\\mateu\\Local" },
+      isWindows: true
+    }),
+    ["\\\\fileserver\\profiles\\mateu\\Local\\cursor-agent\\cursor-agent.cmd"]
   );
 
   const shim = fs.readFileSync(

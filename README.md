@@ -225,13 +225,59 @@ NODE
 # their entrypoint must have the exact historical marketplace-cache lineage.
 # Same-named MCP servers in independent clones are deliberately ignored.
 legacy_servers="$(
-  node - <<'NODE'
+  CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const state = process.env.CLAUDE_CONFIG_DIR
   ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json")
   : path.join(os.homedir(), ".claude.json");
+const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const pluginList = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON || "null");
+if (!Array.isArray(pluginList)) throw new Error("could not verify the active plugin list");
+const records = pluginList.filter((record) =>
+  record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
+if (records.length !== 1 || typeof records[0].installPath !== "string") {
+  throw new Error("expected exactly one active user-scope claude-delegator install");
+}
+const installPath = records[0].installPath;
+const windowsDrive = /^[A-Za-z]:[\\/]/.test(installPath);
+const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(installPath);
+const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(installPath);
+const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
+const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
+  component !== "." && component !== ".." && !component.endsWith(".") &&
+  !component.endsWith(" ") && !invalidUncComponent.test(component));
+const windowsShaped = process.platform === "win32" || /^[A-Za-z]:/.test(installPath) ||
+  /^[\\]/.test(installPath) || /^\/\//.test(installPath);
+const rawParts = installPath.replaceAll("\\", "/").split("/");
+if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
+    installPath.trim() !== installPath || rawParts.some((part) => part === "." || part === "..")) {
+  throw new Error("active plugin installPath is not canonical and fully qualified");
+}
+const pathApi = windowsShaped ? path.win32 : path.posix;
+if (!pathApi.isAbsolute(installPath)) {
+  throw new Error("active plugin installPath is not canonical and fully qualified");
+}
+const normalizedInstall = pathApi.normalize(installPath);
+const activeVersion = pathApi.basename(normalizedInstall);
+const versionsRoot = pathApi.dirname(normalizedInstall);
+const marketplaceRoot = pathApi.dirname(versionsRoot);
+if (!cacheVersion.test(activeVersion) || records[0].version !== activeVersion ||
+    pathApi.basename(versionsRoot) !== "claude-delegator" ||
+    pathApi.basename(marketplaceRoot) !== "jarrodwatts-claude-delegator") {
+  throw new Error("active plugin installPath is not a verified marketplace-cache root");
+}
+const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const activeManifest = JSON.parse(fs.readFileSync(
+  pathApi.join(normalizedInstall, ".claude-plugin", "plugin.json"), "utf8"
+));
+const activeServers = Object.keys(activeManifest.mcpServers || {}).sort();
+if (activeManifest.name !== "claude-delegator" || activeManifest.version !== activeVersion ||
+    JSON.stringify(activeServers) !== JSON.stringify(expectedServers)) {
+  throw new Error("active plugin manifest does not verify the delegated MCP servers");
+}
 let user;
 try {
   user = JSON.parse(fs.readFileSync(state, "utf8"));
@@ -239,26 +285,20 @@ try {
   if (error.code === "ENOENT") process.exit(0);
   throw error;
 }
-const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
-const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 function isHistoricalEntrypoint(value, name) {
-  const parts = value.replaceAll("\\", "/").split("/").filter(Boolean);
-  for (let i = 0; i + 7 < parts.length; i += 1) {
-    if (parts[i] !== "plugins" || parts[i + 1] !== "cache") continue;
-    if (parts[i + 2] !== "jarrodwatts-claude-delegator") continue;
-    if (parts[i + 3] !== "claude-delegator" || !cacheVersion.test(parts[i + 4])) continue;
-    if (parts[i + 5] !== "server" || parts[i + 6] !== name) continue;
-    const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
-    if (i + 8 === parts.length && allowedEntrypoints.includes(parts[i + 7])) return true;
-  }
-  return false;
+  if (typeof value !== "string" || !pathApi.isAbsolute(value)) return false;
+  const relative = pathApi.relative(versionsRoot, pathApi.normalize(value));
+  if (!relative || relative === ".." || relative.startsWith(`..${pathApi.sep}`) ||
+      pathApi.isAbsolute(relative)) return false;
+  const parts = relative.split(pathApi.sep);
+  const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
+  return parts.length === 4 && cacheVersion.test(parts[0]) && parts[1] === "server" &&
+    parts[2] === name && allowedEntrypoints.includes(parts[3]);
 }
 for (const name of legacy) {
   const entry = user.mcpServers?.[name];
-  if (!entry) continue;
-  const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
-    .filter((value) => typeof value === "string");
-  if (candidates.some((value) => isHistoricalEntrypoint(value, name))) {
+  if (!entry || entry.command !== "node" || !Array.isArray(entry.args)) continue;
+  if (isHistoricalEntrypoint(entry.args[0], name)) {
     console.log(name);
   }
 }
@@ -313,10 +353,13 @@ done
 ```
 
 The scan ignores local/project registrations, independent clones, and unrelated
-user MCP servers that merely share one of these short names. Only the exact
-historical marketplace-cache lineage is auto-removed; inspect any ambiguous
-same-named entry manually. Preflight completes for every recognized entry before
-any removal; a connected legacy `gemini` requires the namespaced Agy replacement.
+user MCP servers that merely share one of these short names. It derives the only
+eligible cache family from Claude Code's active, verified user-scope plugin
+`installPath`, then requires the historical `node <entrypoint>` transport shape;
+an exact marketplace-shaped suffix under any other root is preserved. If that
+root cannot be verified, the migration stops before removal. Preflight completes
+for every recognized entry before any removal; a connected legacy `gemini`
+requires the namespaced Agy replacement.
 Then restart the CLI.
 
 Verify with:
@@ -343,7 +386,7 @@ tool_timeout_sec = 3600
 
 See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for all seven targets: Claude, Codex, Agy, Kimi, Copilot, Grok, and Cursor. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 
-The static plugin manifest cannot safely disable `mcp_servers.codex`: that override creates an invalid transport when the host has no such table. If the active Codex host does keep a self-referential `[mcp_servers.codex]`, add `-c mcp_servers.codex.enabled=false` to that registration as shown in `config/codex-mcp.example.toml`. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent. An explicit `CODEX_DELEGATOR_CODEX_BIN` override must be an absolute executable or JS-loader path; omit it to use the normal PATH lookup.
+The static plugin manifest cannot safely disable `mcp_servers.codex`: that override creates an invalid transport when the host has no such table. If the active Codex host does keep a self-referential `[mcp_servers.codex]`, add `-c mcp_servers.codex.enabled=false` to that registration as shown in `config/codex-mcp.example.toml`. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent. An explicit `CODEX_DELEGATOR_CODEX_BIN` override must be a POSIX absolute path or a fully-qualified Windows drive/UNC path to an executable or JS loader; Windows root-relative (`\path`) and drive-relative (`C:path`) values are rejected. Omit the override to use the normal PATH lookup.
 
 ### Tests and CI
 
@@ -376,12 +419,17 @@ The MCP bridges require **Node.js 22.12.0 or newer**.
 You need at least one of the following target CLIs configured:
 
 - **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
-- **Codex CLI** (for GPT): `npm install -g @openai/codex`; measured Windows fallbacks are `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and `%APPDATA%\npm\codex.cmd`
+- **Codex CLI** (for GPT): `npm install -g @openai/codex`; measured Windows fallbacks are `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and `%APPDATA%\npm\codex.cmd`. Environment-derived Windows fallback roots must be fully-qualified drive (`C:\...`) or UNC (`\\server\share\...`) paths; root-relative and drive-relative roots are ignored.
 - **Antigravity CLI** (for Agy): typically `~/.local/bin/agy` on POSIX or `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows
 - **Kimi Code** (for Kimi): `~/.kimi-code/bin/kimi` on POSIX; `kimi.exe` or `kimi.cmd` in the same directory on Windows
 - **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`; the measured Windows npm fallback is `%APPDATA%\npm\copilot.cmd`
 - **Grok CLI** (for xAI models): `~/.grok/bin/grok` or `~/.local/bin/grok` on POSIX; `~/.grok/bin/grok.exe` on Windows
 - **Cursor Agent CLI** (for Cursor-hosted models): `~/.local/bin/cursor-agent` on POSIX or `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd` on Windows
+
+Every Windows fallback derived from `USERPROFILE`, `LOCALAPPDATA`, or `APPDATA`
+uses the same runtime validator: the root must be a fully-qualified drive or UNC
+path. Root-relative, drive-relative, device-namespace, malformed UNC, and
+dot-segment roots are ignored.
 
 **Authentication**:
 - Codex: run `codex login`

@@ -26,11 +26,20 @@ function createCodexStub() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-launcher-test-"));
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "capture.json");
+  const probeCapturePath = path.join(directory, "probe-capture.json");
   const scriptPath = path.join(directory, "codex-stub.js");
 const script = `#!/usr/bin/env node
 "use strict";
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
+  const keys = Object.keys(process.env).map((key) => key.toLowerCase());
+  const pathEntry = Object.entries(process.env).find(([key]) => key.toLowerCase() === "path");
+  fs.writeFileSync(process.env.CODEX_STUB_PROBE_CAPTURE, JSON.stringify({
+    keys,
+    path: pathEntry && pathEntry[1],
+    providerAuth: process.env.OPENAI_API_KEY,
+    preserved: process.env.PRESERVED_VALUE
+  }));
   process.stdout.write("codex-stub 1.0.0\\n");
   process.exit(0);
 }
@@ -79,12 +88,16 @@ process.stdin.on("data", (chunk) => {
   const systemBinaryPath = process.platform === "win32"
     ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
     : "/usr/bin:/bin";
+  const stubPath = [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter);
   return {
     capturePath,
+    expectedPath: stubPath,
+    probeCapturePath,
     env: {
       ...process.env,
-      PATH: [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter),
+      PATH: stubPath,
       CODEX_STUB_CAPTURE: capturePath,
+      CODEX_STUB_PROBE_CAPTURE: probeCapturePath,
       AGENT_NAME: "caller-agent",
       AGENT_MAIL_AGENT: "caller-agent",
       AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token",
@@ -142,6 +155,8 @@ function startLauncher() {
 
   return {
     capturePath: stub.capturePath,
+    expectedPath: stub.expectedPath,
+    probeCapturePath: stub.probeCapturePath,
     child,
     request(method, params = {}) {
       const id = nextId++;
@@ -199,7 +214,9 @@ test("launcher reuses the shared safe PATH lookup and process-tree killer", () =
 test("explicit Codex override must be absolute on POSIX and Windows", () => {
   for (const [configured, isWindows] of [
     ["relative/codex.js", false],
-    ["relative\\codex.cmd", true]
+    ["relative\\codex.cmd", true],
+    ["C:drive-relative\\codex.exe", true],
+    ["\\projects\\codex.exe", true]
   ]) {
     assert.throws(
       () => resolveCodexBinary({
@@ -253,6 +270,20 @@ test("feeds the measured Windows Codex locations to the shared resolver as fallb
     environment: { LOCALAPPDATA: "relative\\local", APPDATA: "relative\\roaming" },
     isWindows: true
   }), []);
+  assert.deepEqual(cliFallbacks({
+    environment: { LOCALAPPDATA: "\\root-relative", APPDATA: "C:drive-relative" },
+    isWindows: true
+  }), []);
+  assert.deepEqual(cliFallbacks({
+    environment: {
+      LOCALAPPDATA: "\\\\fileserver\\profiles\\mateu\\Local",
+      APPDATA: "\\\\fileserver\\profiles\\mateu\\Roaming"
+    },
+    isWindows: true
+  }), [
+    "\\\\fileserver\\profiles\\mateu\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+    "\\\\fileserver\\profiles\\mateu\\Roaming\\npm\\codex.cmd"
+  ]);
   assert.deepEqual(cliFallbacks({ environment, isWindows: false }), []);
 
   let resolverCall;
@@ -265,7 +296,7 @@ test("feeds the measured Windows Codex locations to the shared resolver as fallb
     }
   });
   assert.equal(selected, "C:\\on-path\\codex.exe");
-  assert.deepEqual(resolverCall, { command: "codex", options: { fallbacks } });
+  assert.deepEqual(resolverCall, { command: "codex", options: { environment, fallbacks } });
 
   // Native installers stay native; npm's stable .cmd is expanded to its loader.
   assert.equal(core.resolveWindowsShim(fallbacks[0], "codex"), fallbacks[0]);
@@ -277,6 +308,30 @@ test("feeds the measured Windows Codex locations to the shared resolver as fallb
     core.resolveWindowsShim(fallbacks[1], "codex", () => npmShim),
     "C:\\Users\\mateu\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js"
   );
+});
+
+test("scrubs the caller identity from the real Codex startup version probe", async () => {
+  const launcher = startLauncher();
+  await launcher.request("initialize");
+  const captured = JSON.parse(fs.readFileSync(launcher.probeCapturePath, "utf8"));
+  for (const key of [
+    "agent_name",
+    "agent_mail_agent",
+    "agent_mail_registration_token",
+    "mcp_agent_mail_token",
+    "http_bearer_token",
+    "integration_bearer_token",
+    "claudecode"
+  ]) {
+    assert.equal(captured.keys.includes(key), false, key);
+  }
+  assert.equal(captured.path, launcher.expectedPath);
+  assert.equal(captured.providerAuth, "provider-auth");
+  assert.equal(captured.preserved, "keep-me");
+
+  const exited = new Promise((resolve) => launcher.child.once("exit", resolve));
+  launcher.child.stdin.end();
+  await exited;
 });
 
 test("passes through native MCP stdio and scrubs the caller identity", async () => {

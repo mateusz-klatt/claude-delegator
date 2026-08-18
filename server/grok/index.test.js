@@ -598,6 +598,20 @@ test("binds the shared shim resolver to its own CLI name", () => {
   );
 });
 
+test("accepts only fully-qualified Windows home fallback roots", () => {
+  const { cliFallbacks } = require("./index.js");
+  for (const home of ["relative\\home", "C:drive-relative", "\\root-relative"]) {
+    assert.deepEqual(cliFallbacks({ home, isWindows: true }), [], home);
+  }
+  assert.deepEqual(cliFallbacks({ home: "C:\\Users\\dev", isWindows: true }), [
+    "C:\\Users\\dev\\.grok\\bin\\grok.exe"
+  ]);
+  assert.deepEqual(cliFallbacks({
+    home: "\\\\fileserver\\profiles\\dev",
+    isWindows: true
+  }), ["\\\\fileserver\\profiles\\dev\\.grok\\bin\\grok.exe"]);
+});
+
 test("falls back to the install root, not only to the convenience symlink", () => {
   const { cliFallbacks } = require("./index.js");
   const fallbacks = cliFallbacks();

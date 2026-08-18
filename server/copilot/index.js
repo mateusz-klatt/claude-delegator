@@ -19,8 +19,8 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
-  IS_WINDOWS, clampTimeout, homedir, isNonEmptyString, isObject, resolveCli,
-  superviseChild, timeoutSchema
+  IS_WINDOWS, clampTimeout, homedir, isFullyQualifiedWindowsPath,
+  isNonEmptyString, isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_COPILOT_DEPTH");
@@ -194,11 +194,15 @@ const COPILOT_TOOLS = [
   }
 ];
 
-function cliFallbacks() {
+function cliFallbacks({
+  environment = process.env,
+  home = homedir(),
+  isWindows = IS_WINDOWS
+} = {}) {
   // The official installer targets these; an MCP server inherits a minimal PATH
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
-  if (!IS_WINDOWS) return [path.join(homedir(), ".local", "bin", "copilot")];
+  if (!isWindows) return [path.join(home, ".local", "bin", "copilot")];
 
   // Windows is covered only for an npm install. A WinGet install of this package
   // does NOT create a shim in WinGet\Links — measured on a Windows host, where
@@ -207,7 +211,10 @@ function cliFallbacks() {
   // carrying a package id and source hash that would be a worse guess than none.
   // So a WinGet-only install behind a stripped PATH is a known gap, stated rather
   // than papered over with a path that does not exist.
-  return process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [];
+  const appData = typeof environment.APPDATA === "string" ? environment.APPDATA.trim() : "";
+  return isFullyQualifiedWindowsPath(appData)
+    ? [path.win32.join(appData, "npm", "copilot.cmd")]
+    : [];
 }
 
 function permissionArgs(sandbox) {

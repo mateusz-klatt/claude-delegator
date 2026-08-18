@@ -19,8 +19,8 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
-  IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir, isNonEmptyString,
-  isObject, resolveCli, superviseChild, timeoutSchema
+  IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir, isFullyQualifiedWindowsPath,
+  isNonEmptyString, isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_CURSOR_DEPTH");
@@ -283,7 +283,7 @@ function cliFallbacks({
   if (isWindows) {
     const localAppData = environment.LOCALAPPDATA;
     const root = typeof localAppData === "string" ? localAppData.trim() : "";
-    return root && path.win32.isAbsolute(root)
+    return isFullyQualifiedWindowsPath(root)
       ? [path.win32.join(root, "cursor-agent", "cursor-agent.cmd")]
       : [];
   }
@@ -346,7 +346,11 @@ if (require.main === module) {
     activeChildren,
     activeRequests,
     handlers,
-    resolveBinary: () => resolveCli("cursor-agent", { fallbacks: cliFallbacks(), aliases: ["agent"] }),
+    resolveBinary: () => resolveCli("cursor-agent", {
+      aliases: ["agent"],
+      environment: process.env,
+      fallbacks: cliFallbacks()
+    }),
     setBinary: (binary) => { CURSOR_BIN = binary; },
     // The message names the CLI, but on macOS the cause can be a locked login
     // keychain instead: cursor-agent --version touches it, and resolveCli runs

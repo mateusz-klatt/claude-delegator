@@ -19,6 +19,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync, spawn } = require("node:child_process");
+const { buildCalleeEnv } = require("./environment");
 
 const IS_WINDOWS = process.platform === "win32";
 const DEFAULT_WINDOWS_ROOT = "C:\\Windows";
@@ -35,6 +36,27 @@ const MAX_TIMEOUT_MS = 3_600_000; // 1 hour hard cap
 const MIN_TIMEOUT_MS = 10_000;
 
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
+
+function isFullyQualifiedWindowsPath(candidate) {
+  if (typeof candidate !== "string" || candidate.length === 0) return false;
+
+  // path.win32.isAbsolute() also accepts root-relative paths such as
+  // `\projects\cli.exe`. Their drive is inherited from the current process,
+  // which makes an environment override or fallback point somewhere different
+  // depending on how the MCP host was launched. Accept only a drive-qualified
+  // absolute path or a UNC path carrying both a server and a share.
+  if (/^[A-Za-z]:[\\/]/.test(candidate)) return true;
+  const unc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(candidate);
+  if (!unc) return false;
+  const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
+  return unc.slice(1).every((component) =>
+    component !== "." &&
+    component !== ".." &&
+    !component.endsWith(".") &&
+    !component.endsWith(" ") &&
+    !invalidUncComponent.test(component)
+  );
+}
 
 // --- MCP protocol helpers ---
 
@@ -256,6 +278,7 @@ function pathCandidateGroups(command, environmentPath = process.env.PATH, isWind
  * neither by not existing, nor by carrying a better extension.
  */
 function resolveCli(command, {
+  environment = process.env,
   fallbacks = [],
   readShim,
   aliases = [],
@@ -265,8 +288,20 @@ function resolveCli(command, {
   // resolve that helper through the same caller-controlled PATH we are trying to
   // inspect, allowing an unrelated executable to run before the provider CLI.
   // One group per directory preserves PATH precedence.
-  const groups = pathCandidateGroups(command);
-  groups.push(...fallbacks.map((fallback) => [fallback]));
+  const environmentPath = Object.entries(environment).find(
+    ([key]) => key.toLowerCase() === "path"
+  )?.[1];
+  // Passing `undefined` would activate pathCandidateGroups' public default and
+  // accidentally consult this process's PATH even when a caller supplied an
+  // explicit environment without one. `null` deliberately means no PATH.
+  const groups = pathCandidateGroups(
+    command,
+    environmentPath === undefined ? null : environmentPath
+  );
+  const safeFallbacks = IS_WINDOWS
+    ? fallbacks.filter(isFullyQualifiedWindowsPath)
+    : fallbacks;
+  groups.push(...safeFallbacks.map((fallback) => [fallback]));
 
   // The Windows branch had no equivalent of the POSIX X_OK filter: it accepted
   // anything that was a file and let the extension preference paper over the
@@ -318,8 +353,9 @@ function resolveCli(command, {
   }
   console.error(`[claude-delegator] ${command} resolved to ${reported}`);
 
-  const validation = spawnTarget(resolved, ["--version"]);
+  const validation = spawnTarget(resolved, ["--version"], { environment });
   executeFile(validation.command, validation.args, {
+    env: buildCalleeEnv(environment),
     stdio: "pipe",
     timeout: CLI_VERSION_TIMEOUT_MS,
     windowsHide: true
@@ -591,6 +627,7 @@ module.exports = {
   homedir: os.homedir,
   isNonEmptyString,
   isObject,
+  isFullyQualifiedWindowsPath,
   killProcessTree,
   pathCandidateGroups,
   resolveCli,

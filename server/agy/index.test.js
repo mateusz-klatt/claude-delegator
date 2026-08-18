@@ -713,6 +713,23 @@ test("parses only complete JSON candidates that look like an agy result", () => 
   assert.throws(() => bridge.parseAgyOutput("{}"), /No JSON response found/);
 });
 
+test("accepts only fully-qualified Windows LOCALAPPDATA fallback roots", () => {
+  for (const root of ["relative\\local", "C:drive-relative", "\\root-relative"]) {
+    assert.deepEqual(bridge.cliFallbacks({
+      environment: { LOCALAPPDATA: root },
+      isWindows: true
+    }), [], root);
+  }
+  assert.deepEqual(bridge.cliFallbacks({
+    environment: { LOCALAPPDATA: "C:\\Users\\dev\\AppData\\Local" },
+    isWindows: true
+  }), ["C:\\Users\\dev\\AppData\\Local\\agy\\bin\\agy.exe"]);
+  assert.deepEqual(bridge.cliFallbacks({
+    environment: { LOCALAPPDATA: "\\\\fileserver\\profiles\\dev\\Local" },
+    isWindows: true
+  }), ["\\\\fileserver\\profiles\\dev\\Local\\agy\\bin\\agy.exe"]);
+});
+
 test("binds the shared shim resolver to its own CLI name", () => {
   // The shim shapes themselves are covered once, in server/shared/bridge.test.js.
   // What is per-bridge is only which command name gets baked in, and that is what

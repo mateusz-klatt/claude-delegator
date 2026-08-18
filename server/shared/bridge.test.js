@@ -312,6 +312,33 @@ test("builds PATH candidates as data without invoking a PATH-resolved locator", 
   assert.throws(() => core.pathCandidateGroups("../taskkill.exe", "/bin", false), /Invalid CLI command name/);
 });
 
+test("Windows paths require a drive or a complete valid UNC root", () => {
+  for (const valid of [
+    "C:\\projects\\codex.exe",
+    "z:/tools/cursor-agent.cmd",
+    "\\\\fileserver\\profiles\\codex.exe",
+    "//fileserver/profiles/cursor-agent.cmd"
+  ]) {
+    assert.equal(core.isFullyQualifiedWindowsPath(valid), true, valid);
+  }
+
+  for (const invalid of [
+    "\\projects\\codex.exe",
+    "/projects/cursor-agent.cmd",
+    "C:projects\\codex.exe",
+    "relative\\codex.exe",
+    "\\\\fileserver",
+    "\\\\fileserver\\",
+    "\\\\?\\C:\\tools\\codex.exe",
+    "\\\\.\\pipe\\codex",
+    "\\\\..\\share\\codex.exe",
+    "\\\\fileserver\\invalid?share\\codex.exe",
+    ""
+  ]) {
+    assert.equal(core.isFullyQualifiedWindowsPath(invalid), false, invalid);
+  }
+});
+
 test("resolveCli never executes a locator shadowed on POSIX PATH", { skip: process.platform === "win32" }, () => {
   const fs = require("node:fs");
   const os = require("node:os");
@@ -346,10 +373,18 @@ test("resolveCli bounds the startup --version probe at the cold-start budget", (
   fs.writeFileSync(command, "stub", { mode: 0o755 });
   if (process.platform !== "win32") fs.chmodSync(command, 0o755);
   const calls = [];
+  const environment = {
+    PATH: process.env.PATH || "",
+    Agent_Mail_Registration_Token: "caller-mail-token",
+    HTTP_bEaReR_TOKEN: "caller-bearer-token",
+    KIMI_API_KEY: "provider-auth",
+    PRESERVED_VALUE: "keep-me"
+  };
   const previousLog = console.error;
   console.error = () => {};
   try {
     assert.equal(core.resolveCli("demo-version-cli", {
+      environment,
       fallbacks: [command],
       executeFile: (...args) => calls.push(args)
     }), command);
@@ -360,11 +395,77 @@ test("resolveCli bounds the startup --version probe at the cold-start budget", (
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0][1], ["--version"]);
   assert.deepEqual(calls[0][2], {
+    env: {
+      PATH: environment.PATH,
+      KIMI_API_KEY: "provider-auth",
+      PRESERVED_VALUE: "keep-me"
+    },
     stdio: "pipe",
     timeout: core.CLI_VERSION_TIMEOUT_MS,
     windowsHide: true
   });
   assert.equal(core.CLI_VERSION_TIMEOUT_MS, 30_000);
+});
+
+test("a real startup version child cannot inherit caller identity or bearer credentials", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-version-environment-"));
+  const capturePath = path.join(base, "captured.json");
+  const command = path.join(base, "demo-environment-cli.js");
+  fs.writeFileSync(command, `#!/usr/bin/env node
+"use strict";
+const fs = require("node:fs");
+const keys = Object.keys(process.env).map((key) => key.toLowerCase());
+const pathEntry = Object.entries(process.env).find(([key]) => key.toLowerCase() === "path");
+fs.writeFileSync(process.env.PROBE_CAPTURE, JSON.stringify({
+  keys,
+  path: pathEntry && pathEntry[1],
+  providerAuth: process.env.KIMI_API_KEY,
+  preserved: process.env.PRESERVED_VALUE
+}));
+process.stdout.write("demo 1.0.0\\n");
+`, { mode: 0o755 });
+  fs.chmodSync(command, 0o755);
+
+  const environment = {
+    ...process.env,
+    PATH: process.env.PATH || "",
+    PROBE_CAPTURE: capturePath,
+    aGeNt_NaMe: "caller-agent",
+    Agent_Mail_Registration_Token: "caller-mail-token",
+    McP_AgEnT_MaIl_ToKeN: "caller-project-token",
+    HTTP_bEaReR_TOKEN: "caller-http-token",
+    InTeGrAtIoN_BeArEr_ToKeN: "caller-integration-token",
+    cLaUdEcOdE: "nested-caller",
+    KIMI_API_KEY: "provider-auth",
+    PRESERVED_VALUE: "keep-me"
+  };
+  const previousLog = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(core.resolveCli("demo-environment-cli", {
+      environment,
+      fallbacks: [command]
+    }), command);
+    const captured = JSON.parse(fs.readFileSync(capturePath, "utf8"));
+    for (const key of [
+      "agent_name",
+      "agent_mail_registration_token",
+      "mcp_agent_mail_token",
+      "http_bearer_token",
+      "integration_bearer_token",
+      "claudecode"
+    ]) {
+      assert.equal(captured.keys.includes(key), false, key);
+    }
+    assert.equal(captured.path, environment.PATH);
+    assert.equal(captured.providerAuth, "provider-auth");
+    assert.equal(captured.preserved, "keep-me");
+  } finally {
+    console.error = previousLog;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test("independent cold-start probes each get a full bounded budget", () => {

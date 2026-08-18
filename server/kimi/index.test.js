@@ -583,6 +583,26 @@ test("stamps the delegation depth while scrubbing caller Agent Mail identity", (
   assert.equal(nested.CLAUDE_DELEGATOR_KIMI_DEPTH, "2");
 });
 
+test("accepts only fully-qualified Windows home fallback roots", () => {
+  for (const home of ["relative\\home", "C:drive-relative", "\\root-relative"]) {
+    assert.deepEqual(bridge.cliFallbacks({ home, isWindows: true }), [], home);
+  }
+  assert.deepEqual(bridge.cliFallbacks({
+    home: "C:\\Users\\dev",
+    isWindows: true
+  }), [
+    "C:\\Users\\dev\\.kimi-code\\bin\\kimi.exe",
+    "C:\\Users\\dev\\.kimi-code\\bin\\kimi.cmd"
+  ]);
+  assert.deepEqual(bridge.cliFallbacks({
+    home: "\\\\fileserver\\profiles\\dev",
+    isWindows: true
+  }), [
+    "\\\\fileserver\\profiles\\dev\\.kimi-code\\bin\\kimi.exe",
+    "\\\\fileserver\\profiles\\dev\\.kimi-code\\bin\\kimi.cmd"
+  ]);
+});
+
 test("binds the shared shim resolver to its own CLI name", () => {
   // The shim shapes themselves are covered once, in server/shared/bridge.test.js.
   // What is per-bridge is only which command name gets baked in, and that is what

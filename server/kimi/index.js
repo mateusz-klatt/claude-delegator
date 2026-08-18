@@ -20,8 +20,8 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
-  IS_WINDOWS, clampTimeout, isNonEmptyString, isObject, resolveCli,
-  superviseChild, timeoutSchema
+  IS_WINDOWS, clampTimeout, isFullyQualifiedWindowsPath, isNonEmptyString,
+  isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_KIMI_DEPTH");
@@ -167,13 +167,17 @@ const KIMI_TOOLS = [
   }
 ];
 
-function cliFallbacks() {
+function cliFallbacks({ home = os.homedir(), isWindows = IS_WINDOWS } = {}) {
   // The official installer targets these; an MCP server inherits a minimal PATH
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
-  const home = os.homedir();
-  if (!IS_WINDOWS) return [path.join(home, ".kimi-code", "bin", "kimi")];
-  return [path.join(home, ".kimi-code", "bin", "kimi.exe"), path.join(home, ".kimi-code", "bin", "kimi.cmd")];
+  if (!isWindows) return [path.join(home, ".kimi-code", "bin", "kimi")];
+  const root = typeof home === "string" ? home.trim() : "";
+  if (!isFullyQualifiedWindowsPath(root)) return [];
+  return [
+    path.win32.join(root, ".kimi-code", "bin", "kimi.exe"),
+    path.win32.join(root, ".kimi-code", "bin", "kimi.cmd")
+  ];
 }
 
 function buildStartArgs(args, coordination) {

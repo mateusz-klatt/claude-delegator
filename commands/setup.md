@@ -37,10 +37,16 @@ Node process, so provider CLI checks cannot compensate for an unsupported runtim
 if command -v codex >/dev/null 2>&1; then
   codex --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
   local_appdata="${LOCALAPPDATA:-}"
   local_appdata="${local_appdata//\\//}"
   appdata="${APPDATA:-}"
   appdata="${appdata//\\//}"
+  if ! is_windows_fully_qualified_root "$local_appdata"; then local_appdata=""; fi
+  if ! is_windows_fully_qualified_root "$appdata"; then appdata=""; fi
   codex_fallback=""
   for candidate in "${local_appdata:+$local_appdata/Programs/OpenAI/Codex/bin/codex.exe}" "${appdata:+$appdata/npm/codex.cmd}"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
@@ -63,9 +69,18 @@ fi
 if command -v agy >/dev/null 2>&1; then
   agy --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
-  agy_fallback="${LOCALAPPDATA:-}"
-  agy_fallback="${agy_fallback//\\//}/agy/bin/agy.exe"
-  if [ -n "${LOCALAPPDATA:-}" ] && [ -x "$agy_fallback" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
+  agy_root="${LOCALAPPDATA:-}"
+  agy_root="${agy_root//\\//}"
+  if is_windows_fully_qualified_root "$agy_root"; then
+    agy_fallback="$agy_root/agy/bin/agy.exe"
+  else
+    agy_fallback=""
+  fi
+  if [ -n "$agy_fallback" ] && [ -x "$agy_fallback" ]; then
     "$agy_fallback" --version 2>&1 | head -1
   else
     echo "AGY_MISSING"
@@ -82,10 +97,18 @@ fi
 if command -v kimi >/dev/null 2>&1; then
   kimi --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
   windows_home="${USERPROFILE:-$HOME}"
   windows_home="${windows_home//\\//}"
   kimi_fallback=""
-  for candidate in "$windows_home/.kimi-code/bin/kimi.exe" "$windows_home/.kimi-code/bin/kimi.cmd"; do
+  if ! is_windows_fully_qualified_root "$windows_home"; then
+    windows_home=""
+  fi
+  for candidate in "${windows_home:+$windows_home/.kimi-code/bin/kimi.exe}" "${windows_home:+$windows_home/.kimi-code/bin/kimi.cmd}"; do
+    [ -n "$candidate" ] || continue
     if [ -x "$candidate" ]; then
       kimi_fallback="$candidate"
       break
@@ -108,9 +131,16 @@ fi
 if command -v grok >/dev/null 2>&1; then
   grok --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
   windows_home="${USERPROFILE:-$HOME}"
   windows_home="${windows_home//\\//}"
-  if [ -x "$windows_home/.grok/bin/grok.exe" ]; then
+  if ! is_windows_fully_qualified_root "$windows_home"; then
+    windows_home=""
+  fi
+  if [ -n "$windows_home" ] && [ -x "$windows_home/.grok/bin/grok.exe" ]; then
     "$windows_home/.grok/bin/grok.exe" --version 2>&1 | head -1
   else
     echo "GROK_MISSING"
@@ -131,9 +161,18 @@ fi
 if command -v cursor-agent >/dev/null 2>&1; then
   cursor-agent --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
-  cursor_fallback="${LOCALAPPDATA:-}"
-  cursor_fallback="${cursor_fallback//\\//}/cursor-agent/cursor-agent.cmd"
-  if [ -n "${LOCALAPPDATA:-}" ] && [ -x "$cursor_fallback" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
+  cursor_root="${LOCALAPPDATA:-}"
+  cursor_root="${cursor_root//\\//}"
+  if is_windows_fully_qualified_root "$cursor_root"; then
+    cursor_fallback="$cursor_root/cursor-agent/cursor-agent.cmd"
+  else
+    cursor_fallback=""
+  fi
+  if [ -n "$cursor_fallback" ] && [ -x "$cursor_fallback" ]; then
     "$cursor_fallback" --version 2>&1 | head -1
   else
     echo "CURSOR_MISSING"
@@ -150,9 +189,18 @@ fi
 if command -v copilot >/dev/null 2>&1; then
   copilot --version 2>&1 | head -1
 elif [ "${OS:-}" = "Windows_NT" ]; then
-  copilot_fallback="${APPDATA:-}"
-  copilot_fallback="${copilot_fallback//\\//}/npm/copilot.cmd"
-  if [ -n "${APPDATA:-}" ] && [ -x "$copilot_fallback" ]; then
+  is_windows_fully_qualified_root() {
+    node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+      "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+  }
+  copilot_root="${APPDATA:-}"
+  copilot_root="${copilot_root//\\//}"
+  if is_windows_fully_qualified_root "$copilot_root"; then
+    copilot_fallback="$copilot_root/npm/copilot.cmd"
+  else
+    copilot_fallback=""
+  fi
+  if [ -n "$copilot_fallback" ] && [ -x "$copilot_fallback" ]; then
     "$copilot_fallback" --version 2>&1 | head -1
   else
     echo "COPILOT_MISSING"
@@ -172,6 +220,8 @@ Codex CLI not found.
 Install with: npm install -g @openai/codex
 Then authenticate: codex login
 On Windows, measured fallbacks are %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe and %APPDATA%\npm\codex.cmd.
+Those environment roots must be fully-qualified drive (`C:\...`) or UNC
+(`\\server\share\...`) paths; root-relative and drive-relative values are ignored.
 ```
 
 **Agy Missing:**
@@ -290,13 +340,59 @@ NODE
 #     their entrypoint must have the exact historical marketplace-cache lineage.
 #     Same-named servers in independent clones are deliberately ignored.
 legacy_servers="$(
-  node - <<'NODE'
+  CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const state = process.env.CLAUDE_CONFIG_DIR
   ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json")
   : path.join(os.homedir(), ".claude.json");
+const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const pluginList = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON || "null");
+if (!Array.isArray(pluginList)) throw new Error("could not verify the active plugin list");
+const records = pluginList.filter((record) =>
+  record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
+if (records.length !== 1 || typeof records[0].installPath !== "string") {
+  throw new Error("expected exactly one active user-scope claude-delegator install");
+}
+const installPath = records[0].installPath;
+const windowsDrive = /^[A-Za-z]:[\\/]/.test(installPath);
+const windowsDevice = /^[\\/]{2}[?.][\\/]/.test(installPath);
+const windowsUnc = /^[\\/]{2}([^\\/]+)[\\/]([^\\/]+)(?:[\\/]|$)/.exec(installPath);
+const invalidUncComponent = /[\u0000-\u001F<>:"|?*]/;
+const validUnc = windowsUnc && windowsUnc.slice(1).every((component) =>
+  component !== "." && component !== ".." && !component.endsWith(".") &&
+  !component.endsWith(" ") && !invalidUncComponent.test(component));
+const windowsShaped = process.platform === "win32" || /^[A-Za-z]:/.test(installPath) ||
+  /^[\\]/.test(installPath) || /^\/\//.test(installPath);
+const rawParts = installPath.replaceAll("\\", "/").split("/");
+if (windowsDevice || (windowsShaped && !windowsDrive && !validUnc) ||
+    installPath.trim() !== installPath || rawParts.some((part) => part === "." || part === "..")) {
+  throw new Error("active plugin installPath is not canonical and fully qualified");
+}
+const pathApi = windowsShaped ? path.win32 : path.posix;
+if (!pathApi.isAbsolute(installPath)) {
+  throw new Error("active plugin installPath is not canonical and fully qualified");
+}
+const normalizedInstall = pathApi.normalize(installPath);
+const activeVersion = pathApi.basename(normalizedInstall);
+const versionsRoot = pathApi.dirname(normalizedInstall);
+const marketplaceRoot = pathApi.dirname(versionsRoot);
+if (!cacheVersion.test(activeVersion) || records[0].version !== activeVersion ||
+    pathApi.basename(versionsRoot) !== "claude-delegator" ||
+    pathApi.basename(marketplaceRoot) !== "jarrodwatts-claude-delegator") {
+  throw new Error("active plugin installPath is not a verified marketplace-cache root");
+}
+const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const activeManifest = JSON.parse(fs.readFileSync(
+  pathApi.join(normalizedInstall, ".claude-plugin", "plugin.json"), "utf8"
+));
+const activeServers = Object.keys(activeManifest.mcpServers || {}).sort();
+if (activeManifest.name !== "claude-delegator" || activeManifest.version !== activeVersion ||
+    JSON.stringify(activeServers) !== JSON.stringify(expectedServers)) {
+  throw new Error("active plugin manifest does not verify the delegated MCP servers");
+}
 let user;
 try {
   user = JSON.parse(fs.readFileSync(state, "utf8"));
@@ -304,26 +400,20 @@ try {
   if (error.code === "ENOENT") process.exit(0);
   throw error;
 }
-const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
-const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 function isHistoricalEntrypoint(value, name) {
-  const parts = value.replaceAll("\\", "/").split("/").filter(Boolean);
-  for (let i = 0; i + 7 < parts.length; i += 1) {
-    if (parts[i] !== "plugins" || parts[i + 1] !== "cache") continue;
-    if (parts[i + 2] !== "jarrodwatts-claude-delegator") continue;
-    if (parts[i + 3] !== "claude-delegator" || !cacheVersion.test(parts[i + 4])) continue;
-    if (parts[i + 5] !== "server" || parts[i + 6] !== name) continue;
-    const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
-    if (i + 8 === parts.length && allowedEntrypoints.includes(parts[i + 7])) return true;
-  }
-  return false;
+  if (typeof value !== "string" || !pathApi.isAbsolute(value)) return false;
+  const relative = pathApi.relative(versionsRoot, pathApi.normalize(value));
+  if (!relative || relative === ".." || relative.startsWith(`..${pathApi.sep}`) ||
+      pathApi.isAbsolute(relative)) return false;
+  const parts = relative.split(pathApi.sep);
+  const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
+  return parts.length === 4 && cacheVersion.test(parts[0]) && parts[1] === "server" &&
+    parts[2] === name && allowedEntrypoints.includes(parts[3]);
 }
 for (const name of legacy) {
   const entry = user.mcpServers?.[name];
-  if (!entry) continue;
-  const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
-    .filter((value) => typeof value === "string");
-  if (candidates.some((value) => isHistoricalEntrypoint(value, name))) {
+  if (!entry || entry.command !== "node" || !Array.isArray(entry.args)) continue;
+  if (isHistoricalEntrypoint(entry.args[0], name)) {
     console.log(name);
   }
 }
@@ -383,9 +473,12 @@ predates this change, because a cache from an earlier version has no `mcpServers
 block to fall back on — and the symptom is `CONNECTION_CLOSED`, the same one two
 unrelated defects already produced today. Updating first means you are briefly
 carrying duplicates, which is harmless, instead of briefly carrying nothing.
-Only recognized user-scope entries with the exact historical marketplace-cache
-lineage are considered; local/project entries, independent clones, and unrelated
-user servers with the same short name are left untouched for manual inspection.
+Only recognized user-scope entries below the cache family derived from the
+active, verified plugin `installPath`, with `node` and the entrypoint in `args[0]`,
+are considered. Local/project entries, independent clones, foreign-prefix
+marketplace lookalikes, and unrelated user servers with the same short name are
+left untouched for manual inspection. If the active root cannot be verified,
+the migration stops before removal.
 Each provider is gated independently, so a valid partial CLI installation can
 migrate, and all gates complete before the first removal.
 
@@ -412,16 +505,31 @@ Run these checks and report results:
 rules_root="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/delegator"
 
 # Check 1: CLI versions, including measured install-location fallbacks.
+is_shell_absolute_path() {
+  case "$1" in
+    /* | [A-Za-z]:[\\/]* | //*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_windows_fully_qualified_root() {
+  node -e 'const core = require(process.argv[1]); process.exit(core.isFullyQualifiedWindowsPath(process.argv[2]) ? 0 : 1)' \
+    "${CLAUDE_PLUGIN_ROOT}/server/shared/bridge.js" "$1"
+}
+
+CODEX_BIN=""
 check_cli_version() {
   label="$1"
   cli="$2"
   shift 2
   binary=""
-  if command -v "$cli" >/dev/null 2>&1; then
-    binary="$cli"
-  else
+  resolved_binary=$(command -v "$cli" 2>/dev/null) || resolved_binary=""
+  if [ -n "$resolved_binary" ] && is_shell_absolute_path "$resolved_binary" && [ -x "$resolved_binary" ]; then
+    binary="$resolved_binary"
+  fi
+  if [ -z "$binary" ]; then
     for fallback in "$@"; do
-      if [ -x "$fallback" ]; then
+      if [ -n "$fallback" ] && is_shell_absolute_path "$fallback" && [ -x "$fallback" ]; then
         binary="$fallback"
         break
       fi
@@ -429,13 +537,17 @@ check_cli_version() {
   fi
   if [ -z "$binary" ]; then
     echo "$label CLI: NOT INSTALLED"
-    return
+    return 1
   fi
   if version=$("$binary" --version 2>&1); then
     echo "$label CLI: $(printf '%s\n' "$version" | head -1)"
+    if [ "$label" = "Codex" ]; then
+      CODEX_BIN="$binary"
+    fi
   else
     echo "$label CLI: FAILED TO START"
     printf '%s\n' "$version" | head -1
+    return 1
   fi
 }
 
@@ -446,10 +558,13 @@ if [ "${OS:-}" = "Windows_NT" ]; then
   local_appdata="${local_appdata//\\//}"
   appdata="${APPDATA:-}"
   appdata="${appdata//\\//}"
+  if ! is_windows_fully_qualified_root "$windows_home"; then windows_home=""; fi
+  if ! is_windows_fully_qualified_root "$local_appdata"; then local_appdata=""; fi
+  if ! is_windows_fully_qualified_root "$appdata"; then appdata=""; fi
   check_cli_version "Codex" "codex" "${local_appdata:+$local_appdata/Programs/OpenAI/Codex/bin/codex.exe}" "${appdata:+$appdata/npm/codex.cmd}"
   check_cli_version "Agy" "agy" "${local_appdata:+$local_appdata/agy/bin/agy.exe}"
-  check_cli_version "Kimi" "kimi" "$windows_home/.kimi-code/bin/kimi.exe" "$windows_home/.kimi-code/bin/kimi.cmd"
-  check_cli_version "Grok" "grok" "$windows_home/.grok/bin/grok.exe"
+  check_cli_version "Kimi" "kimi" "${windows_home:+$windows_home/.kimi-code/bin/kimi.exe}" "${windows_home:+$windows_home/.kimi-code/bin/kimi.cmd}"
+  check_cli_version "Grok" "grok" "${windows_home:+$windows_home/.grok/bin/grok.exe}"
   check_cli_version "Cursor" "cursor-agent" "${local_appdata:+$local_appdata/cursor-agent/cursor-agent.cmd}"
   check_cli_version "Copilot" "copilot" "${appdata:+$appdata/npm/copilot.cmd}"
 else
@@ -489,8 +604,27 @@ for rule in "$rules_root"/*.md; do
 done
 printf '%s\n' "$rule_count"
 
-# Check 4: Codex auth status
-codex login status 2>&1 | head -1 || echo "Codex: Run 'codex login'"
+# Check 4: Codex auth status. Reuse the exact absolute binary that passed Check 1;
+# do not fall back to a second PATH lookup, and capture its status before printing.
+if [ -z "$CODEX_BIN" ]; then
+  CODEX_AUTH_EXIT_STATUS=127
+  echo "Codex auth: SKIPPED (no verified Codex binary from Check 1)"
+else
+  codex_auth_output=""
+  if codex_auth_output=$("$CODEX_BIN" login status 2>&1); then
+    CODEX_AUTH_EXIT_STATUS=0
+  else
+    CODEX_AUTH_EXIT_STATUS=$?
+  fi
+  codex_auth_first_line="${codex_auth_output%%$'\n'*}"
+  if [ "$CODEX_AUTH_EXIT_STATUS" -eq 0 ]; then
+    printf 'Codex auth: %s\n' "${codex_auth_first_line:-(no output)}"
+  else
+    printf 'Codex auth: FAILED (exit %s): %s\n' \
+      "$CODEX_AUTH_EXIT_STATUS" "${codex_auth_first_line:-(no output)}"
+    printf 'Codex: Run %q login\n' "$CODEX_BIN"
+  fi
+fi
 ```
 
 ## Step 5: Report Status

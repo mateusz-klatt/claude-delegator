@@ -19,8 +19,9 @@ const { buildCalleeEnv } = require("../shared/environment");
 const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
-  IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir, isNonEmptyString,
-  isObject, resolveCli, superviseChild, timeoutSchema
+  IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir,
+  isFullyQualifiedWindowsPath, isNonEmptyString, isObject, resolveCli,
+  superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_GROK_DEPTH");
@@ -248,7 +249,7 @@ const GROK_TOOLS = [
   }
 ];
 
-function cliFallbacks() {
+function cliFallbacks({ home = homedir(), isWindows = IS_WINDOWS } = {}) {
   // The official installer targets these; an MCP server inherits a minimal PATH
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
@@ -265,10 +266,15 @@ function cliFallbacks() {
   // fallback — it carries the platform in its name, so writing it down would
   // produce a list that fits only the machine that generated it. See the
   // boundary note on the realpath diagnostic in server/shared/bridge.js.
-  if (IS_WINDOWS) return [path.join(homedir(), ".grok", "bin", "grok.exe")];
+  if (isWindows) {
+    const root = typeof home === "string" ? home.trim() : "";
+    return isFullyQualifiedWindowsPath(root)
+      ? [path.win32.join(root, ".grok", "bin", "grok.exe")]
+      : [];
+  }
   return [
-    path.join(homedir(), ".grok", "bin", "grok"),
-    path.join(homedir(), ".local", "bin", "grok")
+    path.join(home, ".grok", "bin", "grok"),
+    path.join(home, ".local", "bin", "grok")
   ];
 }
 
