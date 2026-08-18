@@ -127,7 +127,10 @@ function killProcessTree(child, signal, {
   if (isWindows) {
     try {
       const taskkill = windowsSystem32Executable("taskkill.exe", environment);
-      executeFile(taskkill, ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
+      executeFile(taskkill, ["/F", "/T", "/PID", String(child.pid)], {
+        env: buildCalleeEnv(environment),
+        stdio: "ignore"
+      });
     } catch (_error) {
       // The process may already have exited.
     }

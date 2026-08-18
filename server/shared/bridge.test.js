@@ -543,10 +543,21 @@ test("POSIX PATH scan skips a non-executable hit without changing directory orde
   }
 });
 
-test("uses an absolute validated System32 taskkill path instead of PATH", () => {
+test("uses an absolute System32 taskkill path with a scrubbed child environment", () => {
   const calls = [];
   core.killProcessTree({ pid: 4321 }, "SIGTERM", {
-    environment: { PATH: "C:\\attacker", SystemRoot: "D:\\Windows" },
+    environment: {
+      PATH: "C:\\attacker",
+      SystemRoot: "D:\\Windows",
+      PROVIDER_AUTH: "preserved",
+      AGENT_NAME: "CallerAgent",
+      Agent_Mail_Agent: "CallerAgent",
+      AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token",
+      MCP_AGENT_MAIL_TOKEN: "caller-mail-token",
+      HTTP_BEARER_TOKEN: "caller-http-token",
+      integration_bearer_token: "caller-integration-token",
+      CLAUDECODE: "nested-session"
+    },
     executeFile: (...args) => calls.push(args),
     isWindows: true
   });
@@ -554,7 +565,21 @@ test("uses an absolute validated System32 taskkill path instead of PATH", () => 
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], "D:\\Windows\\System32\\taskkill.exe");
   assert.deepEqual(calls[0][1], ["/F", "/T", "/PID", "4321"]);
-  assert.deepEqual(calls[0][2], { stdio: "ignore" });
+  assert.equal(calls[0][2].stdio, "ignore");
+  assert.equal(calls[0][2].env.PATH, "C:\\attacker");
+  assert.equal(calls[0][2].env.SystemRoot, "D:\\Windows");
+  assert.equal(calls[0][2].env.PROVIDER_AUTH, "preserved");
+  for (const key of [
+    "AGENT_NAME",
+    "Agent_Mail_Agent",
+    "AGENT_MAIL_REGISTRATION_TOKEN",
+    "MCP_AGENT_MAIL_TOKEN",
+    "HTTP_BEARER_TOKEN",
+    "integration_bearer_token",
+    "CLAUDECODE"
+  ]) {
+    assert.equal(calls[0][2].env[key], undefined, `${key} leaked into taskkill`);
+  }
 
   const fallbackCalls = [];
   core.killProcessTree({ pid: 7 }, "SIGKILL", {

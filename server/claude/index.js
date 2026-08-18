@@ -23,9 +23,9 @@ const { buildCalleeEnv } = require("../shared/environment.js");
 const { resultText } = require("../shared/result.js");
 
 const {
-  IS_WINDOWS, homedir, isNonEmptyString, isObject, resolveCli, runStdioLoop,
-  sendError, sendResponse, superviseChild, timeoutSchema, VALID_SANDBOX_VALUES,
-  validateCommonArgs
+  IS_WINDOWS, homedir, isFullyQualifiedWindowsPath, isNonEmptyString, isObject,
+  resolveCli, runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
+  VALID_SANDBOX_VALUES, validateCommonArgs
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_CLAUDE_DEPTH");
@@ -150,12 +150,15 @@ function sandboxArguments(sandbox) {
 
 // --- Tool Definitions ---
 
-function cliFallbacks() {
+function cliFallbacks({ home = homedir(), isWindows = IS_WINDOWS } = {}) {
   // The official installer targets these; an MCP server inherits a minimal PATH
   // that frequently lacks them. Provenance outranks a fallback (see
   // selectCandidate), so a guess can only add reach, never override PATH.
-  const binary = IS_WINDOWS ? "claude.exe" : "claude";
-  return [path.join(homedir(), ".local", "bin", binary)];
+  if (!isWindows) return [path.join(home, ".local", "bin", "claude")];
+  const root = typeof home === "string" ? home.trim() : "";
+  return isFullyQualifiedWindowsPath(root)
+    ? [path.win32.join(root, ".local", "bin", "claude.exe")]
+    : [];
 }
 
 const CLAUDE_TOOLS = [

@@ -517,6 +517,26 @@ test("stamps the delegation depth into the Claude child environment", async () =
   await server.close();
 });
 
+test("accepts only fully-qualified Windows home fallback roots", () => {
+  const { cliFallbacks } = require("./index.js");
+  for (const home of [
+    "relative\\home",
+    "C:drive-relative",
+    "\\root-relative",
+    "C:\\profiles\\dev\\..\\Windows",
+    "\\\\fileserver\\profiles\\dev/../Windows"
+  ]) {
+    assert.deepEqual(cliFallbacks({ home, isWindows: true }), [], home);
+  }
+  assert.deepEqual(cliFallbacks({ home: "C:\\Users\\dev", isWindows: true }), [
+    "C:\\Users\\dev\\.local\\bin\\claude.exe"
+  ]);
+  assert.deepEqual(cliFallbacks({
+    home: "\\\\fileserver\\profiles\\dev",
+    isWindows: true
+  }), ["\\\\fileserver\\profiles\\dev\\.local\\bin\\claude.exe"]);
+});
+
 test("refuses both tools when already running inside a delegated Claude session", async () => {
   const server = startServer({ CLAUDE_DELEGATOR_CLAUDE_DEPTH: "1" });
 
