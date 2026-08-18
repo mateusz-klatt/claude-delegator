@@ -13,7 +13,8 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { execFileSync, spawn } = require("node:child_process");
+const { spawn } = require("node:child_process");
+const { killProcessTree, resolveCli, resolveWindowsShim } = require("../shared/bridge.js");
 const { buildCalleeEnv } = require("../shared/environment.js");
 
 const IS_WINDOWS = process.platform === "win32";
@@ -26,73 +27,21 @@ function commandForBinary(binary, args) {
   return { command: binary, args };
 }
 
-function findWindowsCommandCandidates(commandName) {
-  const candidates = [];
-  const extensions = [".exe", ".cmd", ".bat", ".com", ".js", ".cjs", ".mjs", ""];
-  for (const rawDirectory of (process.env.PATH || "").split(path.delimiter)) {
-    const directory = rawDirectory.trim().replace(/^"|"$/g, "");
-    if (!directory) continue;
-    for (const extension of extensions) {
-      const candidate = path.join(directory, `${commandName}${extension}`);
-      try {
-        if (fs.statSync(candidate).isFile()) candidates.push(candidate);
-      } catch (_error) {
-        // Missing or inaccessible PATH entry.
-      }
-    }
-  }
-  return candidates;
-}
-
-function resolveWindowsShim(shimPath) {
-  const shimContent = fs.readFileSync(shimPath, "utf8");
-  const match = shimContent.match(/['"]([^'"\r\n]*codex[^'"\r\n]*\.(?:c?m?js|exe))['"]/i);
-  if (!match) throw new Error("Could not resolve Codex binary from Windows shim");
-
-  const shimDirectory = `${path.dirname(shimPath)}${path.sep}`;
-  const expanded = match[1]
-    .replace(/%dp0%[\\/]?/gi, shimDirectory)
-    .replace(/%~dp0[\\/]?/gi, shimDirectory);
-  return path.isAbsolute(expanded) ? expanded : path.resolve(path.dirname(shimPath), expanded);
-}
-
 function resolveCodexBinary() {
   const explicit = process.env[OVERRIDE_ENV];
-  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
-
-  const candidates = IS_WINDOWS
-    ? findWindowsCommandCandidates("codex")
-    : execFileSync("which", ["codex"], { encoding: "utf8" })
-      .trim()
-      .split(/\r?\n/)
-      .filter(Boolean);
-  if (candidates.length === 0) throw new Error("Codex CLI not found");
-
-  let resolved = IS_WINDOWS
-    ? (candidates.find((candidate) => candidate.toLowerCase().endsWith(".exe")) ||
-       candidates.find((candidate) => candidate.toLowerCase().endsWith(".cmd")) ||
-       candidates.find((candidate) => candidate.toLowerCase().endsWith(".bat")) ||
-       candidates[0])
-    : candidates[0];
-  if (IS_WINDOWS && /\.(?:cmd|bat)$/i.test(resolved)) resolved = resolveWindowsShim(resolved);
-  return resolved;
-}
-
-function killProcessTree(child, signal) {
-  if (!child.pid) return;
-  if (IS_WINDOWS) {
-    try {
-      execFileSync("taskkill.exe", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
-    } catch (_error) {
-      // The process may already have exited.
+  if (typeof explicit === "string" && explicit.trim()) {
+    let candidate = path.resolve(explicit.trim());
+    if (!fs.statSync(candidate).isFile()) throw new Error("explicit Codex path is not a file");
+    if (!IS_WINDOWS) fs.accessSync(candidate, fs.constants.X_OK);
+    if (IS_WINDOWS && /\.(?:cmd|bat)$/i.test(candidate)) {
+      candidate = resolveWindowsShim(candidate, "codex");
     }
-    return;
+    return candidate;
   }
-  try {
-    process.kill(-child.pid, signal);
-  } catch (_error) {
-    // The process group may already have exited.
-  }
+
+  // The shared resolver scans PATH as data, validates POSIX X_OK, follows
+  // Windows npm shims without a shell, and never executes `which`/`where`.
+  return resolveCli("codex");
 }
 
 let binary;

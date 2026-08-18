@@ -277,13 +277,120 @@ test("a lone .cmd earlier on PATH beats a .exe later, and fails loudly if unpars
   );
 });
 
-test("POSIX selection keeps which-order and never applies extension preference", () => {
+test("POSIX selection keeps PATH order and never applies extension preference", () => {
   const exists = (candidate) => candidate !== "/usr/bin/cli";
   assert.equal(
     core.selectCandidate([["/usr/bin/cli"], ["/usr/local/bin/cli"], ["/opt/cli"]], exists, false),
     "/usr/local/bin/cli"
   );
   assert.equal(core.selectCandidate([[], []], exists, false), undefined);
+});
+
+test("builds PATH candidates as data without invoking a PATH-resolved locator", () => {
+  assert.deepEqual(
+    core.pathCandidateGroups("demo-cli", "/opt/first:/opt/second", false),
+    [["/opt/first/demo-cli"], ["/opt/second/demo-cli"]]
+  );
+  assert.deepEqual(
+    core.pathCandidateGroups("demo-cli", "relative-bin:", false),
+    [
+      [path.posix.resolve("relative-bin", "demo-cli")],
+      [path.posix.resolve("demo-cli")]
+    ],
+    "relative and empty PATH entries must be pinned to the startup cwd"
+  );
+  assert.deepEqual(
+    core.pathCandidateGroups("demo-cli", "C:\\first;\"D:\\second dir\"", true),
+    [
+      [
+        "C:\\first\\demo-cli.exe", "C:\\first\\demo-cli.cmd", "C:\\first\\demo-cli.bat",
+        "C:\\first\\demo-cli.com", "C:\\first\\demo-cli.js", "C:\\first\\demo-cli.cjs",
+        "C:\\first\\demo-cli.mjs"
+      ],
+      [
+        "D:\\second dir\\demo-cli.exe", "D:\\second dir\\demo-cli.cmd", "D:\\second dir\\demo-cli.bat",
+        "D:\\second dir\\demo-cli.com", "D:\\second dir\\demo-cli.js", "D:\\second dir\\demo-cli.cjs",
+        "D:\\second dir\\demo-cli.mjs"
+      ]
+    ]
+  );
+  assert.throws(() => core.pathCandidateGroups("../taskkill.exe", "/bin", false), /Invalid CLI command name/);
+});
+
+test("resolveCli never executes a locator shadowed on POSIX PATH", { skip: process.platform === "win32" }, () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-path-scan-"));
+  const command = path.join(base, "demo-path-cli");
+  const locator = path.join(base, "which");
+  const marker = path.join(base, "locator-ran");
+  const previousPath = process.env.PATH;
+
+  fs.writeFileSync(command, "#!/bin/sh\nprintf 'demo 1.0.0\\n'\n");
+  fs.writeFileSync(locator, `#!/bin/sh\n: > '${marker}'\nprintf '%s\\n' '${command}'\n`);
+  fs.chmodSync(command, 0o755);
+  fs.chmodSync(locator, 0o755);
+
+  try {
+    process.env.PATH = base;
+    assert.equal(core.resolveCli("demo-path-cli"), command);
+    assert.equal(fs.existsSync(marker), false, "PATH lookup must not execute a shadowing `which`");
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("POSIX PATH scan skips a non-executable hit without changing directory order", { skip: process.platform === "win32" }, () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-path-xok-"));
+  const first = path.join(base, "first");
+  const second = path.join(base, "second");
+  fs.mkdirSync(first);
+  fs.mkdirSync(second);
+  const blocked = path.join(first, "demo-xok-cli");
+  const runnable = path.join(second, "demo-xok-cli");
+  fs.writeFileSync(blocked, "#!/bin/sh\nexit 99\n", { mode: 0o644 });
+  fs.writeFileSync(runnable, "#!/bin/sh\nprintf 'demo 1.0.0\\n'\n", { mode: 0o755 });
+  const previousPath = process.env.PATH;
+
+  try {
+    process.env.PATH = `${first}${path.delimiter}${second}`;
+    assert.equal(core.resolveCli("demo-xok-cli"), runnable);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("uses an absolute validated System32 taskkill path instead of PATH", () => {
+  const calls = [];
+  core.killProcessTree({ pid: 4321 }, "SIGTERM", {
+    environment: { PATH: "C:\\attacker", SystemRoot: "D:\\Windows" },
+    executeFile: (...args) => calls.push(args),
+    isWindows: true
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "D:\\Windows\\System32\\taskkill.exe");
+  assert.deepEqual(calls[0][1], ["/F", "/T", "/PID", "4321"]);
+  assert.deepEqual(calls[0][2], { stdio: "ignore" });
+
+  const fallbackCalls = [];
+  core.killProcessTree({ pid: 7 }, "SIGKILL", {
+    environment: { SystemRoot: "..\\attacker" },
+    executeFile: (command) => fallbackCalls.push(command),
+    isWindows: true
+  });
+  assert.deepEqual(fallbackCalls, ["C:\\Windows\\System32\\taskkill.exe"]);
+
+  core.killProcessTree({ pid: "7" }, "SIGTERM", {
+    executeFile: () => assert.fail("an invalid pid must not reach taskkill"),
+    isWindows: true
+  });
 });
 
 test("clamps a timeout into the house bounds and defaults anything unusable", () => {

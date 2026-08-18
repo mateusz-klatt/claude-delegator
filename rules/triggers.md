@@ -122,7 +122,7 @@ Any expert can operate in two modes:
 | **Advisory** | Default `workspace-write` + explicit "do not modify" instruction | Analysis, recommendations, review verdicts without nested approval prompts |
 | **Implementation** | `workspace-write` (non-interactive full-tool mode) | Actually making changes, fixing issues |
 
-Codex native MCP may inherit the operator's own sandbox. Claude, Agy, Kimi, Grok, Cursor, and Copilot bridge calls should receive the bridge sandbox above. Note that Grok and Copilot enforce their documented `read-only` policies with explicit deny rules; Agy soft-denies shell only and does not deny writes; Cursor's `--mode ask` deflects an insistent prompt but was defeated by an adversarial one; and Kimi refuses `read-only` because print mode has no permission tier. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
+Codex native MCP is pinned by the plugin registration to `danger-full-access` with approval policy `never`; it does not inherit those defaults from the operator's config. Claude, Agy, Kimi, Grok, Cursor, and Copilot bridge calls should receive the bridge sandbox above. Note that Grok and Copilot enforce their documented `read-only` policies with explicit deny rules; Agy soft-denies shell only and does not deny writes; Cursor's `--mode ask` deflects an insistent prompt but was defeated by an adversarial one; and Kimi refuses `read-only` because print mode has no permission tier. In every case, also carry explicit "Do not modify code" or "Make the change and verify" intent in `developer-instructions`.
 
 **Examples:**
 

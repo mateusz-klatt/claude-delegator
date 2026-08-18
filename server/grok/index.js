@@ -13,17 +13,14 @@ const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
   appendCoordinationInstructions,
-  coordinationMetadata,
-  coordinationSchema,
-  validateCoordination
+  coordinationSchema
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
-const { resultText } = require("../shared/result");
+const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
   IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir, isNonEmptyString,
-  isObject, resolveCli, runStdioLoop, sendError, sendResponse, superviseChild,
-  timeoutSchema, validateCommonArgs
+  isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_GROK_DEPTH");
@@ -299,142 +296,43 @@ function buildReplyArgs(args, coordination, threadId) {
   return grokArgs;
 }
 
-function validateArgs(name, args) {
-  const commonError = validateCommonArgs(args);
-  if (commonError) return commonError;
+function validateGrokArgs(name, args) {
   if (args.effort !== undefined && !isNonEmptyString(args.effort)) {
     return "Invalid params: 'effort' must be a non-empty string when provided";
   }
-  if (!isNonEmptyString(args.prompt)) return "Invalid params: 'prompt' is required";
 
   if (name === "grok") {
     if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
       return `Invalid params: 'model' must be one of ${[...VALID_MODELS].join(", ")}`;
     }
-    if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-      return "Invalid params: 'developer-instructions' must be a string when provided";
-    }
-    return null;
-  }
-
-  if (!isNonEmptyString(args.threadId)) return "Invalid params: 'threadId' is required for grok-reply";
-  const threadId = args.threadId.trim();
-  if (threadId === "latest" || threadId === "unknown") {
-    return "Invalid params: 'threadId' must be an explicit session id";
   }
   return null;
 }
 
-const handlers = {
-  "initialize": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-grok", version: PACKAGE_VERSION }
-    });
-  },
-
-  "tools/list": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, { tools: GROK_TOOLS });
-  },
-
-  "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
-      return;
-    }
-
-    const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if (name !== "grok" && name !== "grok-reply") {
-      if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-      return;
-    }
-    if (depth.exceeded()) {
-      if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Grok session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
-      }
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-
-    const problem = validateArgs(name, args);
-    if (problem) {
-      if (shouldRespond) sendError(id, -32602, problem);
-      return;
-    }
-
-    let coordination;
-    try {
-      coordination = validateCoordination(args.coordination);
-    } catch (e) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
-      return;
-    }
-
-    try {
-      const expectedThreadId = name === "grok-reply" ? args.threadId.trim() : undefined;
-      const grokArgs = name === "grok"
-        ? buildStartArgs(args, coordination)
-        : buildReplyArgs(args, coordination, expectedThreadId);
-
-      const abortController = new AbortController();
-      if (shouldRespond) activeRequests.set(id, abortController);
-      let result;
-      try {
-        result = await runGrok(grokArgs, args.cwd, args.timeout, abortController.signal, expectedThreadId);
-      } finally {
-        if (shouldRespond) activeRequests.delete(id);
-      }
-
-      if (!shouldRespond) return;
-      const { response, threadId } = result;
-      const warning = threadId === "unknown" && name === "grok"
-        ? "\n\n(Warning: no session id returned — multi-turn reply will not be available)"
-        : "";
-
-      sendResponse(id, {
-        content: [{ type: "text", text: resultText(threadId, response + warning) }],
-        threadId: threadId,
-        ...coordinationMetadata(coordination)
-      });
-    } catch (e) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    }
-  },
-
-  "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
-    activeRequests.get(params.requestId)?.abort();
-  },
-  "notifications/initialized": () => {}
-};
+const handlers = createProviderHandlers({
+  activeRequests,
+  buildReplyArgs,
+  buildStartArgs,
+  depth,
+  displayName: "Grok",
+  packageVersion: PACKAGE_VERSION,
+  provider: "grok",
+  run: runGrok,
+  tools: GROK_TOOLS,
+  validateProviderArgs: validateGrokArgs
+});
 
 // --- Main loop ---
 
 if (require.main === module) {
-  runStdioLoop({ handlers, activeRequests, activeChildren });
-
-  try {
-    GROK_BIN = resolveCli("grok", { fallbacks: cliFallbacks() });
-  } catch (error) {
-    console.error(`Grok CLI not found. Install the Grok CLI and ensure 'grok' is on PATH. (${error.message})`);
-    process.exit(1);
-  }
+  startProviderRuntime({
+    activeChildren,
+    activeRequests,
+    handlers,
+    missingCliMessage: (error) => `Grok CLI not found. Install the Grok CLI and ensure 'grok' is on PATH. (${error.message})`,
+    resolveBinary: () => resolveCli("grok", { fallbacks: cliFallbacks() }),
+    setBinary: (binary) => { GROK_BIN = binary; }
+  });
 }
 
 module.exports = {

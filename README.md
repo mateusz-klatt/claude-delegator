@@ -117,18 +117,20 @@ Turn 3: mcp__*__*-reply(threadId) → expert remembers turns 1-2
 
 Use single-shot (`claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot`) for advisory tasks. Use the matching `*-reply` tool for implementation chains and retries.
 
-Reply calls are new tool invocations, so omitted optional arguments return to
-their defaults. In particular, repeat `sandbox: "read-only"` on every reply in
-a read-only chain; otherwise the custom bridges default back to
-`workspace-write`. Agy replies must also repeat the start call's `model` and
-`cwd`, because its resumed conversation inherits neither. Keep the same `cwd`
-for Kimi when the start used a non-default working directory, and for Cursor,
-whose sessions are workspace-bound. See the individual tool schema for the
-remaining provider-specific arguments.
+Reply calls are new tool invocations, so arguments with bridge schema defaults
+are evaluated again. In particular, repeat `sandbox: "read-only"` on every
+reply in a read-only chain; otherwise the custom bridges default back to
+`workspace-write`. This is not a blanket loss of provider session state:
+omitting `effort` on Claude and Copilot replies intentionally lets the resumed
+session retain its current effort. Agy replies must repeat the start call's
+`model` and `cwd`, because its resumed conversation inherits neither. Keep the
+same `cwd` for Kimi when the start used a non-default working directory, and for
+Cursor, whose sessions are workspace-bound. See each tool schema for the other
+provider-specific arguments.
 
 ### Long-running delegation progress
 
-When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
+When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. Pass the envelope through the dedicated `coordination` argument for Claude, Agy, Kimi, Copilot, Grok, and Cursor; their bridges inject the canonical prompt contract exactly once. Native Codex has no such argument, so its caller embeds the envelope and contract in the task prompt. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
 
 ---
 
@@ -159,7 +161,7 @@ The native Codex target is launched with Codex's own `danger-full-access` sandbo
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.6` | One model on this account. `read-only` adds deny rules for built-in write and shell tools. |
 | **Cursor** | `auto` | 204 ids listed, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; verified per-model effort floors and ceilings are clamped by the bridge. |
+| **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; start calls clamp verified per-model effort floors and ceilings. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 
@@ -184,7 +186,7 @@ The shell expanded that variable at setup time and stored a version-stamped
 cache path, which stopped working as soon as that version directory was removed.
 Declared in the manifest, Claude Code resolves it on every launch instead.
 
-If you set up before 1.9.0, clear the stale entries once — REINSTALL FIRST,
+If you set up before 1.9.0, clear the stale entries once — UPDATE FIRST,
 then remove, because an installed copy from before this change has no
 `mcpServers` block and removing first would leave you with no servers at all:
 
@@ -195,20 +197,18 @@ then remove, because an installed copy from before this change has no
 set -e
 
 claude plugin marketplace update jarrodwatts-claude-delegator
-claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
-claude plugin install   claude-delegator@jarrodwatts-claude-delegator
+claude plugin update --scope user claude-delegator@jarrodwatts-claude-delegator
 
-# Read the manifest from the active user-scope installPath, not from the
-# highest-looking cache directory, and fail closed unless it declares all six.
-node - <<'NODE'
+# Ask Claude Code which install is active instead of assuming its default state
+# or cache directories; both can be overridden. Fail closed unless that active
+# user-scope install declares all six servers.
+claude_plugin_list=$(claude plugin list --json)
+CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
-const state = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
-const installed = JSON.parse(fs.readFileSync(state, "utf8"));
-const records = (installed.plugins?.["claude-delegator@jarrodwatts-claude-delegator"] || [])
-  .filter((record) => record.scope === "user");
+const records = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON).filter((record) =>
+  record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
 if (records.length !== 1 || !records[0]["installPath"]) {
   throw new Error("expected exactly one active user-scope claude-delegator install");
 }
@@ -221,31 +221,91 @@ if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 }
 NODE
 
-# Confirm the namespaced servers are actually healthy. A manifest can be
-# present while its bridge still fails to start; do not delete the fallback
-# registrations in that state.
-for server in \
-  plugin:claude-delegator:codex \
-  plugin:claude-delegator:agy \
-  plugin:claude-delegator:kimi \
-  plugin:claude-delegator:copilot \
-  plugin:claude-delegator:grok \
-  plugin:claude-delegator:cursor
-do
-  config=$(claude mcp get "$server" 2>&1)
-  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'; then
-    printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
-    exit 1
+# Discover only user-scoped bare registrations that point at an old
+# claude-delegator entrypoint. Same-named MCP servers owned by another project
+# are deliberately ignored.
+legacy_servers="$(
+  node - <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const state = process.env.CLAUDE_CONFIG_DIR
+  ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json")
+  : path.join(os.homedir(), ".claude.json");
+let user;
+try {
+  user = JSON.parse(fs.readFileSync(state, "utf8"));
+} catch (error) {
+  if (error.code === "ENOENT") process.exit(0);
+  throw error;
+}
+const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+for (const name of legacy) {
+  const entry = user.mcpServers?.[name];
+  if (!entry) continue;
+  const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.replaceAll("\\", "/"));
+  const oldEntrypoint = `/server/${name}/`;
+  if (candidates.some((value) =>
+    value.split("/").includes("claude-delegator") && value.includes(oldEntrypoint))) {
+    console.log(name);
+  }
+}
+NODE
+)"
+
+# Preflight every recognized pair before the first removal. Running health
+# checks in an empty temporary directory prevents a same-named project/local
+# registration from shadowing the user-scoped legacy entry. A disconnected old
+# entry cannot provide a fallback and therefore does not block cleanup. A
+# connected one requires its own connected replacement; legacy gemini maps to
+# Agy, which replaced that provider in 1.5.0.
+is_connected() {
+  printf '%s\n' "$1" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'
+}
+status_dir=$(mktemp -d)
+trap 'rmdir "$status_dir" >/dev/null 2>&1 || true' EXIT
+preflight_failed=0
+for s in $legacy_servers; do
+  replacement="$s"
+  [ "$s" = "gemini" ] && replacement="agy"
+
+  if ! legacy_config=$(CDPATH= cd -- "$status_dir" && claude mcp get "$s" 2>&1); then
+    printf '%s\n' "Could not inspect legacy user-scoped $s; preserving all recognized legacy registrations."
+    preflight_failed=1
+    continue
+  fi
+  if ! is_connected "$legacy_config"; then
+    printf '%s\n' "Legacy user-scoped $s is not Connected; it cannot serve as a fallback."
+    continue
+  fi
+
+  server="plugin:claude-delegator:$replacement"
+  replacement_config=$(CDPATH= cd -- "$status_dir" && claude mcp get "$server" 2>&1) || replacement_config=""
+  if is_connected "$replacement_config"; then
+    printf '%s\n' "Verified $s -> $server."
+  else
+    printf '%s\n' "$server is not Connected; preserving all recognized legacy registrations."
+    preflight_failed=1
   fi
 done
 
-for s in codex agy kimi copilot grok cursor gemini; do
-  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
+if [ "$preflight_failed" -ne 0 ]; then
+  exit 1
+fi
+
+for s in $legacy_servers; do
+  claude mcp remove --scope user "$s"
+  printf '%s\n' "Removed user-scoped legacy $s registration."
 done
 )
 ```
 
-Then restart the CLI.
+The scan ignores local/project registrations and unrelated user MCP servers
+that merely share one of these short names. Preflight completes for every
+recognized entry before any removal; a connected legacy `gemini` requires the
+namespaced Agy replacement. Then restart the CLI.
 
 Verify with:
 
@@ -305,10 +365,10 @@ You need at least one of the following target CLIs configured:
 
 - **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
 - **Codex CLI** (for GPT): `npm install -g @openai/codex`
-- **Antigravity CLI** (for Agy): install the Google Antigravity CLI; it lands as a native binary, typically `~/.local/bin/agy`
-- **Kimi Code** (for Kimi): installs to `~/.kimi-code/bin/kimi`
-- **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`
-- **Grok CLI** (for xAI models): typically installs to `~/.grok/bin/grok` or `~/.local/bin/grok`
+- **Antigravity CLI** (for Agy): typically `~/.local/bin/agy` on POSIX or `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows
+- **Kimi Code** (for Kimi): `~/.kimi-code/bin/kimi` on POSIX; `kimi.exe` or `kimi.cmd` in the same directory on Windows
+- **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`; the measured Windows npm fallback is `%APPDATA%\npm\copilot.cmd`
+- **Grok CLI** (for xAI models): `~/.grok/bin/grok` or `~/.local/bin/grok` on POSIX; `~/.grok/bin/grok.exe` on Windows
 - **Cursor Agent CLI** (for Cursor-hosted models): on POSIX it typically installs to `~/.local/bin/cursor-agent`; on Windows the bridge uses PATH because no stable fallback has been measured
 
 **Authentication**:
@@ -371,4 +431,4 @@ MIT — see [LICENSE](LICENSE)
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=mateusz-klatt/claude-delegator&type=Date&v=2)](https://star-history.com/#mateusz-klatt/claude-delegator&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=mateusz-klatt/claude-delegator&type=Date&v=2)](https://www.star-history.com/#mateusz-klatt/claude-delegator&Date)

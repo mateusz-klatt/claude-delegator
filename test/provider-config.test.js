@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -170,6 +172,11 @@ test("CI analyzes the canonical Sonar project without dependency lifecycle scrip
     "README Sonar link must target the same project as sonar-project.properties"
   );
   assert.doesNotMatch(readme, /mateusz-klatt_snapper-delegate/);
+  assert.match(
+    readme,
+    /\]\(https:\/\/www\.star-history\.com\/#mateusz-klatt\/claude-delegator&Date\)/
+  );
+  assert.doesNotMatch(readme, /\]\(https:\/\/star-history\.com\//);
 });
 
 test("README states the runtime and provider continuity contracts", () => {
@@ -184,8 +191,8 @@ test("README states the runtime and provider continuity contracts", () => {
   assert.ok(setup.includes(`Node.js ${minimumNode} or newer`));
   assert.match(setup, /NODE_TOO_OLD/);
 
-  assert.match(readme, /repeat `sandbox: "read-only"` on every reply/);
-  assert.match(readme, /Agy replies must also repeat[\s\S]{0,120}`model` and[\s\S]{0,40}`cwd`/);
+  assert.match(readme, /repeat `sandbox: "read-only"` on every\s+reply/);
+  assert.match(readme, /Agy replies must (?:also )?repeat[\s\S]{0,120}`model` and[\s\S]{0,40}`cwd`/);
   assert.match(readme, /same `cwd`[\s\S]{0,120}Kimi[\s\S]{0,120}Cursor/);
   assert.doesNotMatch(readme, /mcp__claude__claude/);
 
@@ -250,8 +257,19 @@ test("catalog refresh prose follows the catalog dates and response envelope type
   assert.match(selection, /\| MCP result `content` \| content-block array \|/);
   assert.match(selection, /\| Envelope `content` \| string \|/);
   assert.match(selection, /JSON envelope `\{"threadId": "\.\.\.", "content": "\.\.\."\}`/);
-  assert.match(orchestration, /JSON\.parse\(result\.content\[0\]\.text\)/);
-  assert.doesNotMatch(orchestration, /threadId:\s*result\.threadId/);
+  assert.match(selection, /Native Codex leaves the expert response as plain text/);
+  assert.match(selection, /result\.structuredContent\.threadId/);
+  assert.doesNotMatch(selection, /mirroring native Codex output/);
+
+  const nativeExtraction = /const threadId = result\.threadId \?\? result\.structuredContent\?\.threadId/g;
+  assert.equal(
+    [...orchestration.matchAll(nativeExtraction)].length,
+    3,
+    "every native Codex example must use its actual top-level/structured result shape"
+  );
+  assert.match(orchestration, /Custom bridge extraction[\s\S]+JSON\.parse\(result\.content\[0\]\.text\)\.threadId/);
+  assert.doesNotMatch(orchestration, /const \{ threadId \} = JSON\.parse\(result\.content\[0\]\.text\)/);
+  assert.match(orchestration, /node "\$\{CLAUDE_PLUGIN_ROOT\}"\/server\/codex\/launcher\.js/);
 });
 
 test("coordination guidance follows the live Agent Mail delivery shape", () => {
@@ -277,6 +295,41 @@ test("coordination guidance follows the live Agent Mail delivery shape", () => {
   for (const provider of Object.keys(providers.providers)) {
     assert.ok(providerSessionLine.includes(`\`${provider}\``), `coordination prompt omits ${provider}`);
   }
+
+  const delegationFormat = fs.readFileSync(
+    path.resolve(__dirname, "../rules/delegation-format.md"),
+    "utf8"
+  );
+  const selection = fs.readFileSync(
+    path.resolve(__dirname, "../rules/model-selection.md"),
+    "utf8"
+  );
+  assert.match(delegationFormat, /Native Codex coordination \(optional; omit for custom bridges\)/);
+  assert.match(delegationFormat, /pass its fields only through the\s+`coordination` argument/);
+  assert.match(selection, /pass optional Agent Mail coordination through `coordination`, not by duplicating it here/);
+});
+
+test("reply guidance distinguishes defaulted arguments from inherited effort", () => {
+  const sources = ["README.md", "CLAUDE.md", "rules/orchestration.md"]
+    .map((file) => fs.readFileSync(path.resolve(__dirname, "..", file), "utf8"));
+  for (const source of sources) {
+    assert.doesNotMatch(source, /Reply calls do not inherit optional MCP arguments/);
+    assert.match(source, /repeat[\s\S]{0,120}`sandbox`|repeat `sandbox:/);
+    assert.match(source, /Claude and Copilot[\s\S]{0,160}(?:inherit|retain)[\s\S]{0,80}effort|`effort` on Claude and Copilot[\s\S]{0,160}inherit/);
+  }
+});
+
+test("Copilot effort floors are documented as start-only", () => {
+  const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const claude = fs.readFileSync(path.resolve(__dirname, "../CLAUDE.md"), "utf8");
+  const orchestration = fs.readFileSync(path.resolve(__dirname, "../rules/orchestration.md"), "utf8");
+  const selection = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
+
+  assert.match(readme, /start calls clamp verified per-model effort floors and ceilings/);
+  assert.match(claude, /Start calls default to `max`[\s\S]{0,180}omit `effort`/);
+  assert.match(orchestration, /On start, the bridge applies verified per-model bounds[\s\S]{0,260}omit `effort`/);
+  assert.match(selection, /floors both `none` and `minimal` to `low` on start calls/);
+  assert.match(selection, /explicit reply override is forwarded without that start-only floor/);
 });
 
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {
@@ -457,6 +510,11 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
 test("every custom bridge stamps and enforces its provider-specific depth guard", () => {
   const customBridges = Object.keys(providers.providers).filter((name) => name !== "codex");
   assert.deepEqual(customBridges.sort(), ["agy", "claude", "copilot", "cursor", "grok", "kimi"]);
+  const sharedRuntime = fs.readFileSync(
+    path.resolve(__dirname, "../server/shared/provider-runtime.js"),
+    "utf8"
+  );
+  assert.match(sharedRuntime, /if \(depth\.exceeded\(\)\)/);
 
   for (const name of customBridges) {
     const source = fs.readFileSync(path.resolve(__dirname, `../server/${name}/index.js`), "utf8");
@@ -466,7 +524,15 @@ test("every custom bridge stamps and enforces its provider-specific depth guard"
       `${name} must create its provider-specific depth guard`
     );
     assert.match(source, /depth\.stamp\(/, `${name} must stamp its child environment`);
-    assert.match(source, /depth\.exceeded\(\)/, `${name} must refuse a nested delegation`);
+    if (source.includes("createProviderHandlers")) {
+      assert.match(
+        source,
+        /createProviderHandlers\(\{[\s\S]+?\bdepth,/,
+        `${name} must pass its guard to the shared runtime`
+      );
+    } else {
+      assert.match(source, /depth\.exceeded\(\)/, `${name} must refuse a nested delegation`);
+    }
   }
 });
 
@@ -524,6 +590,7 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
     assert.equal(isConnectedStatus(status), false, status);
   }
   assert.doesNotMatch(setup, /grep -q ["']server\//);
+  assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md/);
   assert.match(
     setup,
     /"\$HOME\/\.grok\/bin\/grok" --version/,
@@ -532,11 +599,24 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   assert.match(setup, /On Windows, only PATH is supported/);
   assert.doesNotMatch(setup, /advisory intent is enforced/);
   assert.doesNotMatch(setup, /denies shell only, never writes/);
+  assert.match(setup, /\$\{LOCALAPPDATA:-\}[\s\S]+agy\/bin\/agy\.exe/);
+  assert.match(setup, /\.kimi-code\/bin\/kimi\.exe[\s\S]+\.kimi-code\/bin\/kimi\.cmd/);
+  assert.match(setup, /\.grok\/bin\/grok\.exe/);
+  assert.match(setup, /\$\{APPDATA:-\}[\s\S]+npm\/copilot\.cmd/);
+
+  const verification = /# Check 1: CLI versions[\s\S]+?(?=# Check 2:)/.exec(setup)?.[0];
+  assert.ok(verification, "setup CLI verification block missing");
+  assert.match(verification, /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then/);
+  assert.match(verification, /check_cli_version "Agy" "agy" "\$\{local_appdata:\+\$local_appdata\/agy\/bin\/agy\.exe\}"/);
+  assert.match(verification, /check_cli_version "Kimi" "kimi" "\$windows_home\/\.kimi-code\/bin\/kimi\.exe" "\$windows_home\/\.kimi-code\/bin\/kimi\.cmd"/);
+  assert.match(verification, /check_cli_version "Grok" "grok" "\$windows_home\/\.grok\/bin\/grok\.exe"/);
+  assert.match(verification, /check_cli_version "Copilot" "copilot" "\$\{appdata:\+\$appdata\/npm\/copilot\.cmd\}"/);
   assert.match(
-    setup,
-    /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then\s+check_cli_version "Cursor" "cursor-agent"\s+else\s+check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/,
-    "setup must not invent a Cursor fallback on Windows"
+    verification,
+    /check_cli_version "Cursor" "cursor-agent"[\s\S]+?else[\s\S]+?check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/,
+    "setup must keep Cursor PATH-only on Windows and use its measured POSIX fallback"
   );
+  assert.match(setup, /read-only` is a provider-specific opt-in and is not universally\s+enforced/);
 });
 
 test("upgrade and uninstall instructions handle the 1.9 manifest transition", () => {
@@ -578,21 +658,157 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   for (const [label, block] of Object.entries(migrationBlocks)) {
     assert.ok(block, `${label}: migration block not found`);
     assert.match(block, /^# Keep[^\n]+\n#[^\n]+\n\(\nset -e\n/);
-    assert.match(block, /installed_plugins\.json/);
+    assert.match(block, /claude_plugin_list=\$\(claude plugin list --json\)/);
+    assert.match(block, /JSON\.parse\(process\.env\.CLAUDE_PLUGIN_LIST_JSON\)/);
+    assert.doesNotMatch(block, /installed_plugins\.json/);
+    assert.match(
+      block,
+      /claude plugin update --scope user claude-delegator@jarrodwatts-claude-delegator/,
+      `${label}: migration must update the active install before inspecting it`
+    );
+    assert.doesNotMatch(
+      block,
+      /claude plugin (?:uninstall|install)\b/,
+      `${label}: migration must not delete the working plugin before its replacement succeeds`
+    );
     assert.match(block, /records\[0\]\["installPath"\]/);
     assert.doesNotMatch(block, /glob\.glob/);
     assert.match(block, /node - <<'NODE'/);
     assert.doesNotMatch(block, /python3/);
     assert.ok(block.includes(`grep -Eq '${connectedPattern}'`));
+    const manifestGuard = /node - <<'NODE'\n([\s\S]*?)\nNODE/.exec(block)?.[1];
+    assert.ok(manifestGuard, `${label}: manifest guard missing`);
     for (const server of expectedServers) {
-      assert.ok(block.includes(`plugin:claude-delegator:${server}`), `${label}: guard omits ${server}`);
+      assert.ok(manifestGuard.includes(`"${server}"`), `${label}: manifest guard omits ${server}`);
     }
-    const refusal = block.indexOf("stop before removing legacy registrations");
-    const removal = block.indexOf("for s in codex agy kimi copilot grok cursor gemini; do");
-    assert.ok(refusal >= 0 && refusal < removal, `${label}: Connected gate must precede legacy removal`);
+
+    assert.match(block, /legacy_servers="\$\(\n\s+node - <<'NODE'/);
+    assert.match(block, /process\.env\.CLAUDE_CONFIG_DIR[\s\S]+?\.claude\.json/);
+    assert.match(block, /user\.mcpServers\?\.\[name\]/);
+    assert.match(block, /value\.split\("\/"\)\.includes\("claude-delegator"\)/);
+    assert.match(block, /const oldEntrypoint = `\/server\/\$\{name\}\/`/);
+    assert.equal([...block.matchAll(/for s in \$legacy_servers; do/g)].length, 2);
+    assert.match(block, /\[ "\$s" = "gemini" \] && replacement="agy"/);
+    assert.match(block, /server="plugin:claude-delegator:\$replacement"/);
+    assert.match(block, /status_dir=\$\(mktemp -d\)/);
+    assert.match(block, /trap 'rmdir "\$status_dir"[^']+' EXIT/);
+    assert.match(
+      block,
+      /if ! legacy_config=\$\(CDPATH= cd -- "\$status_dir" && claude mcp get "\$s" 2>&1\); then[\s\S]+?preserving all recognized legacy registrations[\s\S]+?preflight_failed=1[\s\S]+?continue\n\s+fi/,
+      `${label}: an unknown legacy inspection result must fail closed before removal`
+    );
+    assert.match(
+      block,
+      /replacement_config=\$\(CDPATH= cd -- "\$status_dir" && claude mcp get "\$server" 2>&1\) \|\| replacement_config=""/
+    );
+    assert.doesNotMatch(block, /for server in \\\s+plugin:claude-delegator:/);
+    assert.match(block, /if ! is_connected "\$legacy_config"; then[\s\S]+?continue\n\s+fi/);
+    assert.match(block, /if is_connected "\$replacement_config"; then[\s\S]+?else[\s\S]+?preflight_failed=1/);
+    assert.match(block, /preserving all recognized legacy registrations/);
+    assert.match(block, /if \[ "\$preflight_failed" -ne 0 \]; then\n\s+exit 1/);
+
+    const preflightStart = block.indexOf("preflight_failed=0");
+    const abortGate = block.indexOf('if [ "$preflight_failed" -ne 0 ]');
+    const removalLoop = block.indexOf("for s in $legacy_servers; do", abortGate);
+    assert.ok(preflightStart >= 0 && abortGate > preflightStart && removalLoop > abortGate);
+    assert.doesNotMatch(
+      block.slice(preflightStart, abortGate),
+      /claude mcp remove/,
+      `${label}: preflight must collect every pair before the first removal`
+    );
     assert.match(block, /claude mcp remove --scope user "\$s"/);
     assert.match(block, /\n\)\s*$/);
+
+    const scanner = /legacy_servers="\$\(\n\s+node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
+    assert.ok(scanner, `${label}: legacy scanner missing`);
+    const fixtureHome = fs.mkdtempSync(path.join(os.tmpdir(), "claude-delegator-legacy-"));
+    try {
+      fs.writeFileSync(path.join(fixtureHome, ".claude.json"), JSON.stringify({
+        mcpServers: {
+          codex: {
+            command: "node",
+            args: ["C:\\Users\\dev\\.claude\\plugins\\cache\\vendor\\claude-delegator\\1.6.5\\server\\codex\\index.js"]
+          },
+          agy: { command: "node", args: ["/opt/unrelated/server/agy/index.js"] },
+          kimi: { command: "node", args: ["/work/claude-delegator-fork/server/kimi/index.js"] },
+          gemini: { command: "node", args: ["/cache/claude-delegator/1.4.0/server/gemini/index.js"] }
+        }
+      }));
+      const scan = spawnSync(process.execPath, ["-e", scanner], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: fixtureHome,
+          USERPROFILE: fixtureHome,
+          CLAUDE_CONFIG_DIR: ""
+        }
+      });
+      assert.equal(scan.status, 0, `${label}: scanner failed: ${scan.stderr}`);
+      assert.deepEqual(
+        scan.stdout.trim().split(/\r?\n/).filter(Boolean),
+        ["codex", "gemini"],
+        `${label}: scan must select only recognized user legacy entries and allow a partial install`
+      );
+
+      const customProfile = path.join(fixtureHome, "custom-profile");
+      fs.mkdirSync(customProfile);
+      fs.writeFileSync(path.join(customProfile, ".claude.json"), JSON.stringify({
+        mcpServers: {
+          cursor: { command: "node", args: ["/cache/claude-delegator/1.8.0/server/cursor/index.js"] }
+        }
+      }));
+      const customScan = spawnSync(process.execPath, ["-e", scanner], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: fixtureHome,
+          USERPROFILE: fixtureHome,
+          CLAUDE_CONFIG_DIR: customProfile
+        }
+      });
+      assert.equal(customScan.status, 0, `${label}: custom-profile scanner failed: ${customScan.stderr}`);
+      assert.deepEqual(
+        customScan.stdout.trim().split(/\r?\n/).filter(Boolean),
+        ["cursor"],
+        `${label}: CLAUDE_CONFIG_DIR must override the default user MCP state`
+      );
+    } finally {
+      fs.rmSync(fixtureHome, { recursive: true, force: true });
+    }
   }
+
+  const migrationBlocked = (pairs) => pairs.some(({
+    legacyConnected,
+    replacementConnected,
+    legacyInspectionOk = true,
+    replacementInspectionOk = true
+  }) => !legacyInspectionOk || !replacementInspectionOk || (legacyConnected && !replacementConnected));
+  assert.equal(migrationBlocked([{ legacyConnected: true, replacementConnected: true }]), false);
+  assert.equal(migrationBlocked([{ legacyConnected: true, replacementConnected: false }]), true);
+  assert.equal(migrationBlocked([{ legacyConnected: false, replacementConnected: false }]), false);
+  assert.equal(
+    migrationBlocked([{ legacyInspectionOk: false }]),
+    true,
+    "a legacy inspection error must preserve every recognized registration"
+  );
+  assert.equal(
+    migrationBlocked([{ legacyConnected: true, replacementInspectionOk: false }]),
+    true,
+    "a replacement inspection error must preserve every recognized registration"
+  );
+  assert.equal(
+    migrationBlocked([
+      { legacyConnected: true, replacementConnected: true },
+      ...Array.from({ length: 5 }, () => ({ legacyConnected: false, replacementConnected: false }))
+    ]),
+    false,
+    "a one-provider partial install must migrate"
+  );
+  assert.equal(
+    migrationBlocked([{ legacyConnected: true, replacementConnected: false, legacy: "gemini", replacement: "agy" }]),
+    true,
+    "connected legacy Gemini requires a Connected Agy replacement"
+  );
   assert.match(uninstall, /\/plugin install claude-delegator@jarrodwatts-claude-delegator/);
   assert.match(uninstall, /\/claude-delegator:setup/);
   assert.match(setup, /\/user\/starred\/mateusz-klatt\/claude-delegator/);

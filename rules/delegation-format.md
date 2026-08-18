@@ -15,7 +15,7 @@ Every delegation prompt MUST include these sections:
    - Current state: [what exists now]
    - Relevant code: [paths or snippets]
    - Background: [why this is needed]
-   - Coordination (optional, only when MCP Agent Mail is available):
+   - Native Codex coordination (optional; omit for custom bridges):
      - projectKey: [Agent Mail project key]
      - callerAgentName: [canonical mailbox address: <client>-<os>-<host>-<slot>]
      - mailTopic: [optional Agent Mail topic tag]
@@ -37,6 +37,13 @@ Every delegation prompt MUST include these sections:
 7. OUTPUT FORMAT:
    - [How to structure response]
 ```
+
+For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, omit the
+coordination block from the prompt and pass its fields only through the
+`coordination` argument; the bridge appends the canonical coordination contract
+exactly once. Native Codex has no `coordination` argument, so when reporting is
+needed, include the envelope under CONTEXT and append the contents of
+`prompts/agent-mail-coordination.md` once.
 
 Never include the caller's registration token or another credential. `callerAgentName` is the canonical routable value that Agent Mail accepts in `to`; it is neither the numeric database `Agent.id` nor a display label. A native subagent used only as a runner must forward the original caller envelope unchanged.
 

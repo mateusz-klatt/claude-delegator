@@ -55,10 +55,18 @@ Use `mcp__claude__claude`, `mcp__plugin_claude-delegator_codex__codex`, `mcp__pl
 
 ### Multi-Turn
 
-Every target returns a `threadId` from the initial call. In the visible MCP result,
-parse the JSON envelope in `content[0].text`; do not expect a sibling
-`result.threadId`, which MCP clients can strip. Pass the parsed value to the
-corresponding `-reply` tool for follow-up turns with full context preservation.
+Every target returns a `threadId` from the initial call, but the result shape is
+not identical. For the six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and
+Copilot), parse the JSON envelope in `content[0].text`. Native Codex leaves its
+expert response as plain `content[0].text` and exposes the id separately as
+top-level `result.threadId` and/or `result.structuredContent.threadId`. Pass the
+id to the corresponding `-reply` tool for follow-up turns with full context
+preservation.
+
+```typescript
+// Custom bridge extraction (the same shape for all six custom providers)
+const customThreadId = JSON.parse(result.content[0].text).threadId
+```
 
 ```typescript
 // Turn 1: Start session (Codex example)
@@ -67,7 +75,8 @@ const result = mcp__plugin_claude-delegator_codex__codex({
   "developer-instructions": "[expert prompt]",
   cwd: "/path/to/project"
 })
-const { threadId } = JSON.parse(result.content[0].text)
+const threadId = result.threadId ?? result.structuredContent?.threadId
+// result.content[0].text is the plain Codex response, not a JSON envelope.
 
 // Turn 2: Follow up with context preserved
 mcp__plugin_claude-delegator_codex__codex-reply({
@@ -190,9 +199,9 @@ For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object on
 
 ### Step 6: Call the Expert
 ```typescript
-// Using Codex (GPT) — sandbox/approval inherit from ~/.codex/config.toml
+// Using Codex (GPT) — the plugin pins danger-full-access + approval never
 mcp__plugin_claude-delegator_codex__codex({
-  prompt: "[your 7-section delegation prompt with FULL context]",
+  prompt: "[your 7-section delegation prompt with FULL context; embed Agent Mail envelope + contract here only when needed]",
   "developer-instructions": "[contents of the expert's prompt file — also carries advisory-vs-implementation intent]",
   cwd: "[current working directory]"
 })
@@ -270,9 +279,11 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 (Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot)
-const result = mcp__plugin_claude-delegator_codex__codex({ ... }) // or the matching start tool from the table above
-const { threadId } = JSON.parse(result.content[0].text)
+// Attempt 1 with native Codex
+const result = mcp__plugin_claude-delegator_codex__codex({ ... })
+const threadId = result.threadId ?? result.structuredContent?.threadId
+// For Claude, Agy, Kimi, Grok, Cursor, or Copilot instead:
+// const threadId = JSON.parse(result.content[0].text).threadId
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
 mcp__plugin_claude-delegator_codex__codex-reply({ // or the matching reply tool from the table above
@@ -285,7 +296,14 @@ Fix the issue and verify the change works.`
 
 Keep the original caller envelope and Agent Mail reply chain across retries. Do not redirect progress to an intermediary runner. Continue using the provider's independently returned `threadId` only for `*-reply` calls.
 
-Reply calls are new tool invocations, so repeat the original `sandbox` when permission continuity matters; omitting it returns custom bridges to their `workspace-write` default. Agy replies must also repeat the start call's `model` and `cwd`. Keep Kimi's `cwd` when the start used a non-default directory, and always keep Cursor's `cwd` because its sessions are workspace-bound. Claude and Copilot only change effort on reply when an explicit override is supplied.
+Reply calls are new tool invocations, so repeat the original `sandbox` and any
+other defaulted argument when continuity matters; omitting `sandbox` returns
+custom bridges to their `workspace-write` default. Agy replies must also repeat
+the start call's `model` and `cwd`. Keep Kimi's `cwd` when the start used a
+non-default directory, and always keep Cursor's `cwd` because its sessions are
+workspace-bound. The deliberate exception is `effort` on Claude and Copilot:
+omit it to inherit the resumed session's effort, and supply it only for an
+explicit override.
 
 ### Retry with Single-Shot (Fallback)
 
@@ -354,7 +372,8 @@ REQUIREMENTS:
   "developer-instructions": "[contents of code-reviewer.md]",
   cwd: "/path/to/project"
 })
-const { threadId } = JSON.parse(result.content[0].text)
+const threadId = result.threadId ?? result.structuredContent?.threadId
+// result.content[0].text is the plain Codex response.
 ```
 
 **Attempt 2 (retry via multi-turn):**
@@ -377,7 +396,7 @@ Fix the issue — ensure validation runs after body parser.`
 The native Codex MCP server is started through the transparent environment-boundary launcher with explicit unattended settings:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/server/codex/launcher.js \
+node "${CLAUDE_PLUGIN_ROOT}"/server/codex/launcher.js \
   -m gpt-5.6-sol -s danger-full-access -a never \
   -c model_reasoning_effort=ultra mcp-server
 ```
@@ -397,7 +416,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; default is `max` for delegation tasks. The bridge applies verified per-model bounds: `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`.
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; start calls default to `max`. On start, the bridge applies verified per-model bounds: `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`. A reply does not know the session model, so omit `effort` to retain the current session setting; an explicit reply override is forwarded without the start-only floor.
 
 ---
 

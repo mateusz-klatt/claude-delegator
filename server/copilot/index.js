@@ -13,17 +13,14 @@ const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
   appendCoordinationInstructions,
-  coordinationMetadata,
-  coordinationSchema,
-  validateCoordination
+  coordinationSchema
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
-const { resultText } = require("../shared/result");
+const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
   IS_WINDOWS, clampTimeout, homedir, isNonEmptyString, isObject, resolveCli,
-  runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
-  validateCommonArgs
+  superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_COPILOT_DEPTH");
@@ -213,187 +210,77 @@ function cliFallbacks() {
   return process.env.APPDATA ? [path.join(process.env.APPDATA, "npm", "copilot.cmd")] : [];
 }
 
-const handlers = {
-  "initialize": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-copilot", version: PACKAGE_VERSION }
-    });
-  },
+function permissionArgs(sandbox) {
+  return sandbox === "read-only"
+    ? ["--deny-tool=shell", "--deny-tool=write", "--deny-tool=edit"]
+    : ["--allow-all-tools"];
+}
 
-  "tools/list": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      tools: COPILOT_TOOLS
-    });
-  },
+function buildStartArgs(args, coordination) {
+  const model = args.model || DEFAULT_MODEL;
+  const copilotArgs = ["--model", model];
+  if (!MODELS_WITHOUT_EFFORT.has(model)) {
+    copilotArgs.push("--effort", resolveEffort(model, args.effort));
+  }
+  copilotArgs.push(...permissionArgs(args.sandbox));
 
-  "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
-      return;
-    }
+  let prompt = args.prompt;
+  if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
+  copilotArgs.push("-p", appendCoordinationInstructions(prompt, coordination));
+  return copilotArgs;
+}
 
-    const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if ((name === "copilot" || name === "copilot-reply") && depth.exceeded()) {
-      if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Copilot session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
-      }
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-    const commonError = validateCommonArgs(args);
-    if (commonError) {
-      if (shouldRespond) sendError(id, -32602, commonError);
-      return;
-    }
-    if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: 'effort' must be one of: ${COPILOT_CATALOG.efforts.join(", ")}`);
-      return;
-    }
+function buildReplyArgs(args, coordination, threadId) {
+  const copilotArgs = ["--resume", threadId];
+  // The resumed session already carries its model and effort; only forward
+  // --effort when the caller explicitly asks for a change. The model is not
+  // known at resume time, so max uses the conservative catalog fallback cap.
+  if (args.effort !== undefined) {
+    copilotArgs.push("--effort", args.effort === "max" ? FALLBACK_MAX_EFFORT : args.effort);
+  }
+  copilotArgs.push(...permissionArgs(args.sandbox));
+  copilotArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
+  return copilotArgs;
+}
 
-    let coordination;
-    try {
-      coordination = validateCoordination(args.coordination);
-    } catch (e) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
-      return;
-    }
+function validateCopilotArgs(name, args) {
+  if (args.effort !== undefined && !VALID_EFFORT_VALUES.has(args.effort)) {
+    return `Invalid params: 'effort' must be one of: ${COPILOT_CATALOG.efforts.join(", ")}`;
+  }
+  if (name === "copilot" && args.model !== undefined && !VALID_MODELS.has(args.model)) {
+    return `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`;
+  }
+  return null;
+}
 
-    try {
-      const copilotArgs = [];
-      if (name === "copilot") {
-        if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
-          if (shouldRespond) sendError(id, -32602, `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`);
-          return;
-        }
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-        if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'developer-instructions' must be a string when provided");
-          return;
-        }
-
-        const model = args.model || DEFAULT_MODEL;
-        copilotArgs.push("--model", model);
-        if (!MODELS_WITHOUT_EFFORT.has(model)) {
-          copilotArgs.push("--effort", resolveEffort(model, args.effort));
-        }
-
-        if (args.sandbox === "read-only") {
-          copilotArgs.push("--deny-tool=shell", "--deny-tool=write", "--deny-tool=edit");
-        } else {
-          copilotArgs.push("--allow-all-tools");
-        }
-
-        let prompt = args.prompt;
-        if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
-        prompt = appendCoordinationInstructions(prompt, coordination);
-        copilotArgs.push("-p", prompt);
-      } else if (name === "copilot-reply") {
-        if (!isNonEmptyString(args.threadId)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' is required for copilot-reply");
-          return;
-        }
-        const threadId = args.threadId.trim();
-        if (threadId === "latest" || threadId === "unknown") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' must be an explicit session id");
-          return;
-        }
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-
-        copilotArgs.push("--resume", threadId);
-        // The resumed session already carries its model and effort; only forward
-        // --effort when the caller explicitly asks for a change. The model is not
-        // known at resume time, so max uses the conservative catalog fallback cap.
-        if (args.effort !== undefined) {
-          copilotArgs.push("--effort", args.effort === "max" ? FALLBACK_MAX_EFFORT : args.effort);
-        }
-        if (args.sandbox === "read-only") {
-          copilotArgs.push("--deny-tool=shell", "--deny-tool=write", "--deny-tool=edit");
-        } else {
-          copilotArgs.push("--allow-all-tools");
-        }
-        copilotArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
-      } else {
-        if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-        return;
-      }
-
-      const abortController = new AbortController();
-      if (shouldRespond) activeRequests.set(id, abortController);
-      let result;
-      try {
-        result = await runCopilot(copilotArgs, args.cwd, args.timeout, abortController.signal);
-      } finally {
-        if (shouldRespond) activeRequests.delete(id);
-      }
-      const { response, threadId } = result;
-
-      if (threadId === "unknown" && name === "copilot") {
-        if (shouldRespond) {
-          sendResponse(id, {
-            content: [{ type: "text", text: resultText(threadId, response + "\n\n(Warning: no session ID returned — multi-turn reply will not be available)") }],
-            threadId: threadId,
-            ...coordinationMetadata(coordination)
-          });
-        }
-      } else if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: resultText(threadId, response) }],
-          threadId: threadId,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    } catch (e) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    }
-  },
-
-  "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
-    activeRequests.get(params.requestId)?.abort();
-  },
-  "notifications/initialized": () => {}
-};
+const handlers = createProviderHandlers({
+  activeRequests,
+  buildReplyArgs,
+  buildStartArgs,
+  depth,
+  displayName: "Copilot",
+  packageVersion: PACKAGE_VERSION,
+  provider: "copilot",
+  run: runCopilot,
+  tools: COPILOT_TOOLS,
+  validateProviderArgs: validateCopilotArgs,
+  warning: "\n\n(Warning: no session ID returned — multi-turn reply will not be available)"
+});
 
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
 if (require.main === module) {
-  runStdioLoop({ handlers, activeRequests, activeChildren });
-
-  try {
-    // An MCP server inherits a minimal PATH that frequently lacks ~/.local/bin,
-    // which is where the official installer puts the CLI — measured on Linux,
-    // macOS and WSL. agy and kimi already guard against that; copilot and claude
-    // did not, purely by omission.
-    COPILOT_BIN = resolveCli("copilot", {
-      fallbacks: cliFallbacks()
-    });
-  } catch (error) {
-    console.error(`Copilot CLI not found or unusable. Please install it first. (${error.message})`);
-    process.exit(1);
-  }
+  // An MCP server inherits a minimal PATH that frequently lacks ~/.local/bin,
+  // which is where the official installer puts the CLI — measured on Linux,
+  // macOS and WSL.
+  startProviderRuntime({
+    activeChildren,
+    activeRequests,
+    handlers,
+    missingCliMessage: (error) => `Copilot CLI not found or unusable. Please install it first. (${error.message})`,
+    resolveBinary: () => resolveCli("copilot", { fallbacks: cliFallbacks() }),
+    setBinary: (binary) => { COPILOT_BIN = binary; }
+  });
 }
 
 module.exports = {

@@ -15,17 +15,14 @@ const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
   appendCoordinationInstructions,
-  coordinationMetadata,
-  coordinationSchema,
-  validateCoordination
+  coordinationSchema
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
-const { resultText } = require("../shared/result");
+const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
   IS_WINDOWS, clampTimeout, isNonEmptyString, isObject, resolveCli,
-  runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
-  validateCommonArgs
+  superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_AGY_DEPTH");
@@ -274,172 +271,63 @@ function cliFallbacks() {
     : [];
 }
 
-const handlers = {
-  "initialize": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-agy", version: PACKAGE_VERSION }
-    });
-  },
+function buildStartArgs(args, coordination) {
+  let prompt = args.prompt;
+  if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
+  return [
+    "--model", args.model || DEFAULT_MODEL,
+    ...sandboxArguments(args.sandbox),
+    "-p", appendCoordinationInstructions(prompt, coordination)
+  ];
+}
 
-  "tools/list": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      tools: AGY_TOOLS
-    });
-  },
+function buildReplyArgs(args, coordination, threadId) {
+  return [
+    "--conversation", threadId,
+    "--model", args.model,
+    ...sandboxArguments(args.sandbox),
+    "-p", appendCoordinationInstructions(args.prompt, coordination)
+  ];
+}
 
-  "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
-      return;
-    }
+function validateAgyArgs(name, args) {
+  if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
+    return `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`;
+  }
+  if (name === "agy-reply" && !isNonEmptyString(args.model)) {
+    return "Invalid params: 'model' is required for agy-reply because a resumed conversation does not inherit its model — pass the model the start call used";
+  }
+  return null;
+}
 
-    const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if ((name === "agy" || name === "agy-reply") && depth.exceeded()) {
-      if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Agy session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
-      }
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-    const commonError = validateCommonArgs(args);
-    if (commonError) {
-      if (shouldRespond) sendError(id, -32602, commonError);
-      return;
-    }
-    if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`);
-      return;
-    }
-
-    let coordination;
-    try {
-      coordination = validateCoordination(args.coordination);
-    } catch (e) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
-      return;
-    }
-
-    try {
-      const agyArgs = [];
-      let expectedThreadId;
-
-      if (name === "agy") {
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-        if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'developer-instructions' must be a string when provided");
-          return;
-        }
-
-        agyArgs.push("--model", args.model || DEFAULT_MODEL);
-        agyArgs.push(...sandboxArguments(args.sandbox));
-
-        let prompt = args.prompt;
-        if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
-        prompt = appendCoordinationInstructions(prompt, coordination);
-        agyArgs.push("-p", prompt);
-      } else if (name === "agy-reply") {
-        if (!isNonEmptyString(args.threadId)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' is required for agy-reply");
-          return;
-        }
-        const threadId = args.threadId.trim();
-        if (threadId === "latest" || threadId === "unknown") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' must be an explicit conversation id");
-          return;
-        }
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-        if (!isNonEmptyString(args.model)) {
-          if (shouldRespond) {
-            sendError(id, -32602, "Invalid params: 'model' is required for agy-reply because a resumed conversation does not inherit its model — pass the model the start call used");
-          }
-          return;
-        }
-
-        expectedThreadId = threadId;
-        agyArgs.push("--conversation", threadId);
-        agyArgs.push("--model", args.model);
-        agyArgs.push(...sandboxArguments(args.sandbox));
-        agyArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
-      } else {
-        if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-        return;
-      }
-
-      const abortController = new AbortController();
-      if (shouldRespond) activeRequests.set(id, abortController);
-      let result;
-      try {
-        result = await runAgy(agyArgs, args.cwd, args.timeout, abortController.signal, expectedThreadId);
-      } finally {
-        if (shouldRespond) activeRequests.delete(id);
-      }
-      const { response, threadId } = result;
-
-      if (!shouldRespond) return;
-
-      if (threadId === "unknown" && name === "agy") {
-        sendResponse(id, {
-          content: [{ type: "text", text: resultText(threadId, response + "\n\n(Warning: no conversation id returned — multi-turn reply will not be available)") }],
-          threadId: threadId,
-          ...coordinationMetadata(coordination)
-        });
-      } else {
-        sendResponse(id, {
-          content: [{ type: "text", text: resultText(threadId, response) }],
-          threadId: threadId,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    } catch (e) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    }
-  },
-
-  "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
-    activeRequests.get(params.requestId)?.abort();
-  },
-  "notifications/initialized": () => {}
-};
+const handlers = createProviderHandlers({
+  activeRequests,
+  buildReplyArgs,
+  buildStartArgs,
+  depth,
+  displayName: "Agy",
+  packageVersion: PACKAGE_VERSION,
+  provider: "agy",
+  run: runAgy,
+  threadIdKind: "conversation id",
+  tools: AGY_TOOLS,
+  validateProviderArgs: validateAgyArgs,
+  warning: "\n\n(Warning: no conversation id returned — multi-turn reply will not be available)"
+});
 
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
 if (require.main === module) {
-  runStdioLoop({ handlers, activeRequests, activeChildren });
-
   // agy ships as a native executable rather than an npm package, and its usual
   // home is frequently absent from the minimal PATH an MCP server inherits.
-  try {
-    AGY_BIN = resolveCli("agy", {
-      fallbacks: cliFallbacks()
-    });
-  } catch (error) {
-    console.error(`Agy CLI not found. Install the Google Antigravity CLI and ensure 'agy' is on PATH. (${error.message})`);
-    process.exit(1);
-  }
+  startProviderRuntime({
+    activeChildren,
+    activeRequests,
+    handlers,
+    missingCliMessage: (error) => `Agy CLI not found. Install the Google Antigravity CLI and ensure 'agy' is on PATH. (${error.message})`,
+    resolveBinary: () => resolveCli("agy", { fallbacks: cliFallbacks() }),
+    setBinary: (binary) => { AGY_BIN = binary; }
+  });
 }
 
 module.exports = {

@@ -25,9 +25,13 @@ function createCodexStub() {
   temporaryDirectories.push(directory);
   const capturePath = path.join(directory, "capture.json");
   const scriptPath = path.join(directory, "codex-stub.js");
-  const script = `#!/usr/bin/env node
+const script = `#!/usr/bin/env node
 "use strict";
 const fs = require("node:fs");
+if (process.argv.includes("--version")) {
+  process.stdout.write("codex-stub 1.0.0\\n");
+  process.exit(0);
+}
 fs.writeFileSync(process.env.CODEX_STUB_CAPTURE, JSON.stringify({
   pid: process.pid,
   args: process.argv.slice(2),
@@ -176,6 +180,15 @@ function processIsAlive(pid) {
     throw error;
   }
 }
+
+test("launcher reuses the shared safe PATH lookup and process-tree killer", () => {
+  const source = fs.readFileSync(LAUNCHER_PATH, "utf8");
+  assert.match(source, /require\("\.\.\/shared\/bridge\.js"\)/);
+  assert.match(source, /\{ killProcessTree, resolveCli, resolveWindowsShim \}/);
+  assert.doesNotMatch(source, /execFileSync/);
+  assert.doesNotMatch(source, /function findWindowsCommandCandidates/);
+  assert.doesNotMatch(source, /function killProcessTree/);
+});
 
 test("passes through native MCP stdio and scrubs the caller identity", async () => {
   const launcher = startLauncher();

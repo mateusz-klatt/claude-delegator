@@ -45,6 +45,14 @@ fi
 ```bash
 if command -v agy >/dev/null 2>&1; then
   agy --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  agy_fallback="${LOCALAPPDATA:-}"
+  agy_fallback="${agy_fallback//\\//}/agy/bin/agy.exe"
+  if [ -n "${LOCALAPPDATA:-}" ] && [ -x "$agy_fallback" ]; then
+    "$agy_fallback" --version 2>&1 | head -1
+  else
+    echo "AGY_MISSING"
+  fi
 elif [ -x "$HOME/.local/bin/agy" ]; then
   "$HOME/.local/bin/agy" --version 2>&1 | head -1
 else
@@ -56,6 +64,21 @@ fi
 ```bash
 if command -v kimi >/dev/null 2>&1; then
   kimi --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  windows_home="${USERPROFILE:-$HOME}"
+  windows_home="${windows_home//\\//}"
+  kimi_fallback=""
+  for candidate in "$windows_home/.kimi-code/bin/kimi.exe" "$windows_home/.kimi-code/bin/kimi.cmd"; do
+    if [ -x "$candidate" ]; then
+      kimi_fallback="$candidate"
+      break
+    fi
+  done
+  if [ -n "$kimi_fallback" ]; then
+    "$kimi_fallback" --version 2>&1 | head -1
+  else
+    echo "KIMI_MISSING"
+  fi
 elif [ -x "$HOME/.kimi-code/bin/kimi" ]; then
   "$HOME/.kimi-code/bin/kimi" --version 2>&1 | head -1
 else
@@ -67,6 +90,14 @@ fi
 ```bash
 if command -v grok >/dev/null 2>&1; then
   grok --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  windows_home="${USERPROFILE:-$HOME}"
+  windows_home="${windows_home//\\//}"
+  if [ -x "$windows_home/.grok/bin/grok.exe" ]; then
+    "$windows_home/.grok/bin/grok.exe" --version 2>&1 | head -1
+  else
+    echo "GROK_MISSING"
+  fi
 elif [ -x "$HOME/.grok/bin/grok" ]; then
   "$HOME/.grok/bin/grok" --version 2>&1 | head -1
 elif [ -x "$HOME/.local/bin/grok" ]; then
@@ -93,6 +124,14 @@ fi
 ```bash
 if command -v copilot >/dev/null 2>&1; then
   copilot --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  copilot_fallback="${APPDATA:-}"
+  copilot_fallback="${copilot_fallback//\\//}/npm/copilot.cmd"
+  if [ -n "${APPDATA:-}" ] && [ -x "$copilot_fallback" ]; then
+    "$copilot_fallback" --version 2>&1 | head -1
+  else
+    echo "COPILOT_MISSING"
+  fi
 elif [ -x "$HOME/.local/bin/copilot" ]; then
   "$HOME/.local/bin/copilot" --version 2>&1 | head -1
 else
@@ -112,7 +151,8 @@ Then authenticate: codex login
 **Agy Missing:**
 ```
 Agy (Google Antigravity) CLI not found.
-Install the Antigravity CLI; it lands as a native binary, typically ~/.local/bin/agy.
+Install the Antigravity CLI; it lands as a native binary, typically
+~/.local/bin/agy on POSIX or %LOCALAPPDATA%\agy\bin\agy.exe on Windows.
 Then authenticate: launch `agy` once and complete the Antigravity OAuth flow.
 Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
 ```
@@ -120,7 +160,8 @@ Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
 **Kimi Missing:**
 ```
 Kimi Code CLI not found.
-Install Kimi Code; it lands in ~/.kimi-code/bin/kimi.
+Install Kimi Code; it lands in ~/.kimi-code/bin/kimi on POSIX and
+~/.kimi-code/bin/kimi.exe or kimi.cmd on Windows.
 Then authenticate: set an api_key in ~/.kimi-code/config.toml or export KIMI_API_KEY.
 (`kimi login` covers the subscription device-code flow, but subscription signup
 was not open for registration as of 2026-08-17.)
@@ -130,7 +171,8 @@ Note: ~/.kimi-code/bin is often absent from the minimal PATH an MCP server inher
 **Grok Missing:**
 ```
 Grok CLI not found.
-Install the Grok CLI; it typically lands in ~/.grok/bin/grok or ~/.local/bin/grok.
+Install the Grok CLI; it typically lands in ~/.grok/bin/grok or ~/.local/bin/grok
+on POSIX and ~/.grok/bin/grok.exe on Windows.
 Then authenticate: grok login
 ```
 
@@ -146,7 +188,8 @@ On Windows, only PATH is supported; no install-location fallback has been measur
 **Copilot Missing:**
 ```
 Copilot CLI not found.
-Install with: npm install -g @github/copilot
+Install with: npm install -g @github/copilot (the Windows npm fallback is
+%APPDATA%\npm\copilot.cmd)
 Then authenticate: copilot login
 ```
 
@@ -173,14 +216,16 @@ The declaration also drops the `--env=PATH` pinning the old commands carried.
 That was there because an MCP server inherits a minimal PATH, and it is no longer
 load-bearing on measured install locations: bridges use absolute
 install-location fallbacks (`cliFallbacks()`), covering `~/.local/bin`, Grok's
-`~/.grok/bin`, and Kimi's `~/.kimi-code/bin`. Cursor on Windows remains
-PATH-only because its install directory has not been measured; the bridge ships
-no guessed fallback. `test/provider-config.test.js` holds that guarantee.
+`~/.grok/bin`, and Kimi's `~/.kimi-code/bin`. On Windows that includes Agy under
+`%LOCALAPPDATA%`, Kimi and Grok under the user's home, and the npm Copilot shim
+under `%APPDATA%`. Cursor on Windows remains PATH-only because its install
+directory has not been measured; the bridge ships no guessed fallback.
+`test/provider-config.test.js` holds that guarantee.
 
 ### Clearing registrations from an older install
 
 If you ran a previous setup, you still have hand-added entries that will now
-duplicate the plugin-provided ones. **Reinstall first, remove second** — the order
+duplicate the plugin-provided ones. **Update first, remove second** — the order
 matters and the other way round is destructive:
 
 ```bash
@@ -191,21 +236,18 @@ set -e
 
 # 1. Get a plugin copy that actually declares the servers.
 claude plugin marketplace update jarrodwatts-claude-delegator
-claude plugin uninstall claude-delegator@jarrodwatts-claude-delegator
-claude plugin install   claude-delegator@jarrodwatts-claude-delegator
+claude plugin update --scope user claude-delegator@jarrodwatts-claude-delegator
 
-# 1b. Confirm the reinstall actually delivered what step 2 depends on. Read the
-#     manifest from Claude Code's active user-scope installPath, never by guessing
-#     which version-shaped cache directory is active. Fail closed on ambiguity.
-node - <<'NODE'
+# 1b. Confirm the update actually delivered what step 2 depends on. Ask Claude
+#     Code which install is active instead of assuming its default state or cache
+#     directories; both can be overridden. Fail closed on ambiguity.
+claude_plugin_list=$(claude plugin list --json)
+CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
-const state = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
-const installed = JSON.parse(fs.readFileSync(state, "utf8"));
-const records = (installed.plugins?.["claude-delegator@jarrodwatts-claude-delegator"] || [])
-  .filter((record) => record.scope === "user");
+const records = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON).filter((record) =>
+  record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
 if (records.length !== 1 || !records[0]["installPath"]) {
   throw new Error("expected exactly one active user-scope claude-delegator install");
 }
@@ -218,26 +260,82 @@ if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 }
 NODE
 
-# 1c. A present manifest is not enough: each namespaced bridge must start before
-#     the fallback registrations are removed.
-for server in \
-  plugin:claude-delegator:codex \
-  plugin:claude-delegator:agy \
-  plugin:claude-delegator:kimi \
-  plugin:claude-delegator:copilot \
-  plugin:claude-delegator:grok \
-  plugin:claude-delegator:cursor
-do
-  config=$(claude mcp get "$server" 2>&1)
-  if ! printf '%s\n' "$config" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'; then
-    printf '%s\n' "$server is not Connected; stop before removing legacy registrations."
-    exit 1
+# 1c. Discover only user-scoped bare registrations that point at an old
+#     claude-delegator entrypoint. Same-named servers owned by another project
+#     are deliberately ignored.
+legacy_servers="$(
+  node - <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const state = process.env.CLAUDE_CONFIG_DIR
+  ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json")
+  : path.join(os.homedir(), ".claude.json");
+let user;
+try {
+  user = JSON.parse(fs.readFileSync(state, "utf8"));
+} catch (error) {
+  if (error.code === "ENOENT") process.exit(0);
+  throw error;
+}
+const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+for (const name of legacy) {
+  const entry = user.mcpServers?.[name];
+  if (!entry) continue;
+  const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.replaceAll("\\", "/"));
+  const oldEntrypoint = `/server/${name}/`;
+  if (candidates.some((value) =>
+    value.split("/").includes("claude-delegator") && value.includes(oldEntrypoint))) {
+    console.log(name);
+  }
+}
+NODE
+)"
+
+# 2. Preflight every recognized pair before the first removal. Health checks
+#    run in an empty temporary directory so a project/local server cannot shadow
+#    the user-scoped legacy entry. A disconnected old entry cannot provide a
+#    fallback and does not block cleanup. A connected one requires its connected
+#    replacement; legacy gemini maps to Agy, which replaced it in 1.5.0.
+is_connected() {
+  printf '%s\n' "$1" | grep -Eq '^[[:space:]]*Status:[[:space:]]+[^[:alnum:][:space:]]+[[:space:]]+Connected[[:space:]]*$'
+}
+status_dir=$(mktemp -d)
+trap 'rmdir "$status_dir" >/dev/null 2>&1 || true' EXIT
+preflight_failed=0
+for s in $legacy_servers; do
+  replacement="$s"
+  [ "$s" = "gemini" ] && replacement="agy"
+
+  if ! legacy_config=$(CDPATH= cd -- "$status_dir" && claude mcp get "$s" 2>&1); then
+    printf '%s\n' "Could not inspect legacy user-scoped $s; preserving all recognized legacy registrations."
+    preflight_failed=1
+    continue
+  fi
+  if ! is_connected "$legacy_config"; then
+    printf '%s\n' "Legacy user-scoped $s is not Connected; it cannot serve as a fallback."
+    continue
+  fi
+
+  server="plugin:claude-delegator:$replacement"
+  replacement_config=$(CDPATH= cd -- "$status_dir" && claude mcp get "$server" 2>&1) || replacement_config=""
+  if is_connected "$replacement_config"; then
+    printf '%s\n' "Verified $s -> $server."
+  else
+    printf '%s\n' "$server is not Connected; preserving all recognized legacy registrations."
+    preflight_failed=1
   fi
 done
 
-# 2. Only now drop the hand-added entries.
-for s in codex agy kimi copilot grok cursor gemini; do
-  claude mcp remove --scope user "$s" >/dev/null 2>&1 || true
+if [ "$preflight_failed" -ne 0 ]; then
+  exit 1
+fi
+
+for s in $legacy_servers; do
+  claude mcp remove --scope user "$s"
+  printf '%s\n' "Removed user-scoped legacy $s registration."
 done
 )
 ```
@@ -247,11 +345,18 @@ done
 Removing first leaves you with **no servers at all** whenever the installed copy
 predates this change, because a cache from an earlier version has no `mcpServers`
 block to fall back on — and the symptom is `CONNECTION_CLOSED`, the same one two
-unrelated defects already produced today. Reinstalling first means you are briefly
+unrelated defects already produced today. Updating first means you are briefly
 carrying duplicates, which is harmless, instead of briefly carrying nothing.
+Only recognized user-scope entries whose entrypoint belongs to claude-delegator
+are considered; local/project entries and unrelated user servers with the same
+short name are left untouched. Each provider is gated independently, so a valid
+partial CLI installation can migrate, and all gates complete before the first
+removal.
 
-`gemini` is in the list because that bridge was removed in 1.5.0 and an old
-registration may still be sitting there.
+`gemini` is in the list because that bridge was replaced by Agy in 1.5.0 and an
+old registration may still be sitting there. Its exact claude-delegator
+entrypoint provenance is required before it is considered, and a connected
+legacy Gemini is removed only after the namespaced Agy bridge is Connected.
 
 The user-scoped plugin makes these dynamically configured servers available
 across projects; they are not separate user-scope `claude mcp add` entries.
@@ -259,7 +364,7 @@ across projects; they are not separate user-scope `claude mcp add` entries.
 ## Step 3: Install Orchestration Rules
 
 ```bash
-mkdir -p ~/.claude/rules/delegator && cp ${CLAUDE_PLUGIN_ROOT}/rules/*.md ~/.claude/rules/delegator/
+mkdir -p ~/.claude/rules/delegator && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.md ~/.claude/rules/delegator/
 ```
 
 ## Step 4: Verify Installation
@@ -296,15 +401,25 @@ check_cli_version() {
 }
 
 check_cli_version "Codex" "codex"
-check_cli_version "Agy" "agy" "$HOME/.local/bin/agy"
-check_cli_version "Kimi" "kimi" "$HOME/.kimi-code/bin/kimi"
-check_cli_version "Grok" "grok" "$HOME/.grok/bin/grok" "$HOME/.local/bin/grok"
 if [ "${OS:-}" = "Windows_NT" ]; then
+  windows_home="${USERPROFILE:-$HOME}"
+  windows_home="${windows_home//\\//}"
+  local_appdata="${LOCALAPPDATA:-}"
+  local_appdata="${local_appdata//\\//}"
+  appdata="${APPDATA:-}"
+  appdata="${appdata//\\//}"
+  check_cli_version "Agy" "agy" "${local_appdata:+$local_appdata/agy/bin/agy.exe}"
+  check_cli_version "Kimi" "kimi" "$windows_home/.kimi-code/bin/kimi.exe" "$windows_home/.kimi-code/bin/kimi.cmd"
+  check_cli_version "Grok" "grok" "$windows_home/.grok/bin/grok.exe"
   check_cli_version "Cursor" "cursor-agent"
+  check_cli_version "Copilot" "copilot" "${appdata:+$appdata/npm/copilot.cmd}"
 else
+  check_cli_version "Agy" "agy" "$HOME/.local/bin/agy"
+  check_cli_version "Kimi" "kimi" "$HOME/.kimi-code/bin/kimi"
+  check_cli_version "Grok" "grok" "$HOME/.grok/bin/grok" "$HOME/.local/bin/grok"
   check_cli_version "Cursor" "cursor-agent" "$HOME/.local/bin/cursor-agent"
+  check_cli_version "Copilot" "copilot" "$HOME/.local/bin/copilot"
 fi
-check_cli_version "Copilot" "copilot" "$HOME/.local/bin/copilot"
 
 # Check 2: all six plugin-owned MCP servers. `claude mcp get` exits zero and
 # prints the configured path even when connection failed, so only Status counts.
@@ -399,7 +514,11 @@ Five experts available:
 │                  │ → Vulnerabilities, threat modeling          │
 └──────────────────┴─────────────────────────────────────────────┘
 
-Every expert can advise or implement. The bridges default to non-interactive `workspace-write`; advisory intent is carried by a clear "do not modify" instruction, while `read-only` is an explicit provider-specific opt-in with the limitations documented above.
+Every expert can advise or implement. The bridges default to non-interactive
+`workspace-write`; advisory intent is carried by a clear "do not modify"
+instruction. `read-only` is a provider-specific opt-in and is not universally
+enforced: consult the installed `model-selection.md` and `orchestration.md`
+rules before relying on it.
 Expert is auto-detected based on your request.
 Explicit: "Ask GPT to...", "Ask Agy to...", "Ask Kimi to...", "Ask Grok to...", "Ask Cursor to...", or "Ask Copilot to..."
 ```

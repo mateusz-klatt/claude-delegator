@@ -21,6 +21,7 @@ const path = require("node:path");
 const { execFileSync, spawn } = require("node:child_process");
 
 const IS_WINDOWS = process.platform === "win32";
+const DEFAULT_WINDOWS_ROOT = "C:\\Windows";
 
 // House timeout contract, asserted by test/provider-config.test.js against the
 // rules file: every bridge advertises exactly these bounds.
@@ -59,11 +60,32 @@ function clampTimeout(timeoutMs) {
 
 // --- Process lifecycle ---
 
-function killProcessTree(child, signal) {
-  if (!child.pid) return;
-  if (IS_WINDOWS) {
+function windowsSystem32Executable(executable, environment = process.env) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(executable)) {
+    throw new Error(`Invalid Windows system executable name: ${executable}`);
+  }
+
+  const configuredRoot = environment.SystemRoot || environment.SYSTEMROOT;
+  const normalizedRoot = typeof configuredRoot === "string"
+    ? configuredRoot.replaceAll("/", "\\")
+    : "";
+  const hasTrustedShape = /^[A-Za-z]:\\/.test(normalizedRoot) &&
+    !/[\u0000-\u001F<>"|?*]/.test(normalizedRoot.slice(2)) &&
+    !normalizedRoot.split("\\").some((segment) => segment === "." || segment === "..");
+  const systemRoot = hasTrustedShape ? path.win32.normalize(normalizedRoot) : DEFAULT_WINDOWS_ROOT;
+  return path.win32.join(systemRoot, "System32", executable);
+}
+
+function killProcessTree(child, signal, {
+  environment = process.env,
+  executeFile = execFileSync,
+  isWindows = IS_WINDOWS
+} = {}) {
+  if (!Number.isInteger(child?.pid) || child.pid <= 0) return;
+  if (isWindows) {
     try {
-      execFileSync("taskkill.exe", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
+      const taskkill = windowsSystem32Executable("taskkill.exe", environment);
+      executeFile(taskkill, ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
     } catch (_error) {
       // The process may already have exited.
     }
@@ -194,31 +216,41 @@ function selectCandidate(groups, isUsable, isWindows = IS_WINDOWS) {
   return undefined;
 }
 
+function pathCandidateGroups(command, environmentPath = process.env.PATH, isWindows = IS_WINDOWS) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(command)) {
+    throw new Error(`Invalid CLI command name: ${command}`);
+  }
+
+  const platformPath = isWindows ? path.win32 : path.posix;
+  const extensions = isWindows ? WINDOWS_EXTENSIONS : [""];
+  const groups = [];
+  if (typeof environmentPath !== "string") return groups;
+
+  for (const rawDirectory of environmentPath.split(platformPath.delimiter)) {
+    const directory = isWindows
+      ? rawDirectory.trim().replace(/^"|"$/g, "")
+      : rawDirectory;
+    if (isWindows && !directory) continue;
+    const absoluteDirectory = platformPath.resolve(directory || ".");
+    groups.push(extensions.map((extension) =>
+      platformPath.join(absoluteDirectory, `${command}${extension}`)
+    ));
+  }
+  return groups;
+}
+
 /**
  * Locate a provider CLI. `fallbacks` are guesses for install locations that are
  * often missing from the minimal PATH an MCP server inherits; they are only ever
- * a last resort, because a guess must never outrank a real hit from
- * `where`/`which` — neither by not existing, nor by carrying a better extension.
+ * a last resort, because a guess must never outrank a real hit from PATH —
+ * neither by not existing, nor by carrying a better extension.
  */
 function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
-  const groups = [];
-  if (IS_WINDOWS) {
-    // Walk PATH directly rather than shelling out to where.exe: this depends on
-    // neither that binary nor on PATHEXT being set as expected. One group per
-    // directory, so the user's PATH order decides before extension preference.
-    for (const rawDirectory of (process.env.PATH || "").split(path.delimiter)) {
-      const directory = rawDirectory.trim().replace(/^"|"$/g, "");
-      if (!directory) continue;
-      groups.push(WINDOWS_EXTENSIONS.map((extension) => path.join(directory, `${command}${extension}`)));
-    }
-  } else {
-    try {
-      const listed = execFileSync("which", [command], { encoding: "utf8" });
-      groups.push(...listed.trim().split(/\r?\n/).filter(Boolean).map((hit) => [hit]));
-    } catch {
-      // Not on PATH; fall through to the explicit candidates below.
-    }
-  }
+  // Inspect PATH as data on both platforms. Invoking `which`/`where` would first
+  // resolve that helper through the same caller-controlled PATH we are trying to
+  // inspect, allowing an unrelated executable to run before the provider CLI.
+  // One group per directory preserves PATH precedence.
+  const groups = pathCandidateGroups(command);
   groups.push(...fallbacks.map((fallback) => [fallback]));
 
   // The Windows branch had no equivalent of the POSIX X_OK filter: it accepted
@@ -537,6 +569,7 @@ module.exports = {
   isNonEmptyString,
   isObject,
   killProcessTree,
+  pathCandidateGroups,
   resolveCli,
   resolveWindowsShim,
   runStdioLoop,

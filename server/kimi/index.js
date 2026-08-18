@@ -14,17 +14,14 @@ const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
   appendCoordinationInstructions,
-  coordinationMetadata,
-  coordinationSchema,
-  validateCoordination
+  coordinationSchema
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
-const { resultText } = require("../shared/result");
+const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
   IS_WINDOWS, clampTimeout, isNonEmptyString, isObject, resolveCli,
-  runStdioLoop, sendError, sendResponse, superviseChild, timeoutSchema,
-  validateCommonArgs
+  superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_KIMI_DEPTH");
@@ -179,179 +176,62 @@ function cliFallbacks() {
   return [path.join(home, ".kimi-code", "bin", "kimi.exe"), path.join(home, ".kimi-code", "bin", "kimi.cmd")];
 }
 
-const handlers = {
-  "initialize": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-kimi", version: PACKAGE_VERSION }
-    });
-  },
+function buildStartArgs(args, coordination) {
+  let prompt = args.prompt;
+  if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
+  return ["-m", args.model || DEFAULT_MODEL, "-p", appendCoordinationInstructions(prompt, coordination)];
+}
 
-  "tools/list": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      tools: KIMI_TOOLS
-    });
-  },
+function buildReplyArgs(args, coordination, threadId) {
+  // -S resumes an explicit id. --continue is never used: it resumes "the
+  // previous session for the working directory", which would cross-talk
+  // between concurrent delegations sharing a cwd.
+  const kimiArgs = ["-S", threadId];
+  if (args.model !== undefined) kimiArgs.push("-m", args.model);
+  kimiArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
+  return kimiArgs;
+}
 
-  "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
-      return;
-    }
+function validateKimiArgs(_name, args) {
+  // Refuse rather than accept a value that would change nothing. kimi print
+  // mode rejects --plan/--yolo/--auto outright and always runs tools, so
+  // honouring read-only is impossible; silently ignoring it would advertise a
+  // guarantee the caller could act on.
+  if (args.sandbox === "read-only") {
+    return "Invalid params: 'sandbox: read-only' is not supported by Kimi. Print mode has no permission tier — it rejects --plan, --yolo and --auto, and always runs tools unattended. Use 'workspace-write' and carry a do-not-modify instruction in developer-instructions, or delegate to a provider that can enforce denial.";
+  }
+  if (args.model !== undefined && !isNonEmptyString(args.model)) {
+    return "Invalid params: 'model' must be a non-empty string when provided";
+  }
+  return null;
+}
 
-    const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if ((name === "kimi" || name === "kimi-reply") && depth.exceeded()) {
-      if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Kimi session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
-      }
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-    if (args.sandbox !== undefined && !VALID_SANDBOX_VALUES.has(args.sandbox)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'sandbox' must be 'read-only' or 'workspace-write'");
-      return;
-    }
-    if (args.sandbox === "read-only") {
-      // Refuse rather than accept a value that would change nothing. kimi print
-      // mode rejects --plan/--yolo/--auto outright and always runs tools, so
-      // honouring read-only is impossible; silently ignoring it would advertise
-      // a guarantee the caller could act on.
-      if (shouldRespond) {
-        sendError(id, -32602, "Invalid params: 'sandbox: read-only' is not supported by Kimi. Print mode has no permission tier — it rejects --plan, --yolo and --auto, and always runs tools unattended. Use 'workspace-write' and carry a do-not-modify instruction in developer-instructions, or delegate to a provider that can enforce denial.");
-      }
-      return;
-    }
-    const commonError = validateCommonArgs(args);
-    if (commonError) {
-      if (shouldRespond) sendError(id, -32602, commonError);
-      return;
-    }
-    if (args.model !== undefined && !isNonEmptyString(args.model)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'model' must be a non-empty string when provided");
-      return;
-    }
-
-    let coordination;
-    try {
-      coordination = validateCoordination(args.coordination);
-    } catch (e) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
-      return;
-    }
-
-    try {
-      const kimiArgs = [];
-      let expectedThreadId;
-
-      if (name === "kimi") {
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-        if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'developer-instructions' must be a string when provided");
-          return;
-        }
-
-        kimiArgs.push("-m", args.model || DEFAULT_MODEL);
-
-        let prompt = args.prompt;
-        if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
-        prompt = appendCoordinationInstructions(prompt, coordination);
-        kimiArgs.push("-p", prompt);
-      } else if (name === "kimi-reply") {
-        if (!isNonEmptyString(args.threadId)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' is required for kimi-reply");
-          return;
-        }
-        const threadId = args.threadId.trim();
-        if (threadId === "latest" || threadId === "unknown") {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' must be an explicit session id");
-          return;
-        }
-        if (!isNonEmptyString(args.prompt)) {
-          if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-          return;
-        }
-
-        expectedThreadId = threadId;
-        // -S resumes an explicit id. --continue is never used: it resumes
-        // "the previous session for the working directory", which would cross
-        // -talk between concurrent delegations sharing a cwd.
-        kimiArgs.push("-S", threadId);
-        if (args.model !== undefined) kimiArgs.push("-m", args.model);
-        kimiArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
-      } else {
-        if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-        return;
-      }
-
-      const abortController = new AbortController();
-      if (shouldRespond) activeRequests.set(id, abortController);
-      let result;
-      try {
-        result = await runKimi(kimiArgs, args.cwd, args.timeout, abortController.signal, expectedThreadId);
-      } finally {
-        if (shouldRespond) activeRequests.delete(id);
-      }
-      const { response, threadId } = result;
-
-      if (!shouldRespond) return;
-
-      if (threadId === "unknown" && name === "kimi") {
-        sendResponse(id, {
-          content: [{ type: "text", text: resultText(threadId, response + "\n\n(Warning: no session id returned — multi-turn reply will not be available)") }],
-          threadId: threadId,
-          ...coordinationMetadata(coordination)
-        });
-      } else {
-        sendResponse(id, {
-          content: [{ type: "text", text: resultText(threadId, response) }],
-          threadId: threadId,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    } catch (e) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    }
-  },
-
-  "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
-    activeRequests.get(params.requestId)?.abort();
-  },
-  "notifications/initialized": () => {}
-};
+const handlers = createProviderHandlers({
+  activeRequests,
+  buildReplyArgs,
+  buildStartArgs,
+  depth,
+  displayName: "Kimi",
+  packageVersion: PACKAGE_VERSION,
+  provider: "kimi",
+  run: runKimi,
+  tools: KIMI_TOOLS,
+  validateProviderArgs: validateKimiArgs
+});
 
 // --- Main Loop (Robust JSON-RPC stream handling) ---
 
 if (require.main === module) {
-  runStdioLoop({ handlers, activeRequests, activeChildren });
-
   // Kimi Code installs to ~/.kimi-code/bin, frequently absent from the minimal
   // PATH an MCP server inherits.
-  try {
-    KIMI_BIN = resolveCli("kimi", { fallbacks: cliFallbacks() });
-  } catch (error) {
-    console.error(`Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`);
-    process.exit(1);
-  }
+  startProviderRuntime({
+    activeChildren,
+    activeRequests,
+    handlers,
+    missingCliMessage: (error) => `Kimi CLI not found. Install Kimi Code and ensure 'kimi' is on PATH. (${error.message})`,
+    resolveBinary: () => resolveCli("kimi", { fallbacks: cliFallbacks() }),
+    setBinary: (binary) => { KIMI_BIN = binary; }
+  });
 }
 
 module.exports = {

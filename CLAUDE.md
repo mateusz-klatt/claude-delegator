@@ -62,7 +62,18 @@ Retries use multi-turn (`*-reply` with `threadId`) so the expert remembers previ
 - Up to 3 attempts → then escalate to user
 - Fallback: new call with full history if multi-turn unavailable
 
-Reply calls do not inherit optional MCP arguments: repeat `sandbox` for permission continuity. Agy must also repeat `model` and `cwd`; Kimi must keep a non-default start `cwd`; Cursor must keep the same workspace `cwd`.
+Reply calls are new MCP invocations, so repeat defaulted arguments such as
+`sandbox` for permission continuity. Agy must also repeat `model` and `cwd`;
+Kimi must keep a non-default start `cwd`; Cursor must keep the same workspace
+`cwd`. The deliberate exception is `effort` on Claude and Copilot replies:
+omit it to inherit the resumed session's effort, and pass it only to override
+that effort.
+
+Result text is provider-specific. Native Codex leaves the expert response as
+plain `content[0].text` and exposes the resumable id as `result.threadId` and/or
+`result.structuredContent.threadId`. The six custom bridges (Claude, Agy, Kimi,
+Grok, Cursor, and Copilot) instead place a JSON
+`{"threadId":"...","content":"..."}` envelope in `content[0].text`.
 
 ### Component Relationships
 
@@ -70,7 +81,7 @@ Reply calls do not inherit optional MCP arguments: repeat `sandbox` for permissi
 |-----------|---------|-------|
 | `rules/*.md` | When/how to delegate | Installed to `~/.claude/rules/delegator/` |
 | `prompts/*.md` | Expert personalities | Injected via `developer-instructions` |
-| `prompts/agent-mail-coordination.md` | Optional progress-reporting contract | Injected only with a complete caller envelope |
+| `prompts/agent-mail-coordination.md` | Optional progress-reporting contract | Injected exactly once by a custom bridge; embedded in a native Codex prompt only when needed |
 | `commands/*.md` | Slash commands | `/setup`, `/uninstall` |
 | `config/providers.json` | Provider metadata | Discovery/documentation metadata |
 | `config/model-catalog.json` | Empirically discovered per-CLI model roster | Consumed by bridges and documentation |
@@ -95,7 +106,7 @@ Reply calls do not inherit optional MCP arguments: repeat `sandbox` for permissi
 | **Code Reviewer** | `prompts/code-reviewer.md` | Code quality, bugs | "review this code", "find issues" |
 | **Security Analyst** | `prompts/security-analyst.md` | Vulnerabilities | "is this secure", "harden this" |
 
-Every expert can operate in **advisory** or **implementation** mode. Delegated CLIs default to non-interactive full access so nested approval prompts cannot block the parent; advisory mode is carried by an explicit "do not modify" instruction. The custom bridges expose `workspace-write` as that default full-tool mode. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies shell but not writes, Cursor deflects rather than enforces, and Kimi refuses the value (decisions 11, 12, 14, and 16).
+Every expert can operate in **advisory** or **implementation** mode. Delegated CLIs default to non-interactive full access so nested approval prompts cannot block the parent; advisory mode is carried by an explicit "do not modify" instruction. The plugin-owned native Codex target is pinned to `danger-full-access` with approval policy `never`; the six custom bridges expose `workspace-write` as their default full-tool mode. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies shell but not writes, Cursor deflects rather than enforces, and Kimi refuses the value (decisions 11, 12, 14, and 16).
 
 ## Key Design Decisions
 
@@ -104,9 +115,9 @@ Every expert can operate in **advisory** or **implementation** mode. Delegated C
 3. **Dual mode** - Any expert can advise or implement based on task
 4. **Synthesize, don't passthrough** - Claude interprets expert output, applies judgment
 5. **Proactive triggers** - Claude checks for delegation triggers on every message
-6. **Copilot effort levels** - Copilot supports `--effort` from `none` through `max`, but backend support is model-specific. Delegation defaults to `max`; `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`.
+6. **Copilot effort levels** - Copilot supports `--effort` from `none` through `max`, but backend support is model-specific. Start calls default to `max`; `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`. A reply does not know the model, so omit `effort` to retain the session setting; an explicit reply override is forwarded without the start-only floor.
 7. **Copilot disk persistence** - Unlike Codex (in-memory), Copilot persists session state to `~/.copilot/session-state/`, surviving process restarts
-8. **Conditional Agent Mail progress** - Callers pass `{projectKey, callerAgentName, mailTopic?, checkpointIntervalSeconds?}` without credentials or caller-provided mail thread ids. The callee replies to its own first checkpoint so Agent Mail maintains the thread internally; the provider session `threadId` remains separate. A target uses MCP Agent Mail only when already available and otherwise completes normally.
+8. **Conditional Agent Mail progress** - Callers pass `{projectKey, callerAgentName, mailTopic?, checkpointIntervalSeconds?}` without credentials or caller-provided mail thread ids. For Claude, Agy, Kimi, Grok, Cursor, and Copilot, pass that envelope only through the `coordination` argument; the custom bridge injects the canonical contract exactly once. Native Codex has no `coordination` argument, so embed the envelope and contract in its task prompt only when reporting is needed. The callee replies to its own first checkpoint so Agent Mail maintains the thread internally; the provider session `threadId` remains separate. A target uses MCP Agent Mail only when already available and otherwise completes normally.
 
     **Delegates keep their mailboxes, by operator decision.** The per-client hooks that give a delegated CLI its own registered identity are wanted, not tolerated: a delegate that grinds for a long time can write progress into the mail, which is the only channel that exists while it is blocked. The pattern that makes this pay off is **main agent → native subagent → delegate**: the delegate blocks the subagent rather than the main loop, so the main agent stays free to read mail and its monitor keeps delivering, and the progress arrives in real time instead of at the end. This is why `rules/delegation-format.md` requires a subagent acting as a runner to forward the original caller envelope unchanged — the envelope is what routes those checkpoints back to a reader who is still awake.
 

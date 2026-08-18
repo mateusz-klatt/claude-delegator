@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-08-17; installed CLI versions were rechecked on 2026-08-18 (agy via `agy models`, copilot via `copilot help config`, codex via its models cache). Claude's roster is corroborated against the CLI bundle because its selector is interactive. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-08-17 for the catalog snapshot. CLI versions were rechecked on 2026-08-18; Agy alone was re-enumerated that day after its version changed and returned the same 14 ids, while Claude's four ids were re-corroborated against its CLI bundle and the remaining rosters retain their 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -384,12 +384,12 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
 | `model` | One of the 27 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.80) |
-| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Reasoning effort level. Default: `max`; verified per-model floors and ceilings are applied server-side |
+| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; verified per-model floors and ceilings are applied on start |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; its backend rejects `minimal`, while `low` and `max` completed live calls, so the bridge floors both `none` and `minimal` to `low`. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5` for a cross-family second opinion, and `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; its backend rejects `minimal`, while `low` and `max` completed live starts, so the bridge floors both `none` and `minimal` to `low` on start calls. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded without that start-only floor. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5` for a cross-family second opinion, and `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
 ## Claude Parameters Reference (external orchestrators)
 
@@ -397,7 +397,7 @@ The Claude bridge wraps Claude Code 2.1.234 with the same start/reply contract u
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
-| `prompt` | string | **Required.** Full delegation prompt, including optional coordination envelope |
+| `prompt` | string | **Required.** Full delegation prompt; pass optional Agent Mail coordination through `coordination`, not by duplicating it here |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `model` | `opus`, `fable`, `sonnet`, `haiku`, or their full IDs | Override the default `claude-opus-5` model |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Default: `xhigh` |
@@ -433,18 +433,19 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
 
-### Response Format (all providers)
+### Response Format
 
 | Field | Type | Description |
 |-------|------|-------------|
-| MCP result `content` | content-block array | The visible tool response; its first text block carries the bridge envelope |
-| Envelope `threadId` | string | Session ID for multi-turn follow-ups |
-| Envelope `content` | string | Expert response text inside the JSON envelope |
+| MCP result `content` | content-block array | The visible tool response; interpret its first text block according to the provider contract below |
+| Envelope `threadId` | string | Session ID for multi-turn follow-ups through a custom bridge |
+| Envelope `content` | string | Expert response text inside the custom bridge JSON envelope |
 
-Native Codex may additionally expose `structuredContent.content`; do not depend on
-that sibling field because MCP clients can strip it before the orchestrator sees it.
+Native Codex leaves the expert response as plain text in `content[0].text`; do
+not JSON-parse it. Its resumable id is exposed separately as top-level
+`result.threadId` and/or `result.structuredContent.threadId`.
 
-The six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`, mirroring native Codex output. MCP clients strip sibling result fields before the model sees them, so the text envelope is the only way the orchestrator learns the `threadId` needed for `*-reply` calls — parse it from the text rather than expecting a separate field.
+The six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`. Parse that text to obtain the `threadId` needed for their `*-reply` calls; unlike native Codex, the custom contract does not require a sibling result field to survive the MCP client.
 
 ## When NOT to Delegate
 

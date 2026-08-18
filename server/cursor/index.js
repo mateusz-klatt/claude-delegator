@@ -13,17 +13,14 @@ const { version: PACKAGE_VERSION } = require("../../package.json");
 const modelCatalog = require("../../config/model-catalog.json");
 const {
   appendCoordinationInstructions,
-  coordinationMetadata,
-  coordinationSchema,
-  validateCoordination
+  coordinationSchema
 } = require("../shared/coordination");
 const { buildCalleeEnv } = require("../shared/environment");
-const { resultText } = require("../shared/result");
+const { createProviderHandlers, startProviderRuntime } = require("../shared/provider-runtime");
 
 const {
   IS_WINDOWS, VALID_SANDBOX_VALUES, clampTimeout, homedir, isNonEmptyString,
-  isObject, resolveCli, runStdioLoop, sendError, sendResponse, superviseChild,
-  timeoutSchema, validateCommonArgs
+  isObject, resolveCli, superviseChild, timeoutSchema
 } = core;
 
 const depth = core.createDepthGuard("CLAUDE_DELEGATOR_CURSOR_DEPTH");
@@ -314,148 +311,45 @@ function buildReplyArgs(args, coordination, threadId) {
   return cursorArgs;
 }
 
-function validateArgs(name, args) {
-  const commonError = validateCommonArgs(args);
-  if (commonError) return commonError;
-  if (!isNonEmptyString(args.prompt)) return "Invalid params: 'prompt' is required";
-
-  if (name === "cursor") {
-    if (args.model !== undefined && !isNonEmptyString(args.model)) {
-      return "Invalid params: 'model' must be a non-empty string when provided";
-    }
-    if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-      return "Invalid params: 'developer-instructions' must be a string when provided";
-    }
-    return null;
-  }
-
-  if (!isNonEmptyString(args.threadId)) return "Invalid params: 'threadId' is required for cursor-reply";
-  const threadId = args.threadId.trim();
-  if (threadId === "latest" || threadId === "unknown") {
-    return "Invalid params: 'threadId' must be an explicit session id";
+function validateCursorArgs(name, args) {
+  if (name === "cursor" && args.model !== undefined && !isNonEmptyString(args.model)) {
+    return "Invalid params: 'model' must be a non-empty string when provided";
   }
   return null;
 }
 
-const handlers = {
-  "initialize": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "claude-delegator-cursor", version: PACKAGE_VERSION }
-    });
-  },
-
-  "tools/list": (id, _params, shouldRespond) => {
-    if (!shouldRespond) return;
-    sendResponse(id, { tools: CURSOR_TOOLS });
-  },
-
-  "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
-      return;
-    }
-
-    const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if (name !== "cursor" && name !== "cursor-reply") {
-      if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-      return;
-    }
-    if (depth.exceeded()) {
-      if (shouldRespond) {
-        sendError(id, -32603, `Refusing to delegate: this bridge is already running inside a delegated Cursor session (${depth.envVar}=${depth.current()}). Complete the work here instead of delegating further.`);
-      }
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-
-    const problem = validateArgs(name, args);
-    if (problem) {
-      if (shouldRespond) sendError(id, -32602, problem);
-      return;
-    }
-
-    let coordination;
-    try {
-      coordination = validateCoordination(args.coordination);
-    } catch (e) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${e.message}`);
-      return;
-    }
-
-    try {
-      const expectedThreadId = name === "cursor-reply" ? args.threadId.trim() : undefined;
-      const cursorArgs = name === "cursor"
-        ? buildStartArgs(args, coordination)
-        : buildReplyArgs(args, coordination, expectedThreadId);
-
-      const abortController = new AbortController();
-      if (shouldRespond) activeRequests.set(id, abortController);
-      let result;
-      try {
-        result = await runCursor(cursorArgs, args.cwd, args.timeout, abortController.signal, expectedThreadId);
-      } finally {
-        if (shouldRespond) activeRequests.delete(id);
-      }
-
-      if (!shouldRespond) return;
-      const { response, threadId } = result;
-      const warning = threadId === "unknown" && name === "cursor"
-        ? "\n\n(Warning: no session id returned — multi-turn reply will not be available)"
-        : "";
-
-      sendResponse(id, {
-        content: [{ type: "text", text: resultText(threadId, response + warning) }],
-        threadId: threadId,
-        ...coordinationMetadata(coordination)
-      });
-    } catch (e) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    }
-  },
-
-  "notifications/cancelled": (_id, params) => {
-    if (!isObject(params) || !Object.hasOwn(params, "requestId")) return;
-    activeRequests.get(params.requestId)?.abort();
-  },
-  "notifications/initialized": () => {}
-};
+const handlers = createProviderHandlers({
+  activeRequests,
+  buildReplyArgs,
+  buildStartArgs,
+  depth,
+  displayName: "Cursor",
+  packageVersion: PACKAGE_VERSION,
+  provider: "cursor",
+  run: runCursor,
+  tools: CURSOR_TOOLS,
+  validateProviderArgs: validateCursorArgs
+});
 
 // --- Main loop ---
 
 if (require.main === module) {
-  runStdioLoop({ handlers, activeRequests, activeChildren });
-
-  try {
-    CURSOR_BIN = resolveCli("cursor-agent", { fallbacks: cliFallbacks(), aliases: ["agent"] });
-  } catch (error) {
+  startProviderRuntime({
+    activeChildren,
+    activeRequests,
+    handlers,
+    resolveBinary: () => resolveCli("cursor-agent", { fallbacks: cliFallbacks(), aliases: ["agent"] }),
+    setBinary: (binary) => { CURSOR_BIN = binary; },
     // The message names the CLI, but on macOS the cause can be a locked login
     // keychain instead: cursor-agent --version touches it, and resolveCli runs
     // exactly that to validate the binary at startup. A locked keychain makes
     // the validation throw, so the bridge exits before serving and the MCP
     // client sees CONNECTION_CLOSED — the same false-negative shape as a missing
     // --trust. Name the second cause so it is not debugged as the first.
-    console.error(
+    missingCliMessage: (error) =>
       `Cursor Agent CLI not found. Install it and ensure 'cursor-agent' is on PATH. (${error.message})` +
-        " On macOS a locked login keychain produces this same message: cursor-agent --version touches the keychain and the bridge runs that to validate the CLI at startup — unlock the login keychain and retry."
-    );
-    process.exit(1);
-  }
+      " On macOS a locked login keychain produces this same message: cursor-agent --version touches the keychain and the bridge runs that to validate the CLI at startup — unlock the login keychain and retry."
+  });
 }
 
 module.exports = {

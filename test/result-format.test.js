@@ -23,25 +23,31 @@ test("resultText survives quotes, newlines, and non-ASCII content", () => {
 });
 
 test("every bridge embeds threadId in the success text envelope", () => {
-  for (const bridge of ["claude", "agy", "kimi", "copilot", "grok", "cursor"]) {
+  const runtime = fs.readFileSync(
+    path.resolve(__dirname, "../server/shared/provider-runtime.js"),
+    "utf8"
+  );
+  assert.match(runtime, /require\("\.\/result(?:\.js)?"\)/);
+  assert.match(runtime, /text: resultText\(threadId, /);
+  assert.doesNotMatch(runtime, /text: response/);
+
+  for (const bridge of ["agy", "kimi", "copilot", "grok", "cursor"]) {
     const source = fs.readFileSync(
       path.resolve(__dirname, `../server/${bridge}/index.js`),
       "utf8"
     );
     assert.match(
       source,
-      /require\("\.\.\/shared\/result(?:\.js)?"\)/,
-      `${bridge} bridge imports the shared result envelope`
-    );
-    assert.match(
-      source,
-      /text: resultText\(threadId, /,
-      `${bridge} bridge wraps success responses in resultText`
-    );
-    assert.doesNotMatch(
-      source,
-      /text: response/,
-      `${bridge} bridge has no bare success text without the envelope`
+      /require\("\.\.\/shared\/provider-runtime(?:\.js)?"\)/,
+      `${bridge} bridge uses the runtime that wraps success responses in resultText`
     );
   }
+
+  const claude = fs.readFileSync(
+    path.resolve(__dirname, "../server/claude/index.js"),
+    "utf8"
+  );
+  assert.match(claude, /require\("\.\.\/shared\/result(?:\.js)?"\)/);
+  assert.match(claude, /text: resultText\(threadId, /);
+  assert.doesNotMatch(claude, /text: response/);
 });
