@@ -560,10 +560,12 @@ test("falls back to the stable launcher and never to a versioned path", () => {
   const fallbacks = cliFallbacks();
 
   if (process.platform === "win32") {
-    // Deliberately empty: cursor-agent's Windows install directory has not been
-    // measured on any host here, and a guess is the WinGet\Packages mistake
-    // removed in 1.7.0. PATH still finds it wherever the installer put it.
-    assert.deepEqual(fallbacks, []);
+    const localAppData = process.env.LOCALAPPDATA;
+    const root = typeof localAppData === "string" ? localAppData.trim() : "";
+    const expected = root && path.win32.isAbsolute(root)
+      ? [path.win32.join(root, "cursor-agent", "cursor-agent.cmd")]
+      : [];
+    assert.deepEqual(fallbacks, expected);
     return;
   }
 
@@ -576,6 +578,32 @@ test("falls back to the stable launcher and never to a versioned path", () => {
     assert.doesNotMatch(fallback, /versions/);
     assert.ok(path.isAbsolute(fallback));
   }
+});
+
+test("uses the measured Windows fallback and follows its sibling PowerShell launcher", () => {
+  const { cliFallbacks, resolveWindowsShim } = require("./index.js");
+  const localAppData = "C:\\Users\\mateu\\AppData\\Local";
+  const [fallback] = cliFallbacks({
+    environment: { LOCALAPPDATA: localAppData },
+    isWindows: true
+  });
+
+  assert.equal(fallback, `${localAppData}\\cursor-agent\\cursor-agent.cmd`);
+  assert.equal(path.win32.isAbsolute(fallback), true);
+  assert.deepEqual(cliFallbacks({ environment: {}, isWindows: true }), []);
+  assert.deepEqual(
+    cliFallbacks({ environment: { LOCALAPPDATA: "relative\\profile" }, isWindows: true }),
+    []
+  );
+
+  const shim = fs.readFileSync(
+    path.join(__dirname, "..", "..", "test", "fixtures", "cursor-agent.cmd"),
+    "utf8"
+  );
+  assert.equal(
+    resolveWindowsShim(fallback, () => shim),
+    `${localAppData}\\cursor-agent\\cursor-agent.ps1`
+  );
 });
 
 test("expands the Windows shim to the PowerShell script it wraps", () => {

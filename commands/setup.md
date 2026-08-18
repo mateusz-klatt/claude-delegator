@@ -36,6 +36,23 @@ Node process, so provider CLI checks cannot compensate for an unsupported runtim
 ```bash
 if command -v codex >/dev/null 2>&1; then
   codex --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  local_appdata="${LOCALAPPDATA:-}"
+  local_appdata="${local_appdata//\\//}"
+  appdata="${APPDATA:-}"
+  appdata="${appdata//\\//}"
+  codex_fallback=""
+  for candidate in "${local_appdata:+$local_appdata/Programs/OpenAI/Codex/bin/codex.exe}" "${appdata:+$appdata/npm/codex.cmd}"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      codex_fallback="$candidate"
+      break
+    fi
+  done
+  if [ -n "$codex_fallback" ]; then
+    "$codex_fallback" --version 2>&1 | head -1
+  else
+    echo "CODEX_MISSING"
+  fi
 else
   echo "CODEX_MISSING"
 fi
@@ -113,6 +130,14 @@ fi
 # means the CLI is present but cannot start until the keychain is unlocked.
 if command -v cursor-agent >/dev/null 2>&1; then
   cursor-agent --version 2>&1 | head -1
+elif [ "${OS:-}" = "Windows_NT" ]; then
+  cursor_fallback="${LOCALAPPDATA:-}"
+  cursor_fallback="${cursor_fallback//\\//}/cursor-agent/cursor-agent.cmd"
+  if [ -n "${LOCALAPPDATA:-}" ] && [ -x "$cursor_fallback" ]; then
+    "$cursor_fallback" --version 2>&1 | head -1
+  else
+    echo "CURSOR_MISSING"
+  fi
 elif [ "${OS:-}" != "Windows_NT" ] && [ -x "$HOME/.local/bin/cursor-agent" ]; then
   "$HOME/.local/bin/cursor-agent" --version 2>&1 | head -1
 else
@@ -146,6 +171,7 @@ fi
 Codex CLI not found.
 Install with: npm install -g @openai/codex
 Then authenticate: codex login
+On Windows, measured fallbacks are %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe and %APPDATA%\npm\codex.cmd.
 ```
 
 **Agy Missing:**
@@ -182,7 +208,7 @@ Cursor Agent CLI not found.
 Install Cursor Agent; on POSIX it typically lands in ~/.local/bin/cursor-agent.
 Then authenticate: cursor-agent login
 On macOS, unlock the login keychain if even `cursor-agent --version` fails.
-On Windows, only PATH is supported; no install-location fallback has been measured.
+On Windows, the measured fallback is %LOCALAPPDATA%\cursor-agent\cursor-agent.cmd.
 ```
 
 **Copilot Missing:**
@@ -217,9 +243,9 @@ That was there because an MCP server inherits a minimal PATH, and it is no longe
 load-bearing on measured install locations: bridges use absolute
 install-location fallbacks (`cliFallbacks()`), covering `~/.local/bin`, Grok's
 `~/.grok/bin`, and Kimi's `~/.kimi-code/bin`. On Windows that includes Agy under
-`%LOCALAPPDATA%`, Kimi and Grok under the user's home, and the npm Copilot shim
-under `%APPDATA%`. Cursor on Windows remains PATH-only because its install
-directory has not been measured; the bridge ships no guessed fallback.
+`%LOCALAPPDATA%`, Kimi and Grok under the user's home, the packaged Codex and
+Cursor launchers under `%LOCALAPPDATA%`, and npm Codex/Copilot shims under
+`%APPDATA%`. These are measured stable locations, not guessed package versions.
 `test/provider-config.test.js` holds that guarantee.
 
 ### Clearing registrations from an older install
@@ -260,9 +286,9 @@ if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 }
 NODE
 
-# 1c. Discover only user-scoped bare registrations that point at an old
-#     claude-delegator entrypoint. Same-named servers owned by another project
-#     are deliberately ignored.
+# 1c. Discover only user-scoped bare registrations created by the pre-1.9 setup:
+#     their entrypoint must have the exact historical marketplace-cache lineage.
+#     Same-named servers in independent clones are deliberately ignored.
 legacy_servers="$(
   node - <<'NODE'
 const fs = require("node:fs");
@@ -279,15 +305,25 @@ try {
   throw error;
 }
 const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+function isHistoricalEntrypoint(value, name) {
+  const parts = value.replaceAll("\\", "/").split("/").filter(Boolean);
+  for (let i = 0; i + 7 < parts.length; i += 1) {
+    if (parts[i] !== "plugins" || parts[i + 1] !== "cache") continue;
+    if (parts[i + 2] !== "jarrodwatts-claude-delegator") continue;
+    if (parts[i + 3] !== "claude-delegator" || !cacheVersion.test(parts[i + 4])) continue;
+    if (parts[i + 5] !== "server" || parts[i + 6] !== name) continue;
+    const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
+    if (i + 8 === parts.length && allowedEntrypoints.includes(parts[i + 7])) return true;
+  }
+  return false;
+}
 for (const name of legacy) {
   const entry = user.mcpServers?.[name];
   if (!entry) continue;
   const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
-    .filter((value) => typeof value === "string")
-    .map((value) => value.replaceAll("\\", "/"));
-  const oldEntrypoint = `/server/${name}/`;
-  if (candidates.some((value) =>
-    value.split("/").includes("claude-delegator") && value.includes(oldEntrypoint))) {
+    .filter((value) => typeof value === "string");
+  if (candidates.some((value) => isHistoricalEntrypoint(value, name))) {
     console.log(name);
   }
 }
@@ -347,11 +383,11 @@ predates this change, because a cache from an earlier version has no `mcpServers
 block to fall back on — and the symptom is `CONNECTION_CLOSED`, the same one two
 unrelated defects already produced today. Updating first means you are briefly
 carrying duplicates, which is harmless, instead of briefly carrying nothing.
-Only recognized user-scope entries whose entrypoint belongs to claude-delegator
-are considered; local/project entries and unrelated user servers with the same
-short name are left untouched. Each provider is gated independently, so a valid
-partial CLI installation can migrate, and all gates complete before the first
-removal.
+Only recognized user-scope entries with the exact historical marketplace-cache
+lineage are considered; local/project entries, independent clones, and unrelated
+user servers with the same short name are left untouched for manual inspection.
+Each provider is gated independently, so a valid partial CLI installation can
+migrate, and all gates complete before the first removal.
 
 `gemini` is in the list because that bridge was replaced by Agy in 1.5.0 and an
 old registration may still be sitting there. Its exact claude-delegator
@@ -364,7 +400,8 @@ across projects; they are not separate user-scope `claude mcp add` entries.
 ## Step 3: Install Orchestration Rules
 
 ```bash
-mkdir -p "$HOME/.claude/rules/delegator" && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.md "$HOME/.claude/rules/delegator/"
+rules_root="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/delegator"
+mkdir -p "$rules_root" && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.md "$rules_root/"
 ```
 
 ## Step 4: Verify Installation
@@ -372,6 +409,8 @@ mkdir -p "$HOME/.claude/rules/delegator" && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.m
 Run these checks and report results:
 
 ```bash
+rules_root="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/delegator"
+
 # Check 1: CLI versions, including measured install-location fallbacks.
 check_cli_version() {
   label="$1"
@@ -400,7 +439,6 @@ check_cli_version() {
   fi
 }
 
-check_cli_version "Codex" "codex"
 if [ "${OS:-}" = "Windows_NT" ]; then
   windows_home="${USERPROFILE:-$HOME}"
   windows_home="${windows_home//\\//}"
@@ -408,12 +446,14 @@ if [ "${OS:-}" = "Windows_NT" ]; then
   local_appdata="${local_appdata//\\//}"
   appdata="${APPDATA:-}"
   appdata="${appdata//\\//}"
+  check_cli_version "Codex" "codex" "${local_appdata:+$local_appdata/Programs/OpenAI/Codex/bin/codex.exe}" "${appdata:+$appdata/npm/codex.cmd}"
   check_cli_version "Agy" "agy" "${local_appdata:+$local_appdata/agy/bin/agy.exe}"
   check_cli_version "Kimi" "kimi" "$windows_home/.kimi-code/bin/kimi.exe" "$windows_home/.kimi-code/bin/kimi.cmd"
   check_cli_version "Grok" "grok" "$windows_home/.grok/bin/grok.exe"
-  check_cli_version "Cursor" "cursor-agent"
+  check_cli_version "Cursor" "cursor-agent" "${local_appdata:+$local_appdata/cursor-agent/cursor-agent.cmd}"
   check_cli_version "Copilot" "copilot" "${appdata:+$appdata/npm/copilot.cmd}"
 else
+  check_cli_version "Codex" "codex"
   check_cli_version "Agy" "agy" "$HOME/.local/bin/agy"
   check_cli_version "Kimi" "kimi" "$HOME/.kimi-code/bin/kimi"
   check_cli_version "Grok" "grok" "$HOME/.grok/bin/grok" "$HOME/.local/bin/grok"
@@ -441,8 +481,13 @@ do
   fi
 done
 
-# Check 3: Rules installed (count files)
-ls ~/.claude/rules/delegator/*.md 2>/dev/null | wc -l
+# Check 3: Rules installed (count files, without GNU-only find flags)
+rule_count=0
+for rule in "$rules_root"/*.md; do
+  [ -f "$rule" ] || continue
+  rule_count=$((rule_count + 1))
+done
+printf '%s\n' "$rule_count"
 
 # Check 4: Codex auth status
 codex login status 2>&1 | head -1 || echo "Codex: Run 'codex login'"
@@ -468,7 +513,7 @@ Kimi MCP:       [status from check 2]
 Grok MCP:       [status from check 2]
 Cursor MCP:     [status from check 2]
 Copilot MCP:    [status from check 2]
-Rules:          ✓ [N] files from check 3 in ~/.claude/rules/delegator/
+Rules:          ✓ [N] files from check 3 in [resolved rules_root]
 Codex Auth:     [status from check 4]
 ───────────────────────────────────────────────────
 ```

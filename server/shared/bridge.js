@@ -22,6 +22,7 @@ const { execFileSync, spawn } = require("node:child_process");
 
 const IS_WINDOWS = process.platform === "win32";
 const DEFAULT_WINDOWS_ROOT = "C:\\Windows";
+const CLI_VERSION_TIMEOUT_MS = 10_000;
 
 // House timeout contract, asserted by test/provider-config.test.js against the
 // rules file: every bridge advertises exactly these bounds.
@@ -60,9 +61,14 @@ function clampTimeout(timeoutMs) {
 
 // --- Process lifecycle ---
 
-function windowsSystem32Executable(executable, environment = process.env) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(executable)) {
-    throw new Error(`Invalid Windows system executable name: ${executable}`);
+function windowsSystem32Executable(executable, environment = process.env, subdirectories = []) {
+  const components = Array.isArray(subdirectories)
+    ? [...subdirectories, executable]
+    : [executable];
+  if (!Array.isArray(subdirectories) || components.some(
+    (component) => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(component)
+  )) {
+    throw new Error(`Invalid Windows system executable path: ${components.join("/")}`);
   }
 
   const configuredRoot = environment.SystemRoot || environment.SYSTEMROOT;
@@ -73,7 +79,7 @@ function windowsSystem32Executable(executable, environment = process.env) {
     !/[\u0000-\u001F<>"|?*]/.test(normalizedRoot.slice(2)) &&
     !normalizedRoot.split("\\").some((segment) => segment === "." || segment === "..");
   const systemRoot = hasTrustedShape ? path.win32.normalize(normalizedRoot) : DEFAULT_WINDOWS_ROOT;
-  return path.win32.join(systemRoot, "System32", executable);
+  return path.win32.join(systemRoot, "System32", ...subdirectories, executable);
 }
 
 function killProcessTree(child, signal, {
@@ -245,7 +251,12 @@ function pathCandidateGroups(command, environmentPath = process.env.PATH, isWind
  * a last resort, because a guess must never outrank a real hit from PATH —
  * neither by not existing, nor by carrying a better extension.
  */
-function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
+function resolveCli(command, {
+  fallbacks = [],
+  readShim,
+  aliases = [],
+  executeFile = execFileSync
+} = {}) {
   // Inspect PATH as data on both platforms. Invoking `which`/`where` would first
   // resolve that helper through the same caller-controlled PATH we are trying to
   // inspect, allowing an unrelated executable to run before the provider CLI.
@@ -304,12 +315,16 @@ function resolveCli(command, { fallbacks = [], readShim, aliases = [] } = {}) {
   console.error(`[claude-delegator] ${command} resolved to ${reported}`);
 
   const validation = spawnTarget(resolved, ["--version"]);
-  execFileSync(validation.command, validation.args, { stdio: "pipe" });
+  executeFile(validation.command, validation.args, {
+    stdio: "pipe",
+    timeout: CLI_VERSION_TIMEOUT_MS,
+    windowsHide: true
+  });
   return resolved;
 }
 
 /** Spawn arguments for a resolved binary, running a .js loader under node. */
-function spawnTarget(binary, args) {
+function spawnTarget(binary, args, { environment = process.env } = {}) {
   // .cjs and .mjs loaders exist in the wild too; the Claude bridge already
   // matched all three and the other four only matched .js.
   if (/\.(?:c?m?js)$/i.test(binary)) {
@@ -333,9 +348,12 @@ function spawnTarget(binary, args) {
   // is the very problem cliFallbacks exists for, and %SystemRoot% is the path the
   // vendor shim itself uses.
   if (/\.ps1$/i.test(binary)) {
-    const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
     return {
-      command: path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      command: windowsSystem32Executable(
+        "powershell.exe",
+        environment,
+        ["WindowsPowerShell", "v1.0"]
+      ),
       args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", binary, ...args]
     };
   }
@@ -557,6 +575,7 @@ function runStdioLoop({ handlers, activeRequests, activeChildren }) {
 }
 
 module.exports = {
+  CLI_VERSION_TIMEOUT_MS,
   DEFAULT_TIMEOUT_MS,
   IS_WINDOWS,
   MAX_TIMEOUT_MS,

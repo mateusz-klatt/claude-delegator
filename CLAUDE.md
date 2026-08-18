@@ -79,13 +79,14 @@ Grok, Cursor, and Copilot) instead place a JSON
 
 | Component | Purpose | Notes |
 |-----------|---------|-------|
-| `rules/*.md` | When/how to delegate | Installed to `~/.claude/rules/delegator/` |
+| `rules/*.md` | When/how to delegate | Installed under the active Claude profile at `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/delegator/` |
 | `prompts/*.md` | Expert personalities | Injected via `developer-instructions` |
 | `prompts/agent-mail-coordination.md` | Optional progress-reporting contract | Injected exactly once by a custom bridge; embedded in a native Codex prompt only when needed |
 | `commands/*.md` | Slash commands | `/setup`, `/uninstall` |
 | `config/providers.json` | Provider metadata | Discovery/documentation metadata |
 | `config/model-catalog.json` | Empirically discovered per-CLI model roster | Consumed by bridges and documentation |
 | `server/shared/bridge.js` | Shared bridge core | Stdio loop, child supervision, process-group kill, CLI resolution, common validation, depth guard |
+| `server/shared/provider-runtime.js` | Shared custom-provider runtime | Initialize/list/call dispatch, envelope validation, depth enforcement, coordination, cancellation, and result formatting |
 | `server/claude/index.js` | Claude MCP bridge | Wraps Claude CLI as `claude` / `claude-reply` |
 | `server/codex/launcher.js` | Transparent Codex launcher | Preserves native MCP/model handling while isolating env and supervising the process tree |
 | `server/agy/index.js` | Agy MCP bridge | Wraps the Google Antigravity CLI as MCP server |

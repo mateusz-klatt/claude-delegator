@@ -113,6 +113,22 @@ test("release metadata stays at one version until the dedicated release commit",
   assert.equal(new Set(versions).size, 1, `release metadata drifted: ${versions.join(", ")}`);
 });
 
+test("coverage exclusions are shell-independent on Windows and POSIX", () => {
+  const packageJson = require("../package.json");
+  const coverage = require("../.c8rc.json");
+
+  assert.equal(packageJson.scripts["test:coverage"], "c8 npm test");
+  assert.deepEqual(coverage.src, ["server"]);
+  assert.deepEqual(coverage.exclude, ["**/*.test.js", "test/**"]);
+  assert.deepEqual(coverage.reporter, ["text", "lcov"]);
+  assert.equal(coverage.all, true);
+  assert.doesNotMatch(
+    packageJson.scripts["test:coverage"],
+    /--exclude|['"]\*\*\//,
+    "coverage globs must be JSON data, not shell-quoted npm-script arguments"
+  );
+});
+
 test("provider catalog, plugin manifest and MCP examples stay in parity", () => {
   const canonical = Object.keys(providers.providers);
   const claudeCodeTargets = canonical.filter((name) => name !== "claude");
@@ -482,19 +498,10 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
     cursor: require("../server/cursor")
   };
 
-  // cursor-agent's Windows install directory has not been measured on any host
-  // here. An empty list is the honest state — PATH still resolves it wherever the
-  // installer put itself — and a guessed entry is the WinGet\\Packages mistake
-  // removed in 1.7.0. Named rather than silent, so it cannot rot: delete this the
-  // moment someone reports the real location.
-  const noMeasuredWindowsLocation = process.platform === "win32" ? new Set(["cursor"]) : new Set();
-
   for (const [name, bridge] of Object.entries(bridges)) {
     const fallbacks = bridge.cliFallbacks();
     assert.ok(Array.isArray(fallbacks), `${name} must expose its fallbacks`);
-    if (!noMeasuredWindowsLocation.has(name)) {
-      assert.ok(fallbacks.length > 0, `${name} has no install-location fallback`);
-    }
+    assert.ok(fallbacks.length > 0, `${name} has no install-location fallback`);
     for (const fallback of fallbacks) {
       assert.ok(path.isAbsolute(fallback), `${name}: ${fallback} must be absolute`);
       assert.ok(
@@ -598,33 +605,35 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
     assert.equal(isConnectedStatus(status), false, status);
   }
   assert.doesNotMatch(setup, /grep -q ["']server\//);
-  assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md/);
-  assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md "\$HOME\/\.claude\/rules\/delegator\/"/);
+  assert.match(setup, /rules_root="\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/rules\/delegator"/);
+  assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md "\$rules_root\/"/);
+  assert.doesNotMatch(setup, /~\/\.claude\/rules\/delegator|"\$HOME\/\.claude\/rules\/delegator/);
   assert.match(
     setup,
     /"\$HOME\/\.grok\/bin\/grok" --version/,
     "setup must probe Grok's stable launcher even when it is absent from PATH"
   );
-  assert.match(setup, /On Windows, only PATH is supported/);
+  assert.doesNotMatch(setup, /On Windows, only PATH is supported|no stable fallback has been measured/);
   assert.doesNotMatch(setup, /advisory intent is enforced/);
   assert.doesNotMatch(setup, /denies shell only, never writes/);
   assert.match(setup, /\$\{LOCALAPPDATA:-\}[\s\S]+agy\/bin\/agy\.exe/);
   assert.match(setup, /\.kimi-code\/bin\/kimi\.exe[\s\S]+\.kimi-code\/bin\/kimi\.cmd/);
   assert.match(setup, /\.grok\/bin\/grok\.exe/);
+  assert.match(setup, /Programs\/OpenAI\/Codex\/bin\/codex\.exe/);
+  assert.match(setup, /cursor-agent\/cursor-agent\.cmd/);
+  assert.match(setup, /\$\{APPDATA:-\}[\s\S]+npm\/codex\.cmd/);
   assert.match(setup, /\$\{APPDATA:-\}[\s\S]+npm\/copilot\.cmd/);
 
   const verification = /# Check 1: CLI versions[\s\S]+?(?=# Check 2:)/.exec(setup)?.[0];
   assert.ok(verification, "setup CLI verification block missing");
   assert.match(verification, /if \[ "\$\{OS:-\}" = "Windows_NT" \]; then/);
+  assert.match(verification, /check_cli_version "Codex" "codex" "\$\{local_appdata:\+\$local_appdata\/Programs\/OpenAI\/Codex\/bin\/codex\.exe\}" "\$\{appdata:\+\$appdata\/npm\/codex\.cmd\}"/);
   assert.match(verification, /check_cli_version "Agy" "agy" "\$\{local_appdata:\+\$local_appdata\/agy\/bin\/agy\.exe\}"/);
   assert.match(verification, /check_cli_version "Kimi" "kimi" "\$windows_home\/\.kimi-code\/bin\/kimi\.exe" "\$windows_home\/\.kimi-code\/bin\/kimi\.cmd"/);
   assert.match(verification, /check_cli_version "Grok" "grok" "\$windows_home\/\.grok\/bin\/grok\.exe"/);
   assert.match(verification, /check_cli_version "Copilot" "copilot" "\$\{appdata:\+\$appdata\/npm\/copilot\.cmd\}"/);
-  assert.match(
-    verification,
-    /check_cli_version "Cursor" "cursor-agent"[\s\S]+?else[\s\S]+?check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/,
-    "setup must keep Cursor PATH-only on Windows and use its measured POSIX fallback"
-  );
+  assert.match(verification, /check_cli_version "Cursor" "cursor-agent" "\$\{local_appdata:\+\$local_appdata\/cursor-agent\/cursor-agent\.cmd\}"/);
+  assert.match(verification, /else[\s\S]+?check_cli_version "Cursor" "cursor-agent" "\$HOME\/\.local\/bin\/cursor-agent"/);
   assert.match(setup, /read-only` is a provider-specific opt-in and is not universally\s+enforced/);
 });
 
@@ -636,11 +645,35 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   assert.match(readme, /before 1\.9\.0/);
   assert.match(uninstall, /before 1\.9\.0/);
   assert.doesNotMatch(`${readme}\n${uninstall}`, /before 1\.8\.0/);
+  for (const [label, source] of [["setup", setup], ["uninstall", uninstall]]) {
+    assert.match(
+      source,
+      /rules_root="\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/rules\/delegator"/,
+      `${label}: rules must follow the active Claude profile`
+    );
+    assert.doesNotMatch(
+      source,
+      /~\/\.claude\/rules\/delegator|"\$HOME\/\.claude\/rules\/delegator/,
+      `${label}: rules path must not bypass CLAUDE_CONFIG_DIR`
+    );
+  }
+  assert.doesNotMatch(setup, /find "\$rules_root" -maxdepth/);
+  assert.match(setup, /for rule in "\$rules_root"\/\*\.md; do[\s\S]+?\[ -f "\$rule" \] \|\| continue[\s\S]+?rule_count=\$\(\(rule_count \+ 1\)\)/);
+  assert.match(uninstall, /rm -rf -- "\$rules_root"/);
   assert.match(
     uninstall,
     /claude plugin uninstall --scope user claude-delegator@jarrodwatts-claude-delegator/
   );
-  assert.match(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
+  assert.doesNotMatch(uninstall, /for s in codex agy kimi copilot grok cursor gemini; do/);
+  const uninstallBlock = /## Remove MCP Configuration[\s\S]*?```bash\n([\s\S]*?)\n```/.exec(
+    uninstall.replace(/\r\n?/g, "\n")
+  )?.[1];
+  assert.ok(uninstallBlock, "uninstall MCP block missing");
+  assert.match(uninstallBlock, /for s in \$legacy_servers; do/);
+  const extractLegacyScanner = (block) =>
+    /legacy_servers="\$\(\n\s+node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
+  const uninstallScanner = extractLegacyScanner(uninstallBlock);
+  assert.ok(uninstallScanner, "uninstall must scan legacy registration provenance");
   const extractMigrationBlock = (source, heading) => {
     const normalized = source.replace(/\r\n?/g, "\n");
     return new RegExp(`${heading}[\\s\\S]*?\`\`\`bash\\n([\\s\\S]*?)\\n\`\`\``).exec(normalized)?.[1];
@@ -694,8 +727,14 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     assert.match(block, /legacy_servers="\$\(\n\s+node - <<'NODE'/);
     assert.match(block, /process\.env\.CLAUDE_CONFIG_DIR[\s\S]+?\.claude\.json/);
     assert.match(block, /user\.mcpServers\?\.\[name\]/);
-    assert.match(block, /value\.split\("\/"\)\.includes\("claude-delegator"\)/);
-    assert.match(block, /const oldEntrypoint = `\/server\/\$\{name\}\/`/);
+    assert.match(block, /function isHistoricalEntrypoint\(value, name\)/);
+    assert.match(block, /parts\[i\] !== "plugins" \|\| parts\[i \+ 1\] !== "cache"/);
+    assert.match(block, /parts\[i \+ 2\] !== "jarrodwatts-claude-delegator"/);
+    assert.match(block, /parts\[i \+ 3\] !== "claude-delegator"/);
+    assert.match(block, /cacheVersion\.test\(parts\[i \+ 4\]\)/);
+    assert.match(block, /allowedEntrypoints = name === "codex" \? \["launcher\.js", "index\.js"\]/);
+    assert.match(block, /i \+ 8 === parts\.length && allowedEntrypoints\.includes\(parts\[i \+ 7\]\)/);
+    assert.doesNotMatch(block, /value\.split\("\/"\)\.includes\("claude-delegator"\)/);
     assert.equal([...block.matchAll(/for s in \$legacy_servers; do/g)].length, 2);
     assert.match(block, /\[ "\$s" = "gemini" \] && replacement="agy"/);
     assert.match(block, /server="plugin:claude-delegator:\$replacement"/);
@@ -728,19 +767,26 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
     assert.match(block, /claude mcp remove --scope user "\$s"/);
     assert.match(block, /\n\)\s*$/);
 
-    const scanner = /legacy_servers="\$\(\n\s+node - <<'NODE'\n([\s\S]*?)\nNODE\n\)"/.exec(block)?.[1];
+    const scanner = extractLegacyScanner(block);
     assert.ok(scanner, `${label}: legacy scanner missing`);
+    assert.equal(
+      scanner,
+      uninstallScanner,
+      `${label}: repair and uninstall must apply the same provenance boundary`
+    );
     const fixtureHome = fs.mkdtempSync(path.join(os.tmpdir(), "claude-delegator-legacy-"));
     try {
       fs.writeFileSync(path.join(fixtureHome, ".claude.json"), JSON.stringify({
         mcpServers: {
           codex: {
             command: "node",
-            args: ["C:\\Users\\dev\\.claude\\plugins\\cache\\vendor\\claude-delegator\\1.6.5\\server\\codex\\index.js"]
+            args: ["C:\\Users\\dev\\.claude\\plugins\\cache\\jarrodwatts-claude-delegator\\claude-delegator\\1.6.5\\server\\codex\\launcher.js"]
           },
           agy: { command: "node", args: ["/opt/unrelated/server/agy/index.js"] },
           kimi: { command: "node", args: ["/work/claude-delegator-fork/server/kimi/index.js"] },
-          gemini: { command: "node", args: ["/cache/claude-delegator/1.4.0/server/gemini/index.js"] }
+          copilot: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/01.02.03/server/copilot/index.js"] },
+          grok: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.6.5/server/grok/index.js/extra"] },
+          gemini: { command: "node", args: ["/work/claude-delegator/server/gemini/index.js"] }
         }
       }));
       const scan = spawnSync(process.execPath, ["-e", scanner], {
@@ -755,15 +801,17 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
       assert.equal(scan.status, 0, `${label}: scanner failed: ${scan.stderr}`);
       assert.deepEqual(
         scan.stdout.trim().split(/\r?\n/).filter(Boolean),
-        ["codex", "gemini"],
-        `${label}: scan must select only recognized user legacy entries and allow a partial install`
+        ["codex"],
+        `${label}: scan must select only exact historical cache entries and preserve independent clones`
       );
 
       const customProfile = path.join(fixtureHome, "custom-profile");
       fs.mkdirSync(customProfile);
       fs.writeFileSync(path.join(customProfile, ".claude.json"), JSON.stringify({
         mcpServers: {
-          cursor: { command: "node", args: ["/cache/claude-delegator/1.8.0/server/cursor/index.js"] }
+          cursor: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.8.0/server/cursor/index.js"] },
+          copilot: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.9.0-rc.1+build.5/server/copilot/index.js"] },
+          gemini: { command: "node", args: ["/profile/plugins/cache/jarrodwatts-claude-delegator/claude-delegator/1.4.0/server/gemini/index.js"] }
         }
       }));
       const customScan = spawnSync(process.execPath, ["-e", scanner], {
@@ -778,8 +826,8 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
       assert.equal(customScan.status, 0, `${label}: custom-profile scanner failed: ${customScan.stderr}`);
       assert.deepEqual(
         customScan.stdout.trim().split(/\r?\n/).filter(Boolean),
-        ["cursor"],
-        `${label}: CLAUDE_CONFIG_DIR must override the default user MCP state`
+        ["copilot", "cursor", "gemini"],
+        `${label}: CLAUDE_CONFIG_DIR must override the default state and retain exact Gemini provenance`
       );
     } finally {
       fs.rmSync(fixtureHome, { recursive: true, force: true });
@@ -824,6 +872,25 @@ test("upgrade and uninstall instructions handle the 1.9 manifest transition", ()
   assert.doesNotMatch(setup, /\/user\/starred\/jarrodwatts\/claude-delegator/);
 });
 
+test("maintenance docs describe the active profile and conditional Codex self-disable accurately", () => {
+  const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
+  const maintainerGuide = fs.readFileSync(path.resolve(__dirname, "../CLAUDE.md"), "utf8");
+
+  assert.doesNotMatch(readme, /Codex entry disables its own nested/);
+  assert.match(readme, /static plugin manifest cannot safely disable `mcp_servers\.codex`/i);
+  assert.match(readme, /add `-c mcp_servers\.codex\.enabled=false`/);
+  assert.match(readme, /`CODEX_DELEGATOR_CODEX_BIN` override must be an absolute/);
+  assert.match(
+    maintainerGuide,
+    /`server\/shared\/provider-runtime\.js` \| Shared custom-provider runtime/
+  );
+  assert.match(
+    maintainerGuide,
+    /active Claude profile at `\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/rules\/delegator\/`/
+  );
+  assert.doesNotMatch(maintainerGuide, /Installed to `~\/\.claude\/rules\/delegator\/`/);
+});
+
 test("no distributed config passes a -c override that would CREATE a config table", () => {
   // Stated as a property rather than by comparing against EXPECTED_CODEX_ARGS,
   // because that literal is exactly the construction which entrenched the defect:
@@ -864,7 +931,7 @@ test("shipped rules name the tools the plugin actually advertises", () => {
   const shipped = ["rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md",
                    "CLAUDE.md", "README.md"];
 
-  // commands/setup.md copies rules/*.md into ~/.claude/rules/delegator/, so these
+  // commands/setup.md copies rules/*.md into the active Claude profile, so these
   // files are the orchestrator's instructions, not just prose. Declaring the
   // servers in the manifest renamed every tool -- mcp__agy__agy became
   // mcp__plugin_claude-delegator_agy__agy -- and left 70 references to names that

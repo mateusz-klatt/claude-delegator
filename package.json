@@ -10,7 +10,7 @@
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.js\" \"server/**/*.test.js\"",
-    "test:coverage": "c8 --all --src server --exclude '**/*.test.js' --exclude 'test/**' --reporter=text --reporter=lcov npm test"
+    "test:coverage": "c8 npm test"
   },
   "devDependencies": {
     "c8": "12.0.0"

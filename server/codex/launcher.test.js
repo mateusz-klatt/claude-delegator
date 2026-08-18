@@ -6,6 +6,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { afterEach, test } = require("node:test");
+const core = require("../shared/bridge.js");
+const { cliFallbacks, resolveCodexBinary } = require("./launcher.js");
 
 const LAUNCHER_PATH = path.join(__dirname, "launcher.js");
 const STUB_STARTUP_TIMEOUT_MS = 8_000;
@@ -184,10 +186,97 @@ function processIsAlive(pid) {
 test("launcher reuses the shared safe PATH lookup and process-tree killer", () => {
   const source = fs.readFileSync(LAUNCHER_PATH, "utf8");
   assert.match(source, /require\("\.\.\/shared\/bridge\.js"\)/);
-  assert.match(source, /\{ killProcessTree, resolveCli, resolveWindowsShim \}/);
+  for (const helper of ["killProcessTree", "resolveCli", "resolveWindowsShim", "spawnTarget"]) {
+    assert.match(source, new RegExp(`\\b${helper}\\b`));
+  }
   assert.doesNotMatch(source, /execFileSync/);
   assert.doesNotMatch(source, /function findWindowsCommandCandidates/);
   assert.doesNotMatch(source, /function killProcessTree/);
+  assert.doesNotMatch(source, /function commandForBinary/);
+  assert.match(source, /const invocation = spawnTarget\(binary, process\.argv\.slice\(2\)\)/);
+});
+
+test("explicit Codex override must be absolute on POSIX and Windows", () => {
+  for (const [configured, isWindows] of [
+    ["relative/codex.js", false],
+    ["relative\\codex.cmd", true]
+  ]) {
+    assert.throws(
+      () => resolveCodexBinary({
+        environment: { CODEX_DELEGATOR_CODEX_BIN: configured },
+        isWindows
+      }),
+      /must be an absolute path/
+    );
+  }
+});
+
+test("explicit Codex JS loaders do not need an executable bit", {
+  skip: process.platform === "win32"
+}, () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-override-test-"));
+  temporaryDirectories.push(directory);
+  const loader = path.join(directory, "codex-loader.js");
+  fs.writeFileSync(loader, "process.stdout.write('ok\\n');\n", { mode: 0o644 });
+  fs.chmodSync(loader, 0o644);
+
+  assert.equal(resolveCodexBinary({
+    environment: { CODEX_DELEGATOR_CODEX_BIN: loader },
+    isWindows: false
+  }), loader);
+  assert.equal(core.spawnTarget(loader, []).command, process.execPath);
+
+  const native = path.join(directory, "codex-native");
+  fs.writeFileSync(native, "#!/bin/sh\nexit 0\n", { mode: 0o644 });
+  fs.chmodSync(native, 0o644);
+  assert.throws(
+    () => resolveCodexBinary({
+      environment: { CODEX_DELEGATOR_CODEX_BIN: native },
+      isWindows: false
+    }),
+    /EACCES|permission denied/i
+  );
+});
+
+test("feeds the measured Windows Codex locations to the shared resolver as fallbacks", () => {
+  const environment = {
+    LOCALAPPDATA: "C:\\Users\\mateu\\AppData\\Local",
+    APPDATA: "C:\\Users\\mateu\\AppData\\Roaming"
+  };
+  const fallbacks = cliFallbacks({ environment, isWindows: true });
+  assert.deepEqual(fallbacks, [
+    "C:\\Users\\mateu\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+    "C:\\Users\\mateu\\AppData\\Roaming\\npm\\codex.cmd"
+  ]);
+  assert.deepEqual(cliFallbacks({ environment: {}, isWindows: true }), []);
+  assert.deepEqual(cliFallbacks({
+    environment: { LOCALAPPDATA: "relative\\local", APPDATA: "relative\\roaming" },
+    isWindows: true
+  }), []);
+  assert.deepEqual(cliFallbacks({ environment, isWindows: false }), []);
+
+  let resolverCall;
+  const selected = resolveCodexBinary({
+    environment,
+    isWindows: true,
+    resolver: (command, options) => {
+      resolverCall = { command, options };
+      return "C:\\on-path\\codex.exe";
+    }
+  });
+  assert.equal(selected, "C:\\on-path\\codex.exe");
+  assert.deepEqual(resolverCall, { command: "codex", options: { fallbacks } });
+
+  // Native installers stay native; npm's stable .cmd is expanded to its loader.
+  assert.equal(core.resolveWindowsShim(fallbacks[0], "codex"), fallbacks[0]);
+  const npmShim = [
+    "@ECHO off",
+    '"%~dp0\\node.exe" "%~dp0\\node_modules\\@openai\\codex\\bin\\codex.js" %*'
+  ].join("\r\n");
+  assert.equal(
+    core.resolveWindowsShim(fallbacks[1], "codex", () => npmShim),
+    "C:\\Users\\mateu\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js"
+  );
 });
 
 test("passes through native MCP stdio and scrubs the caller identity", async () => {

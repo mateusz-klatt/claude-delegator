@@ -109,43 +109,38 @@ test("runs .js loaders under node and executables directly", () => {
 
 test("runs a .ps1 through the vendor's own PowerShell invocation, never a shell", () => {
   const script = "C:\\Users\\dev\\.local\\bin\\cursor-agent.ps1";
-  const previous = process.env.SystemRoot;
-  process.env.SystemRoot = "D:\\Windows";
-  try {
-    const invocation = core.spawnTarget(script, ["--version"]);
+  const invocation = core.spawnTarget(script, ["--version"], {
+    environment: { SystemRoot: "D:\\Windows" }
+  });
 
-    // Absolute, from %SystemRoot%, exactly as cursor-agent's .cmd does it — not
-    // "powershell" off a PATH an MCP server may not have.
-    assert.equal(
-      invocation.command,
-      "D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-    );
-    // The four flags are quoted from the vendor shim. -File must come last of
-    // the four, immediately before the script, or PowerShell reads the script
-    // path as an argument to the preceding switch.
-    assert.deepEqual(
-      invocation.args,
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "--version"]
-    );
-  } finally {
-    if (previous === undefined) delete process.env.SystemRoot;
-    else process.env.SystemRoot = previous;
-  }
+  // Absolute, from a validated %SystemRoot%, exactly as cursor-agent's .cmd
+  // does it — not "powershell" off a PATH an MCP server may not have.
+  assert.equal(
+    invocation.command,
+    "D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  );
+  // The four flags are quoted from the vendor shim. -File must come last of
+  // the four, immediately before the script, or PowerShell reads the script
+  // path as an argument to the preceding switch.
+  assert.deepEqual(
+    invocation.args,
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "--version"]
+  );
 
   // No SystemRoot at all (a POSIX test host, or a stripped environment) must
   // still produce a usable absolute path rather than an empty leading segment.
-  const saved = { root: process.env.SystemRoot, upper: process.env.SYSTEMROOT };
-  delete process.env.SystemRoot;
-  delete process.env.SYSTEMROOT;
-  try {
-    assert.equal(
-      core.spawnTarget(script, []).command,
-      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-    );
-  } finally {
-    if (saved.root !== undefined) process.env.SystemRoot = saved.root;
-    if (saved.upper !== undefined) process.env.SYSTEMROOT = saved.upper;
-  }
+  assert.equal(
+    core.spawnTarget(script, [], { environment: {} }).command,
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  );
+  // A hostile relative/root-traversal value must hit the same trusted fallback
+  // as taskkill rather than becoming the PowerShell command path.
+  assert.equal(
+    core.spawnTarget(script, [], {
+      environment: { SystemRoot: "..\\attacker" }
+    }).command,
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  );
 });
 
 test("expands whichever variable a shim assigns from %~dp0, not a fixed list", () => {
@@ -340,6 +335,36 @@ test("resolveCli never executes a locator shadowed on POSIX PATH", { skip: proce
     else process.env.PATH = previousPath;
     fs.rmSync(base, { recursive: true, force: true });
   }
+});
+
+test("resolveCli bounds the startup --version probe", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-version-timeout-"));
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const command = path.join(base, `demo-version-cli${extension}`);
+  fs.writeFileSync(command, "stub", { mode: 0o755 });
+  if (process.platform !== "win32") fs.chmodSync(command, 0o755);
+  const calls = [];
+  const previousLog = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(core.resolveCli("demo-version-cli", {
+      fallbacks: [command],
+      executeFile: (...args) => calls.push(args)
+    }), command);
+  } finally {
+    console.error = previousLog;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0][1], ["--version"]);
+  assert.deepEqual(calls[0][2], {
+    stdio: "pipe",
+    timeout: core.CLI_VERSION_TIMEOUT_MS,
+    windowsHide: true
+  });
+  assert.equal(core.CLI_VERSION_TIMEOUT_MS, 10_000);
 });
 
 test("POSIX PATH scan skips a non-executable hit without changing directory order", { skip: process.platform === "win32" }, () => {

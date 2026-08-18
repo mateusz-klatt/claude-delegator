@@ -221,9 +221,9 @@ if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 }
 NODE
 
-# Discover only user-scoped bare registrations that point at an old
-# claude-delegator entrypoint. Same-named MCP servers owned by another project
-# are deliberately ignored.
+# Discover only user-scoped bare registrations created by the pre-1.9 setup:
+# their entrypoint must have the exact historical marketplace-cache lineage.
+# Same-named MCP servers in independent clones are deliberately ignored.
 legacy_servers="$(
   node - <<'NODE'
 const fs = require("node:fs");
@@ -240,15 +240,25 @@ try {
   throw error;
 }
 const legacy = ["codex", "agy", "kimi", "copilot", "grok", "cursor", "gemini"];
+const cacheVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+function isHistoricalEntrypoint(value, name) {
+  const parts = value.replaceAll("\\", "/").split("/").filter(Boolean);
+  for (let i = 0; i + 7 < parts.length; i += 1) {
+    if (parts[i] !== "plugins" || parts[i + 1] !== "cache") continue;
+    if (parts[i + 2] !== "jarrodwatts-claude-delegator") continue;
+    if (parts[i + 3] !== "claude-delegator" || !cacheVersion.test(parts[i + 4])) continue;
+    if (parts[i + 5] !== "server" || parts[i + 6] !== name) continue;
+    const allowedEntrypoints = name === "codex" ? ["launcher.js", "index.js"] : ["index.js"];
+    if (i + 8 === parts.length && allowedEntrypoints.includes(parts[i + 7])) return true;
+  }
+  return false;
+}
 for (const name of legacy) {
   const entry = user.mcpServers?.[name];
   if (!entry) continue;
   const candidates = [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])]
-    .filter((value) => typeof value === "string")
-    .map((value) => value.replaceAll("\\", "/"));
-  const oldEntrypoint = `/server/${name}/`;
-  if (candidates.some((value) =>
-    value.split("/").includes("claude-delegator") && value.includes(oldEntrypoint))) {
+    .filter((value) => typeof value === "string");
+  if (candidates.some((value) => isHistoricalEntrypoint(value, name))) {
     console.log(name);
   }
 }
@@ -302,10 +312,12 @@ done
 )
 ```
 
-The scan ignores local/project registrations and unrelated user MCP servers
-that merely share one of these short names. Preflight completes for every
-recognized entry before any removal; a connected legacy `gemini` requires the
-namespaced Agy replacement. Then restart the CLI.
+The scan ignores local/project registrations, independent clones, and unrelated
+user MCP servers that merely share one of these short names. Only the exact
+historical marketplace-cache lineage is auto-removed; inspect any ambiguous
+same-named entry manually. Preflight completes for every recognized entry before
+any removal; a connected legacy `gemini` requires the namespaced Agy replacement.
+Then restart the CLI.
 
 Verify with:
 
@@ -331,7 +343,7 @@ tool_timeout_sec = 3600
 
 See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for all seven targets: Claude, Codex, Agy, Kimi, Copilot, Grok, and Cursor. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 
-The Codex entry disables its own nested `mcp_servers.codex` target, preventing an MCP-started Codex session from recursively targeting itself. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent.
+The static plugin manifest cannot safely disable `mcp_servers.codex`: that override creates an invalid transport when the host has no such table. If the active Codex host does keep a self-referential `[mcp_servers.codex]`, add `-c mcp_servers.codex.enabled=false` to that registration as shown in `config/codex-mcp.example.toml`. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent. An explicit `CODEX_DELEGATOR_CODEX_BIN` override must be an absolute executable or JS-loader path; omit it to use the normal PATH lookup.
 
 ### Tests and CI
 
@@ -364,12 +376,12 @@ The MCP bridges require **Node.js 22.12.0 or newer**.
 You need at least one of the following target CLIs configured:
 
 - **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
-- **Codex CLI** (for GPT): `npm install -g @openai/codex`
+- **Codex CLI** (for GPT): `npm install -g @openai/codex`; measured Windows fallbacks are `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and `%APPDATA%\npm\codex.cmd`
 - **Antigravity CLI** (for Agy): typically `~/.local/bin/agy` on POSIX or `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows
 - **Kimi Code** (for Kimi): `~/.kimi-code/bin/kimi` on POSIX; `kimi.exe` or `kimi.cmd` in the same directory on Windows
 - **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`; the measured Windows npm fallback is `%APPDATA%\npm\copilot.cmd`
 - **Grok CLI** (for xAI models): `~/.grok/bin/grok` or `~/.local/bin/grok` on POSIX; `~/.grok/bin/grok.exe` on Windows
-- **Cursor Agent CLI** (for Cursor-hosted models): on POSIX it typically installs to `~/.local/bin/cursor-agent`; on Windows the bridge uses PATH because no stable fallback has been measured
+- **Cursor Agent CLI** (for Cursor-hosted models): `~/.local/bin/cursor-agent` on POSIX or `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd` on Windows
 
 **Authentication**:
 - Codex: run `codex login`

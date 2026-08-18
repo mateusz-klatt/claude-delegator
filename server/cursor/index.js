@@ -265,21 +265,29 @@ const CURSOR_TOOLS = [
   }
 ];
 
-function cliFallbacks() {
+function cliFallbacks({
+  environment = process.env,
+  home = homedir(),
+  isWindows = IS_WINDOWS
+} = {}) {
   // POSIX: the ~/.local/bin launcher and nothing below it. That path is a symlink
   // into ~/.local/share/cursor-agent/versions/<version>/, and the version is in
   // the directory name — writing it down would produce a list correct only on the
   // machine that generated it and only until Cursor next updates. That is the
   // WinGet\Packages guess removed in 1.7.0, wearing a different hat.
   //
-  // Windows: deliberately empty. cursor-agent installs there as a .cmd that
-  // shells to a sibling .ps1, but no host on this team has measured WHERE, and a
-  // guess is precisely the mistake above. PATH still resolves it wherever the
-  // installer put itself; an empty list costs reach only under a stripped PATH,
-  // whereas a wrong entry would cost correctness everywhere. Fill this in once
-  // someone reports the real location.
-  if (IS_WINDOWS) return [];
-  return [path.join(homedir(), ".local", "bin", "cursor-agent")];
+  // Windows: measured on a real install. The stable .cmd lives directly below
+  // LOCALAPPDATA and delegates to a sibling cursor-agent.ps1; the shared shim
+  // resolver follows that relationship without enabling a shell. As with every
+  // fallback, a real PATH hit still wins.
+  if (isWindows) {
+    const localAppData = environment.LOCALAPPDATA;
+    const root = typeof localAppData === "string" ? localAppData.trim() : "";
+    return root && path.win32.isAbsolute(root)
+      ? [path.win32.join(root, "cursor-agent", "cursor-agent.cmd")]
+      : [];
+  }
+  return [path.join(home, ".local", "bin", "cursor-agent")];
 }
 
 // --- Request handlers ---
