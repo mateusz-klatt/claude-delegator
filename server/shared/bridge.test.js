@@ -337,7 +337,7 @@ test("resolveCli never executes a locator shadowed on POSIX PATH", { skip: proce
   }
 });
 
-test("resolveCli bounds the startup --version probe", () => {
+test("resolveCli bounds the startup --version probe at the cold-start budget", () => {
   const fs = require("node:fs");
   const os = require("node:os");
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-version-timeout-"));
@@ -364,7 +364,47 @@ test("resolveCli bounds the startup --version probe", () => {
     timeout: core.CLI_VERSION_TIMEOUT_MS,
     windowsHide: true
   });
-  assert.equal(core.CLI_VERSION_TIMEOUT_MS, 10_000);
+  assert.equal(core.CLI_VERSION_TIMEOUT_MS, 30_000);
+});
+
+test("independent cold-start probes each get a full bounded budget", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-parallel-cold-start-"));
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const command = path.join(base, `demo-parallel-cli${extension}`);
+  fs.writeFileSync(command, "stub", { mode: 0o755 });
+  if (process.platform !== "win32") fs.chmodSync(command, 0o755);
+
+  // Each bridge runs in its own process in production. Repeating the resolution
+  // with an injected executor models those independent probes without sleeping:
+  // a 12-second cold start would have exceeded the old 10-second limit, while
+  // every independently started provider must receive the complete new budget
+  // rather than a shared aggregate allowance.
+  const simulatedColdStartMs = 12_000;
+  const assignedBudgets = [];
+  const previousLog = console.error;
+  console.error = () => {};
+  try {
+    for (let provider = 0; provider < 7; provider += 1) {
+      assert.equal(core.resolveCli("demo-parallel-cli", {
+        fallbacks: [command],
+        executeFile: (_binary, _args, options) => {
+          assert.ok(
+            options.timeout > simulatedColdStartMs,
+            `provider ${provider} would be killed during its simulated cold start`
+          );
+          assignedBudgets.push(options.timeout);
+        }
+      }), command);
+    }
+  } finally {
+    console.error = previousLog;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(assignedBudgets, Array(7).fill(30_000));
+  assert.ok(assignedBudgets.every((timeout) => timeout <= core.CLI_VERSION_TIMEOUT_MS));
 });
 
 test("POSIX PATH scan skips a non-executable hit without changing directory order", { skip: process.platform === "win32" }, () => {

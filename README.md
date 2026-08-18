@@ -337,7 +337,7 @@ The Claude bridge intentionally exposes `claude` and `claude-reply`, matching th
 command = "node"
 args = ["/absolute/path/to/claude-delegator/server/claude/index.js"]
 enabled_tools = ["claude", "claude-reply"]
-startup_timeout_sec = 20
+startup_timeout_sec = 45
 tool_timeout_sec = 3600
 ```
 

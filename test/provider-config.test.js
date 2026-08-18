@@ -11,6 +11,7 @@ const providers = require("../config/providers.json");
 const mcpServers = require("../config/mcp-servers.example.json");
 const manifest = require("../.claude-plugin/plugin.json");
 const marketplace = require("../.claude-plugin/marketplace.json");
+const bridgeCore = require("../server/shared/bridge");
 
 const CODEX_MCP_EXAMPLE = fs.readFileSync(
   path.resolve(__dirname, "../config/codex-mcp.example.toml"),
@@ -160,7 +161,11 @@ test("provider catalog, plugin manifest and MCP examples stay in parity", () => 
     const server = codexExample[name];
     assert.equal(server.command, providers.providers[name].mcp.command, `${name}: command`);
     assert.deepEqual(server.enabled_tools, [name, `${name}-reply`], `${name}: enabled tools`);
-    assert.equal(server.startup_timeout_sec, 20, `${name}: startup timeout`);
+    assert.equal(server.startup_timeout_sec, 45, `${name}: startup timeout`);
+    assert.ok(
+      server.startup_timeout_sec * 1_000 >= bridgeCore.CLI_VERSION_TIMEOUT_MS + 15_000,
+      `${name}: startup timeout must leave 15s above the CLI version probe`
+    );
     assert.equal(server.tool_timeout_sec, 3600, `${name}: tool timeout`);
     assert.equal(server.required, false, `${name}: optional server`);
 
@@ -171,6 +176,13 @@ test("provider catalog, plugin manifest and MCP examples stay in parity", () => 
       `${name}: Codex example must use the canonical provider entrypoint`
     );
   }
+});
+
+test("the manual MCP probe outlives CLI discovery and the host startup budget", () => {
+  const probe = fs.readFileSync(path.resolve(__dirname, "mcp-probe.mjs"), "utf8");
+  const defaultProbeTimeout = /MCP_PROBE_TIMEOUT_MS \|\| "(\d+)"/.exec(probe)?.[1];
+  assert.equal(Number(defaultProbeTimeout), 60_000);
+  assert.ok(Number(defaultProbeTimeout) > 45_000);
 });
 
 test("CI analyzes the canonical Sonar project without dependency lifecycle scripts", () => {

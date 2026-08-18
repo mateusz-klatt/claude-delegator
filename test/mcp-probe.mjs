@@ -10,7 +10,8 @@
  *   node test/mcp-probe.mjs --call claude --args '{"prompt":"Reply OK"}' -- \
  *     node server/claude/index.js
  *
- * Set MCP_PROBE_TIMEOUT_MS for live model calls (default: 30000).
+ * Set MCP_PROBE_TIMEOUT_MS for live model calls (default: 60000). The default
+ * also leaves margin above the bounded 30-second CLI version probe.
  *
  * Exit codes are a taxonomy, not a boolean, because "the bridge is broken" and
  * "the provider said no" need different responses from whoever is reading:
@@ -65,7 +66,7 @@ for (let index = 0; index < options.length; index += 1) {
   }
 }
 
-const timeoutMs = Number.parseInt(process.env.MCP_PROBE_TIMEOUT_MS || "30000", 10);
+const timeoutMs = Number.parseInt(process.env.MCP_PROBE_TIMEOUT_MS || "60000", 10);
 if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
   console.error("MCP_PROBE_TIMEOUT_MS must be a positive integer");
   process.exit(2);

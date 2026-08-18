@@ -222,7 +222,7 @@
       "name": "Cursor",
       "description": "Cursor-hosted models via the Cursor Agent CLI - specialized expert subagents",
       "cli": "cursor-agent",
-      "install": "install the Cursor Agent CLI; on Unix it lands in ~/.local/bin/cursor-agent as a symlink into ~/.local/share/cursor-agent/versions/<version>/. The Windows install directory is not yet measured on any host here, so the bridge ships no Windows fallback rather than a guessed one.",
+      "install": "install the Cursor Agent CLI; on Unix it lands in ~/.local/bin/cursor-agent as a symlink into ~/.local/share/cursor-agent/versions/<version>/. On Windows the measured stable launcher is `%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd`; the bridge expands its sibling PowerShell shim without enabling a shell.",
       "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: the verified Free plan rejected every named third-party model, while `auto`, `composer-2.5`, and `composer-2.5-fast` completed live calls.",
       "mcp": {
         "type": "stdio",

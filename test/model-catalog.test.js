@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const catalog = require("../config/model-catalog.json");
+const providers = require("../config/providers.json");
 const copilotBridge = require("../server/copilot");
 const agyBridge = require("../server/agy");
 const kimiBridge = require("../server/kimi");
@@ -242,4 +243,20 @@ test("the Cursor catalog entry records what the account can use, not what the CL
   assert.match(cursor.permissionNote, /DEFLECTS/);
   assert.match(cursor.trustNote, /--trust is MANDATORY/);
   assert.match(cursor.outputNote, /exit code does NOT classify/i);
+});
+
+test("Cursor catalogs match the measured Windows runtime fallback", () => {
+  const environment = { LOCALAPPDATA: "C:\\Users\\dev\\AppData\\Local" };
+  const fallbacks = cursorBridge.cliFallbacks({ environment, isWindows: true });
+
+  assert.equal(fallbacks.length, 1, "the measured Windows install has one stable launcher");
+  const portableFallback = fallbacks[0].replace(environment.LOCALAPPDATA, "%LOCALAPPDATA%");
+  assert.equal(portableFallback, "%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd");
+
+  const providerInstall = providers.providers.cursor.install;
+  const catalogInstall = catalog.providers.cursor.installNote;
+  assert.ok(providerInstall.includes(portableFallback));
+  assert.ok(catalogInstall.includes(portableFallback));
+  assert.doesNotMatch(providerInstall, /not yet measured|no Windows fallback/i);
+  assert.doesNotMatch(catalogInstall, /not yet measured|no Windows fallback/i);
 });

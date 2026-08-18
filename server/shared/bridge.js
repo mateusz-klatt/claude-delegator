@@ -22,7 +22,11 @@ const { execFileSync, spawn } = require("node:child_process");
 
 const IS_WINDOWS = process.platform === "win32";
 const DEFAULT_WINDOWS_ROOT = "C:\\Windows";
-const CLI_VERSION_TIMEOUT_MS = 10_000;
+// A provider may need to initialise its runtime even for `--version`. On a cold
+// machine, starting all MCP bridges in parallel made Kimi take slightly more
+// than the old 10-second budget. Keep this per-process and firmly bounded, but
+// leave enough headroom for that measured cold-start path.
+const CLI_VERSION_TIMEOUT_MS = 30_000;
 
 // House timeout contract, asserted by test/provider-config.test.js against the
 // rules file: every bridge advertises exactly these bounds.
