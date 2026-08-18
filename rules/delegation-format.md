@@ -15,11 +15,6 @@ Every delegation prompt MUST include these sections:
    - Current state: [what exists now]
    - Relevant code: [paths or snippets]
    - Background: [why this is needed]
-   - Native Codex coordination (optional; omit for custom bridges):
-     - projectKey: [Agent Mail project key]
-     - callerAgentName: [canonical mailbox address: <client>-<os>-<host>-<slot>]
-     - mailTopic: [optional Agent Mail topic tag]
-     - checkpointIntervalSeconds: [default 300]
 
 4. CONSTRAINTS:
    - Technical: [versions, dependencies]
@@ -38,12 +33,25 @@ Every delegation prompt MUST include these sections:
    - [How to structure response]
 ```
 
-For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, omit the
-coordination block from the prompt and pass its fields only through the
-`coordination` argument; the bridge appends the canonical coordination contract
-exactly once. Native Codex has no `coordination` argument, so when reporting is
-needed, include the envelope under CONTEXT and append the contents of
-`prompts/agent-mail-coordination.md` once.
+## Optional Coordination Transport
+
+The mandatory seven-section task above never contains an Agent Mail transport
+envelope. For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass its
+fields only through the `coordination` argument; the bridge appends the canonical
+coordination contract exactly once.
+
+Native Codex has no `coordination` argument. When reporting is needed, append the
+contents of `prompts/agent-mail-coordination.md` and this separate envelope after
+the complete seven-section task:
+
+```json
+{
+  "projectKey": "/owner/project",
+  "callerAgentName": "codex-wsl-home-1",
+  "mailTopic": "optional-topic-tag",
+  "checkpointIntervalSeconds": 300
+}
+```
 
 Never include the caller's registration token or another credential. `callerAgentName` is the canonical routable value that Agent Mail accepts in `to`; it is neither the numeric database `Agent.id` nor a display label. A native subagent used only as a runner must forward the original caller envelope unchanged.
 

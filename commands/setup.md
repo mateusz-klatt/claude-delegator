@@ -364,7 +364,7 @@ across projects; they are not separate user-scope `claude mcp add` entries.
 ## Step 3: Install Orchestration Rules
 
 ```bash
-mkdir -p ~/.claude/rules/delegator && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.md ~/.claude/rules/delegator/
+mkdir -p "$HOME/.claude/rules/delegator" && cp "${CLAUDE_PLUGIN_ROOT}"/rules/*.md "$HOME/.claude/rules/delegator/"
 ```
 
 ## Step 4: Verify Installation

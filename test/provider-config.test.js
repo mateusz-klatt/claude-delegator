@@ -172,11 +172,7 @@ test("CI analyzes the canonical Sonar project without dependency lifecycle scrip
     "README Sonar link must target the same project as sonar-project.properties"
   );
   assert.doesNotMatch(readme, /mateusz-klatt_snapper-delegate/);
-  assert.match(
-    readme,
-    /\]\(https:\/\/www\.star-history\.com\/#mateusz-klatt\/claude-delegator&Date\)/
-  );
-  assert.doesNotMatch(readme, /\]\(https:\/\/star-history\.com\//);
+  assert.doesNotMatch(readme, /star-history\.com|Star History/i);
 });
 
 test("README states the runtime and provider continuity contracts", () => {
@@ -304,8 +300,20 @@ test("coordination guidance follows the live Agent Mail delivery shape", () => {
     path.resolve(__dirname, "../rules/model-selection.md"),
     "utf8"
   );
-  assert.match(delegationFormat, /Native Codex coordination \(optional; omit for custom bridges\)/);
-  assert.match(delegationFormat, /pass its fields only through the\s+`coordination` argument/);
+  const mandatoryTemplate = /## The 7-Section Format \(MANDATORY\)[\s\S]*?```\n([\s\S]*?)\n```/.exec(
+    delegationFormat.replace(/\r\n?/g, "\n")
+  )?.[1];
+  assert.ok(mandatoryTemplate, "mandatory seven-section template missing");
+  for (const field of ["projectKey", "callerAgentName", "mailTopic", "checkpointIntervalSeconds"]) {
+    assert.doesNotMatch(
+      mandatoryTemplate,
+      new RegExp(`\\b${field}\\b`),
+      `${field} is transport metadata, not a mandatory task section`
+    );
+  }
+  assert.match(delegationFormat, /## Optional Coordination Transport/);
+  assert.match(delegationFormat, /append the[\s\S]+separate envelope after[\s\S]+seven-section task/);
+  assert.match(delegationFormat, /pass its\s+fields only through the\s+`coordination` argument/);
   assert.match(selection, /pass optional Agent Mail coordination through `coordination`, not by duplicating it here/);
 });
 
@@ -591,6 +599,7 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   }
   assert.doesNotMatch(setup, /grep -q ["']server\//);
   assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md/);
+  assert.match(setup, /cp "\$\{CLAUDE_PLUGIN_ROOT\}"\/rules\/\*\.md "\$HOME\/\.claude\/rules\/delegator\/"/);
   assert.match(
     setup,
     /"\$HOME\/\.grok\/bin\/grok" --version/,

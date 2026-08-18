@@ -426,9 +426,3 @@ Expert prompts adapted from [oh-my-opencode](https://github.com/code-yeongyu/oh-
 ## License
 
 MIT — see [LICENSE](LICENSE)
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=mateusz-klatt/claude-delegator&type=Date&v=2)](https://www.star-history.com/#mateusz-klatt/claude-delegator&Date)
