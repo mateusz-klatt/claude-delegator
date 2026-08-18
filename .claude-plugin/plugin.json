@@ -1,7 +1,7 @@
 {
   "name": "claude-delegator",
   "description": "Expert subagents over MCP via Claude, Codex, Agy, Kimi, Grok, Cursor, or Copilot CLI. Five specialized roles with optional Agent Mail progress reporting.",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "author": {
     "name": "Jarrod Watts",
     "url": "https://github.com/jarrodwatts"
