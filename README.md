@@ -420,15 +420,18 @@ Edit these to customize expert behavior for your workflow.
 
 The MCP bridges require **Node.js 22.12.0 or newer**.
 
-You need at least one of the following target CLIs configured:
+You need at least one of the following target CLIs configured. The native
+install scripts are each vendor's recommended method; `npm install -g` remains
+available as a fallback where listed.
 
-- **Claude CLI** (for Claude, from a non-Claude orchestrator): install Claude Code and run `claude auth login`
-- **Codex CLI** (for GPT): `npm install -g @openai/codex`; measured Windows fallbacks are `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and `%APPDATA%\npm\codex.cmd`. Environment-derived Windows fallback roots must be fully-qualified drive (`C:\...`) or UNC (`\\server\share\...`) paths; root-relative and drive-relative roots are ignored.
-- **Antigravity CLI** (for Agy): typically `~/.local/bin/agy` on POSIX or `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows
-- **Kimi Code** (for Kimi): `~/.kimi-code/bin/kimi` on POSIX; `kimi.exe` or `kimi.cmd` in the same directory on Windows
-- **Copilot CLI** (for GPT and Claude models): `npm install -g @github/copilot`; the measured Windows npm fallback is `%APPDATA%\npm\copilot.cmd`
-- **Grok CLI** (for xAI models): `~/.grok/bin/grok` or `~/.local/bin/grok` on POSIX; `~/.grok/bin/grok.exe` on Windows
-- **Cursor Agent CLI** (for Cursor-hosted models): `~/.local/bin/cursor-agent` on POSIX or `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd` on Windows
+- **Claude CLI** (for Claude, from a non-Claude orchestrator): macOS/Linux `curl -fsSL https://claude.ai/install.sh | bash`; Windows `irm https://claude.ai/install.ps1 | iex` (or `winget install Anthropic.ClaudeCode`). Then run `claude auth login`.
+- **Codex CLI** (for GPT): macOS/Linux `curl -fsSL https://chatgpt.com/codex/install.sh | sh`; Windows `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"` (or `npm install -g @openai/codex`). The bridge also resolves the native installer path `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and the npm shim `%APPDATA%\npm\codex.cmd` on Windows.
+- **Antigravity CLI** (for Agy): macOS/Linux `curl -fsSL https://antigravity.google/cli/install.sh | bash` (lands at `~/.local/bin/agy`); Windows `irm https://antigravity.google/cli/install.ps1 | iex` (lands at `%LOCALAPPDATA%\agy\bin\agy.exe`).
+- **Kimi Code** (for Kimi): macOS/Linux `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash` (lands at `~/.kimi-code/bin/kimi`); Windows `irm https://code.kimi.com/kimi-code/install.ps1 | iex` (lands at `~/.kimi-code/bin/kimi.exe` or `kimi.cmd`). Windows also requires Git for Windows.
+- **Copilot CLI** (for GPT and Claude models): macOS/Linux `curl -fsSL https://gh.io/copilot-install | bash` (or `npm install -g @github/copilot`); Windows `winget install GitHub.Copilot` (the bridge also resolves the npm shim `%APPDATA%\npm\copilot.cmd`).
+- **Grok CLI** (for xAI models): macOS/Linux `curl -fsSL https://x.ai/cli/install.sh | bash` (lands at `~/.grok/bin/grok`, symlinked from `~/.local/bin/grok`); Windows `irm https://x.ai/cli/install.ps1 | iex` (lands at `~/.grok/bin/grok.exe`).
+- **Cursor Agent CLI** (for Cursor-hosted models): macOS/Linux `curl https://cursor.com/install -fsS | bash` (lands at `~/.local/bin/cursor-agent`, aliased to `~/.local/bin/agent`); Windows `irm 'https://cursor.com/install?win32=true' | iex` (lands at `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd`).
+- **Ollama** (optional, for local models behind the Kimi bridge): macOS/Linux `curl -fsSL https://ollama.com/install.sh | sh`; Windows `irm https://ollama.com/install.ps1 | iex`. See the *Kimi as a bridge to Ollama* note under [Supported Models](#supported-models) for the `[providers.*]` recipe.
 
 Every Windows fallback derived from `USERPROFILE`, `LOCALAPPDATA`, or `APPDATA`
 uses the same runtime validator: the root must be a fully-qualified drive or UNC
@@ -436,6 +439,7 @@ path. Root-relative, drive-relative, device-namespace, malformed UNC, and
 dot-segment roots are ignored.
 
 **Authentication**:
+- Claude: run `claude auth login`
 - Codex: run `codex login`
 - Agy: run `agy` once and complete the Antigravity OAuth flow (no API-key variable)
 - Kimi: set an `api_key` in `~/.kimi-code/config.toml` or export `KIMI_API_KEY`. (`kimi login` exists for the subscription device-code flow, but subscription signup was not yet open at the time of writing.)

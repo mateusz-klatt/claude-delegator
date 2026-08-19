@@ -253,7 +253,9 @@ fi
 **Codex Missing:**
 ```
 Codex CLI not found.
-Install with: npm install -g @openai/codex
+Install (macOS/Linux): curl -fsSL https://chatgpt.com/codex/install.sh | sh
+Install (Windows): powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
+Fallback (all platforms): npm install -g @openai/codex
 Then authenticate: codex login
 On Windows, measured fallbacks are %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe and %APPDATA%\npm\codex.cmd.
 Those environment roots must be fully-qualified drive (`C:\...`) or UNC
@@ -263,8 +265,10 @@ Those environment roots must be fully-qualified drive (`C:\...`) or UNC
 **Agy Missing:**
 ```
 Agy (Google Antigravity) CLI not found.
-Install the Antigravity CLI; it lands as a native binary, typically
-~/.local/bin/agy on POSIX or %LOCALAPPDATA%\agy\bin\agy.exe on Windows.
+Install (macOS/Linux): curl -fsSL https://antigravity.google/cli/install.sh | bash
+Install (Windows): irm https://antigravity.google/cli/install.ps1 | iex
+It lands as a native binary, typically ~/.local/bin/agy on POSIX or
+%LOCALAPPDATA%\agy\bin\agy.exe on Windows.
 Then authenticate: launch `agy` once and complete the Antigravity OAuth flow.
 Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
 ```
@@ -272,8 +276,10 @@ Note: ~/.local/bin is often absent from the minimal PATH an MCP server inherits.
 **Kimi Missing:**
 ```
 Kimi Code CLI not found.
-Install Kimi Code; it lands in ~/.kimi-code/bin/kimi on POSIX and
-~/.kimi-code/bin/kimi.exe or kimi.cmd on Windows.
+Install (macOS/Linux): curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+Install (Windows): irm https://code.kimi.com/kimi-code/install.ps1 | iex
+It lands in ~/.kimi-code/bin/kimi on POSIX and ~/.kimi-code/bin/kimi.exe or
+kimi.cmd on Windows. Windows also requires Git for Windows.
 Then authenticate: set an api_key in ~/.kimi-code/config.toml or export KIMI_API_KEY.
 (`kimi login` covers the subscription device-code flow, but subscription signup
 was not open for registration as of 2026-08-17.)
@@ -283,15 +289,19 @@ Note: ~/.kimi-code/bin is often absent from the minimal PATH an MCP server inher
 **Grok Missing:**
 ```
 Grok CLI not found.
-Install the Grok CLI; it typically lands in ~/.grok/bin/grok or ~/.local/bin/grok
-on POSIX and ~/.grok/bin/grok.exe on Windows.
+Install (macOS/Linux): curl -fsSL https://x.ai/cli/install.sh | bash
+Install (Windows): irm https://x.ai/cli/install.ps1 | iex
+It typically lands in ~/.grok/bin/grok or ~/.local/bin/grok on POSIX and
+~/.grok/bin/grok.exe on Windows.
 Then authenticate: grok login
 ```
 
 **Cursor Missing:**
 ```
 Cursor Agent CLI not found.
-Install Cursor Agent; on POSIX it typically lands in ~/.local/bin/cursor-agent.
+Install (macOS/Linux): curl https://cursor.com/install -fsS | bash
+Install (Windows): irm 'https://cursor.com/install?win32=true' | iex
+On POSIX it typically lands in ~/.local/bin/cursor-agent (aliased to ~/.local/bin/agent).
 Then authenticate: cursor-agent login
 On macOS, unlock the login keychain if even `cursor-agent --version` fails.
 On Windows, the measured fallback is %LOCALAPPDATA%\cursor-agent\cursor-agent.cmd.
@@ -300,7 +310,9 @@ On Windows, the measured fallback is %LOCALAPPDATA%\cursor-agent\cursor-agent.cm
 **Copilot Missing:**
 ```
 Copilot CLI not found.
-Install with: npm install -g @github/copilot (the Windows npm fallback is
+Install (macOS/Linux): curl -fsSL https://gh.io/copilot-install | bash
+Install (Windows): winget install GitHub.Copilot
+Fallback (all platforms): npm install -g @github/copilot (the Windows npm fallback is
 %APPDATA%\npm\copilot.cmd)
 Then authenticate: copilot login
 ```
