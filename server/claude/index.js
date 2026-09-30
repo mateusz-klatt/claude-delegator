@@ -203,6 +203,115 @@ const CLAUDE_TOOLS = [
 
 // --- Request Handlers ---
 
+function callEnvelopeProblem(params) {
+  if (!isObject(params)) return "Invalid params: expected an object";
+  if (!isNonEmptyString(params.name)) {
+    return "Invalid params: 'name' must be a non-empty string";
+  }
+  if (!isObject(params.arguments)) return "Invalid params: 'arguments' must be an object";
+  return null;
+}
+
+function buildStartArgs(args, coordination) {
+  if (!isNonEmptyString(args.prompt)) {
+    throw new TypeError("Invalid params: 'prompt' is required");
+  }
+  if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
+    throw new TypeError("Invalid params: 'developer-instructions' must be a string when provided");
+  }
+  if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
+    throw new TypeError(`Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`);
+  }
+
+  const claudeArgs = [
+    "-p", "--output-format", "json",
+    "--model", args.model || DEFAULT_MODEL,
+    "--effort", args.effort || DEFAULT_EFFORT,
+    ...sandboxArguments(args.sandbox)
+  ];
+  if (args["developer-instructions"]) {
+    claudeArgs.push("--append-system-prompt", args["developer-instructions"]);
+  }
+  claudeArgs.push(appendCoordinationInstructions(args.prompt, coordination));
+  return claudeArgs;
+}
+
+function buildReplyInvocation(args, coordination) {
+  if (!isNonEmptyString(args.threadId)) {
+    throw new TypeError("Invalid params: 'threadId' is required for claude-reply");
+  }
+  const threadId = args.threadId.trim();
+  if (threadId === "latest" || threadId === "unknown") {
+    throw new TypeError("Invalid params: 'threadId' must be an explicit session id");
+  }
+  if (!isNonEmptyString(args.prompt)) {
+    throw new TypeError("Invalid params: 'prompt' is required");
+  }
+
+  return {
+    fallbackThreadId: threadId,
+    claudeArgs: [
+      "-p", "--output-format", "json",
+      "--resume", threadId,
+      ...(args.effort !== undefined ? ["--effort", args.effort] : []),
+      ...sandboxArguments(args.sandbox),
+      appendCoordinationInstructions(args.prompt, coordination)
+    ]
+  };
+}
+
+function prepareClaudeInvocation(name, args) {
+  let coordination;
+  try {
+    coordination = validateCommonArguments(args);
+  } catch (error) {
+    throw new TypeError(`Invalid params: ${error.message}`);
+  }
+
+  if (name === "claude") {
+    return { coordination, claudeArgs: buildStartArgs(args, coordination) };
+  }
+  if (name === "claude-reply") {
+    return { coordination, ...buildReplyInvocation(args, coordination) };
+  }
+  throw new TypeError(`Unknown tool: ${name}`);
+}
+
+async function executeClaudeCall(id, args, invocation, shouldRespond) {
+  const { claudeArgs, coordination, fallbackThreadId } = invocation;
+  const abortController = new AbortController();
+  if (shouldRespond) activeRequests.set(id, abortController);
+  try {
+    const { response, threadId } = await runClaude(
+      claudeArgs,
+      args.cwd,
+      args.timeout,
+      fallbackThreadId,
+      abortController.signal
+    );
+    if (!shouldRespond) return;
+
+    const warning = threadId === "unknown"
+      ? "\n\n(Warning: no session ID returned — multi-turn reply will not be available)"
+      : "";
+    sendResponse(id, {
+      content: [{ type: "text", text: resultText(threadId, response + warning) }],
+      threadId,
+      ...coordinationMetadata(coordination)
+    });
+  } catch (error) {
+    if (shouldRespond) {
+      sendResponse(id, {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true,
+        ...coordinationMetadata(coordination)
+      });
+    }
+  } finally {
+    if (shouldRespond) activeRequests.delete(id);
+  }
+}
+
 const handlers = {
   "initialize": (id, _params, shouldRespond) => {
     if (!shouldRespond) return;
@@ -219,21 +328,13 @@ const handlers = {
   },
 
   "tools/call": async (id, params, shouldRespond) => {
-    if (!isObject(params)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: expected an object");
+    const problem = callEnvelopeProblem(params);
+    if (problem) {
+      if (shouldRespond) sendError(id, -32602, problem);
       return;
     }
 
     const { name, arguments: args } = params;
-    if (!isNonEmptyString(name)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'name' must be a non-empty string");
-      return;
-    }
-    if (!isObject(args)) {
-      if (shouldRespond) sendError(id, -32602, "Invalid params: 'arguments' must be an object");
-      return;
-    }
-
     if ((name === "claude" || name === "claude-reply") &&
         depth.exceeded()) {
       if (shouldRespond) {
@@ -242,98 +343,14 @@ const handlers = {
       return;
     }
 
-    let coordination;
+    let invocation;
     try {
-      coordination = validateCommonArguments(args);
+      invocation = prepareClaudeInvocation(name, args);
     } catch (error) {
-      if (shouldRespond) sendError(id, -32602, `Invalid params: ${error.message}`);
+      if (shouldRespond) sendError(id, -32602, error.message);
       return;
     }
-
-    const claudeArgs = ["-p", "--output-format", "json"];
-    let fallbackThreadId;
-
-    if (name === "claude") {
-      if (!isNonEmptyString(args.prompt)) {
-        if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-        return;
-      }
-      if (args["developer-instructions"] !== undefined && typeof args["developer-instructions"] !== "string") {
-        if (shouldRespond) sendError(id, -32602, "Invalid params: 'developer-instructions' must be a string when provided");
-        return;
-      }
-      if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
-        if (shouldRespond) sendError(id, -32602, `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`);
-        return;
-      }
-
-      claudeArgs.push(
-        "--model", args.model || DEFAULT_MODEL,
-        "--effort", args.effort || DEFAULT_EFFORT,
-        ...sandboxArguments(args.sandbox)
-      );
-      if (args["developer-instructions"]) {
-        claudeArgs.push("--append-system-prompt", args["developer-instructions"]);
-      }
-      claudeArgs.push(appendCoordinationInstructions(args.prompt, coordination));
-    } else if (name === "claude-reply") {
-      if (!isNonEmptyString(args.threadId)) {
-        if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' is required for claude-reply");
-        return;
-      }
-      const threadId = args.threadId.trim();
-      if (threadId === "latest" || threadId === "unknown") {
-        if (shouldRespond) sendError(id, -32602, "Invalid params: 'threadId' must be an explicit session id");
-        return;
-      }
-      if (!isNonEmptyString(args.prompt)) {
-        if (shouldRespond) sendError(id, -32602, "Invalid params: 'prompt' is required");
-        return;
-      }
-
-      fallbackThreadId = threadId;
-      claudeArgs.push(
-        "--resume", threadId,
-        ...(args.effort !== undefined ? ["--effort", args.effort] : []),
-        ...sandboxArguments(args.sandbox),
-        appendCoordinationInstructions(args.prompt, coordination)
-      );
-    } else {
-      if (shouldRespond) sendError(id, -32602, `Unknown tool: ${name}`);
-      return;
-    }
-
-    const abortController = new AbortController();
-    if (shouldRespond) activeRequests.set(id, abortController);
-    try {
-      const { response, threadId } = await runClaude(
-        claudeArgs,
-        args.cwd,
-        args.timeout,
-        fallbackThreadId,
-        abortController.signal
-      );
-      if (!shouldRespond) return;
-
-      const warning = threadId === "unknown"
-        ? "\n\n(Warning: no session ID returned — multi-turn reply will not be available)"
-        : "";
-      sendResponse(id, {
-        content: [{ type: "text", text: resultText(threadId, response + warning) }],
-        threadId,
-        ...coordinationMetadata(coordination)
-      });
-    } catch (error) {
-      if (shouldRespond) {
-        sendResponse(id, {
-          content: [{ type: "text", text: `Error: ${error.message}` }],
-          isError: true,
-          ...coordinationMetadata(coordination)
-        });
-      }
-    } finally {
-      if (shouldRespond) activeRequests.delete(id);
-    }
+    await executeClaudeCall(id, args, invocation, shouldRespond);
   },
 
   "notifications/cancelled": (_id, params) => {

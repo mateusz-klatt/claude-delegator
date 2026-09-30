@@ -153,12 +153,13 @@ async function runGrok(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
       // and what to do about it. Do not add a mechanism here without a
       // measurement that survives a rerun.
       if (stopReason === "cancelled") {
+        const partialResponse = response ? `\nPartial response: ${response}` : "";
         throw new Error(
           "Grok stopped with stopReason 'cancelled': the run was cut short, so the answer below, if any, " +
           "is incomplete. The cause is not established and it has not reproduced on rerun — retrying is " +
           "usually worthwhile. Note that a denied tool is NOT this: under sandbox 'read-only' a denial " +
           "normally finishes the turn and is reported in the text. Use 'workspace-write' only if the task " +
-          `genuinely needs to make changes.${response ? `\nPartial response: ${response}` : ""}`
+          `genuinely needs to make changes.${partialResponse}`
         );
       }
       if (!response) {

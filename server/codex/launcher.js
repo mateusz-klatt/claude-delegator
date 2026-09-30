@@ -56,32 +56,32 @@ function resolveCodexBinary({
   resolver = resolveCli
 } = {}) {
   const explicit = environment[OVERRIDE_ENV];
-  if (typeof explicit === "string" && explicit.trim()) {
-    const platformPath = isWindows ? path.win32 : path;
-    const configured = explicit.trim();
-    const isAbsolute = isWindows
-      ? isFullyQualifiedWindowsPath(configured)
-      : platformPath.isAbsolute(configured);
-    if (!isAbsolute) {
-      throw new Error(`${OVERRIDE_ENV} must be an absolute path`);
-    }
-    let candidate = platformPath.normalize(configured);
-    if (!fs.statSync(candidate).isFile()) throw new Error("explicit Codex path is not a file");
-    if (!isWindows && !/\.(?:c?m?js)$/i.test(candidate)) {
-      fs.accessSync(candidate, fs.constants.X_OK);
-    }
-    if (isWindows && /\.(?:cmd|bat)$/i.test(candidate)) {
-      candidate = resolveWindowsShim(candidate, "codex");
-    }
-    return candidate;
+  if (typeof explicit !== "string" || !explicit.trim()) {
+    // The shared resolver scans PATH as data, validates POSIX X_OK, follows
+    // Windows npm shims without a shell, and never executes `which`/`where`.
+    return resolver("codex", {
+      environment,
+      fallbacks: cliFallbacks({ environment, isWindows })
+    });
   }
 
-  // The shared resolver scans PATH as data, validates POSIX X_OK, follows
-  // Windows npm shims without a shell, and never executes `which`/`where`.
-  return resolver("codex", {
-    environment,
-    fallbacks: cliFallbacks({ environment, isWindows })
-  });
+  const platformPath = isWindows ? path.win32 : path;
+  const configured = explicit.trim();
+  const isAbsolute = isWindows
+    ? isFullyQualifiedWindowsPath(configured)
+    : platformPath.isAbsolute(configured);
+  if (!isAbsolute) {
+    throw new Error(`${OVERRIDE_ENV} must be an absolute path`);
+  }
+  let candidate = platformPath.normalize(configured);
+  if (!fs.statSync(candidate).isFile()) throw new Error("explicit Codex path is not a file");
+  if (!isWindows && !/\.(?:c?m?js)$/i.test(candidate)) {
+    fs.accessSync(candidate, fs.constants.X_OK);
+  }
+  if (isWindows && /\.(?:cmd|bat)$/i.test(candidate)) {
+    candidate = resolveWindowsShim(candidate, "codex");
+  }
+  return candidate;
 }
 
 function main() {

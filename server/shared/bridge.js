@@ -22,7 +22,7 @@ const { execFileSync, spawn } = require("node:child_process");
 const { buildCalleeEnv } = require("./environment");
 
 const IS_WINDOWS = process.platform === "win32";
-const DEFAULT_WINDOWS_ROOT = "C:\\Windows";
+const DEFAULT_WINDOWS_ROOT = String.raw`C:\Windows`;
 // A provider may need to initialise its runtime even for `--version`. On a cold
 // machine, starting all MCP bridges in parallel made Kimi take slightly more
 // than the old 10-second budget. Keep this per-process and firmly bounded, but
@@ -131,8 +131,10 @@ function killProcessTree(child, signal, {
         env: buildCalleeEnv(environment),
         stdio: "ignore"
       });
-    } catch (_error) {
-      // The process may already have exited.
+    } catch (error) {
+      // Cleanup is best-effort, but failures other than an already-exited child
+      // must remain visible when diagnosing a provider that will not stop.
+      console.error(`[claude-delegator] Could not terminate Windows process tree ${child.pid}: ${error.message}`);
     }
     return;
   }
@@ -187,10 +189,10 @@ function resolveWindowsShim(candidate, command, readShim = (p) => fs.readFileSyn
   // powershell.exe -File on a sibling script. Expanding to it keeps the
   // invariant that a .cmd never reaches spawn(); see spawnTarget for how it is
   // then run, and why that is preferable to giving the core a shell.
-  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   const names = [command, ...aliases].map(escape).join("|");
   const match = new RegExp(
-    `["']([^"'\\r\\n]*(?:${names})[^"'\\r\\n]*\\.(?:c?m?js|exe|ps1))["']`,
+    String.raw`["']([^"'\r\n]*(?:${names})[^"'\r\n]*\.(?:c?m?js|exe|ps1))["']`,
     "i"
   ).exec(shim);
   if (!match) throw new Error(`could not resolve ${command} from its .cmd shim`);
@@ -207,12 +209,12 @@ function resolveWindowsShim(candidate, command, readShim = (p) => fs.readFileSyn
   // and did until a test running on Linux caught it.
   const shimDirectory = path.win32.dirname(candidate) + path.win32.sep;
   const directoryVariables = new Set(["dp0"]);
-  for (const [, name] of shim.matchAll(/\bset\s+"?([A-Za-z_]\w*)=%~dp0/gi)) {
+  for (const [, name] of shim.matchAll(/\bset\s+"?([A-Z_]\w*)=%~dp0/gi)) {
     directoryVariables.add(name.toLowerCase());
   }
   let expanded = match[1].replace(/%~dp0[\\/]?/gi, shimDirectory);
   for (const name of directoryVariables) {
-    expanded = expanded.replace(new RegExp(`%${name}%[\\\\/]?`, "gi"), shimDirectory);
+    expanded = expanded.replace(new RegExp(String.raw`%${name}%[\\/]?`, "gi"), shimDirectory);
   }
   // Normalise either way: %dp0% expansion makes the path absolute *before* any
   // "..\" in the shim has been collapsed, so the absolute branch would otherwise
@@ -532,7 +534,8 @@ function superviseChild({
  */
 function validateCommonArgs(args, { sandboxValues = VALID_SANDBOX_VALUES } = {}) {
   if (args.sandbox !== undefined && !sandboxValues.has(args.sandbox)) {
-    return `Invalid params: 'sandbox' must be ${[...sandboxValues].map((v) => `'${v}'`).join(" or ")}`;
+    const allowedValues = [...sandboxValues].map((value) => `'${value}'`).join(" or ");
+    return `Invalid params: 'sandbox' must be ${allowedValues}`;
   }
   if (args.cwd !== undefined && !isNonEmptyString(args.cwd)) {
     return "Invalid params: 'cwd' must be a non-empty string when provided";
@@ -561,6 +564,42 @@ function timeoutSchema() {
 
 // --- Stdio loop ---
 
+function dispatchRequest(request, handlers) {
+  const shouldRespond = hasRequestId(request);
+  if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
+    if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
+    return;
+  }
+
+  const handler = handlers[request.method];
+  if (!handler) {
+    if (shouldRespond) sendError(request.id, -32601, `Method not found: ${request.method}`);
+    return;
+  }
+
+  const reportError = (error) => {
+    if (shouldRespond) sendError(request.id, -32603, `Internal error: ${error.message}`);
+  };
+  try {
+    Promise.resolve(handler(request.id, request.params, shouldRespond)).catch(reportError);
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+function handleRequestLine(line, handlers) {
+  if (!line.trim()) return;
+
+  let request;
+  try {
+    request = JSON.parse(line);
+  } catch {
+    sendError(null, -32700, "Parse error");
+    return;
+  }
+  dispatchRequest(request, handlers);
+}
+
 /**
  * Read newline-framed JSON-RPC from stdin and dispatch it, then shut the child
  * process group down on stdin end, SIGTERM and SIGINT.
@@ -574,37 +613,7 @@ function runStdioLoop({ handlers, activeRequests, activeChildren }) {
     const lines = buffer.split("\n");
     buffer = lines.pop(); // Keep the partial line.
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      let request;
-      try {
-        request = JSON.parse(line);
-      } catch {
-        sendError(null, -32700, "Parse error");
-        continue;
-      }
-
-      const shouldRespond = hasRequestId(request);
-      if (!isObject(request) || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
-        if (shouldRespond) sendError(request.id, -32600, "Invalid Request");
-        continue;
-      }
-
-      const handler = handlers[request.method];
-      if (!handler) {
-        if (shouldRespond) sendError(request.id, -32601, `Method not found: ${request.method}`);
-        continue;
-      }
-
-      try {
-        Promise.resolve(handler(request.id, request.params, shouldRespond)).catch((e) => {
-          if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-        });
-      } catch (e) {
-        if (shouldRespond) sendError(request.id, -32603, `Internal error: ${e.message}`);
-      }
-    }
+    for (const line of lines) handleRequestLine(line, handlers);
   });
 
   const shutdown = (exitCode) => {

@@ -71,39 +71,41 @@ function resolveEffort(model, requestedEffort) {
 //   {type:"session.error", data:{message, errorCode, statusCode}} → provider failure
 // The error event lands on STDOUT while stderr stays empty, so both the success
 // and the failure branch have to read this.
+function parseCopilotEvent(line) {
+  if (!line.trim()) return null;
+  try {
+    const event = JSON.parse(line);
+    return isObject(event) ? event : null;
+  } catch {
+    return null; // Not JSON — ignore terminal noise.
+  }
+}
+
+function updateCopilotResult(result, event) {
+  if (event.type === "assistant.message" && event.data?.content) {
+    result.chunks.push(event.data.content);
+  }
+  if (event.type === "result") {
+    if (event.sessionId) result.sessionId = event.sessionId;
+    if (event.exitCode !== undefined) result.resultExitCode = event.exitCode;
+  }
+  if (event.type === "session.error" && isObject(event.data) && !result.errorMessage) {
+    const { message, errorCode, statusCode } = event.data;
+    const detail = [errorCode, statusCode].filter(Boolean).join(" ");
+    result.errorMessage = [message || "Copilot session error", detail && `(${detail})`]
+      .filter(Boolean)
+      .join(" ");
+  }
+}
+
 function parseCopilotOutput(stdout) {
-  const chunks = [];
-  let sessionId = "unknown";
-  let resultExitCode = 0;
-  let errorMessage = "";
-
+  const result = { chunks: [], sessionId: "unknown", resultExitCode: 0, errorMessage: "" };
   for (const line of stdout.trim().split("\n")) {
-    if (!line.trim()) continue;
-    let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue; // Not JSON — ignore terminal noise.
-    }
-    if (!isObject(event)) continue;
-
-    if (event.type === "assistant.message" && event.data?.content) {
-      chunks.push(event.data.content);
-    }
-    if (event.type === "result") {
-      if (event.sessionId) sessionId = event.sessionId;
-      if (event.exitCode !== undefined) resultExitCode = event.exitCode;
-    }
-    if (event.type === "session.error" && isObject(event.data) && !errorMessage) {
-      const { message, errorCode, statusCode } = event.data;
-      const detail = [errorCode, statusCode].filter(Boolean).join(" ");
-      errorMessage = [message || "Copilot session error", detail && `(${detail})`]
-        .filter(Boolean)
-        .join(" ");
-    }
+    const event = parseCopilotEvent(line);
+    if (event) updateCopilotResult(result, event);
   }
 
-  return { chunks, sessionId, resultExitCode, errorMessage };
+  return result;
 }
 
 
@@ -245,8 +247,10 @@ function buildReplyArgs(args, coordination, threadId) {
   if (args.effort !== undefined) {
     copilotArgs.push("--effort", args.effort === "max" ? FALLBACK_MAX_EFFORT : args.effort);
   }
-  copilotArgs.push(...permissionArgs(args.sandbox));
-  copilotArgs.push("-p", appendCoordinationInstructions(args.prompt, coordination));
+  copilotArgs.push(
+    ...permissionArgs(args.sandbox),
+    "-p", appendCoordinationInstructions(args.prompt, coordination)
+  );
   return copilotArgs;
 }
 

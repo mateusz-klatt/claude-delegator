@@ -783,6 +783,27 @@ test("parses assistant chunks, session id and provider errors from one JSONL str
   assert.equal(bridge.parseCopilotOutput("").sessionId, "unknown");
 });
 
+test("ignores malformed Copilot events and retains partial results and the first error", () => {
+  const stream = [
+    "noise", "", "null", "42", "[]",
+    JSON.stringify({ type: "assistant.message" }),
+    JSON.stringify({ type: "assistant.message", data: { content: "partial" } }),
+    JSON.stringify({ type: "result", sessionId: "s-original" }),
+    JSON.stringify({ type: "result", exitCode: 2 }),
+    JSON.stringify({ type: "result" }),
+    JSON.stringify({ type: "session.error", data: null }),
+    JSON.stringify({ type: "session.error", data: { statusCode: 503 } }),
+    JSON.stringify({ type: "session.error", data: { message: "later failure" } })
+  ].join("\n");
+
+  assert.deepEqual(bridge.parseCopilotOutput(stream), {
+    chunks: ["partial"],
+    sessionId: "s-original",
+    resultExitCode: 2,
+    errorMessage: "Copilot session error (503)"
+  });
+});
+
 test("accepts only fully-qualified Windows APPDATA fallback roots", () => {
   for (const root of [
     "relative\\roaming",

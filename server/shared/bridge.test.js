@@ -595,6 +595,68 @@ test("uses an absolute System32 taskkill path with a scrubbed child environment"
   });
 });
 
+test("reports taskkill failures without interrupting best-effort cleanup", (t) => {
+  const diagnostic = t.mock.method(console, "error", () => {});
+  assert.doesNotThrow(() => core.killProcessTree({ pid: 4321 }, "SIGTERM", {
+    environment: {},
+    executeFile: () => { throw new Error("taskkill access denied"); },
+    isWindows: true
+  }));
+  assert.equal(diagnostic.mock.callCount(), 1);
+  assert.match(diagnostic.mock.calls[0].arguments[0], /4321: taskkill access denied/);
+});
+
+test("dispatches coalesced frames and isolates malformed requests and handler errors", () => {
+  const { spawnSync } = require("node:child_process");
+  const script = `
+    const core = require(${JSON.stringify(require.resolve("./bridge"))});
+    core.runStdioLoop({
+      activeRequests: new Map(),
+      activeChildren: new Set(),
+      handlers: {
+        echo(id, params, shouldRespond) {
+          if (shouldRespond) core.sendResponse(id, params);
+        },
+        "fail-sync"() { throw new Error("sync failure"); },
+        async "fail-async"() { throw new Error("async failure"); }
+      }
+    });
+  `;
+  const frames = [
+    " ",
+    "{",
+    "null",
+    JSON.stringify({ id: 1, method: "echo" }),
+    JSON.stringify({ jsonrpc: "2.0", id: 2, method: "unknown" }),
+    JSON.stringify({ jsonrpc: "2.0", method: "unknown" }),
+    JSON.stringify({ jsonrpc: "2.0", id: 3, method: "fail-sync" }),
+    JSON.stringify({ jsonrpc: "2.0", id: 4, method: "fail-async" }),
+    JSON.stringify({ jsonrpc: "2.0", method: "fail-sync" }),
+    JSON.stringify({ jsonrpc: "2.0", method: "fail-async" }),
+    JSON.stringify({ jsonrpc: "2.0", id: 5, method: "echo", params: { value: "ready" } }),
+    ""
+  ];
+  const child = spawnSync(process.execPath, ["-e", script], {
+    input: frames.join("\n"),
+    encoding: "utf8",
+    timeout: 5_000
+  });
+  assert.equal(child.status, 0, child.stderr);
+  const responses = child.stdout.trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(responses.length, 6, "notifications must not produce responses");
+  const byId = new Map(responses.map((response) => [response.id, response]));
+  for (const [id, code, message] of [
+    [null, -32700, "Parse error"],
+    [1, -32600, "Invalid Request"],
+    [2, -32601, "Method not found: unknown"],
+    [3, -32603, "Internal error: sync failure"],
+    [4, -32603, "Internal error: async failure"]
+  ]) {
+    assert.deepEqual(byId.get(id).error, { code, message });
+  }
+  assert.deepEqual(byId.get(5).result, { value: "ready" });
+});
+
 test("clamps a timeout into the house bounds and defaults anything unusable", () => {
   assert.equal(core.clampTimeout(60_000), 60_000);
   assert.equal(core.clampTimeout(1), core.MIN_TIMEOUT_MS);

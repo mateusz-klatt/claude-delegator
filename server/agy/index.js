@@ -171,7 +171,9 @@ async function runAgy(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
 
       const diagnostics = () => {
         const tail = readLogTail(logPath);
-        return `${stderr.trim() ? `\n${stderr.trim()}` : ""}\nDiagnostics: ${logPath}${tail ? `\n${tail}` : ""}`;
+        const stderrText = stderr.trim() ? `\n${stderr.trim()}` : "";
+        const logText = tail ? `\n${tail}` : "";
+        return `${stderrText}\nDiagnostics: ${logPath}${logText}`;
       };
 
       if (!parsed) {
@@ -185,7 +187,8 @@ async function runAgy(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
       const resumable = threadId ? ` (resumable threadId: ${threadId})` : "";
 
       if (parsed.status && parsed.status !== "SUCCESS") {
-        throw new Error(`Agy ${parsed.status}: ${parsed.error || stderr.trim() || `exit ${code}`}${resumable}${diagnostics()}`);
+        const errorText = parsed.error || stderr.trim() || `exit ${code}`;
+        throw new Error(`Agy ${parsed.status}: ${errorText}${resumable}${diagnostics()}`);
       }
       if (code !== 0) {
         throw new Error(`Agy exited with code ${code}: ${parsed.error || stderr.trim() || "no error text"}${resumable}${diagnostics()}`);

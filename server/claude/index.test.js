@@ -414,6 +414,32 @@ test("rejects invalid catalog and coordination inputs before invoking Claude", a
   await server.close();
 });
 
+test("validates Claude envelopes and preserves start and reply validation order", async () => {
+  const server = startServer();
+  const invalidCalls = [
+    [null, /expected an object/],
+    [{ name: " " }, /'name'/],
+    [{ name: "claude", arguments: [] }, /'arguments'/],
+    [{ name: "claude", arguments: {} }, /'prompt'/],
+    [{ name: "claude", arguments: { prompt: "hi", "developer-instructions": 1 } }, /'developer-instructions'/],
+    [{ name: "claude", arguments: { prompt: "hi", effort: "invalid" } }, /'effort'/],
+    [{ name: "claude", arguments: { prompt: "hi", sandbox: "invalid" } }, /'sandbox'/],
+    [{ name: "claude-reply", arguments: {} }, /'threadId' is required/],
+    [{ name: "claude-reply", arguments: { threadId: " latest " } }, /explicit session id/],
+    [{ name: "claude-reply", arguments: { threadId: "unknown", prompt: "hi" } }, /explicit session id/],
+    [{ name: "claude-reply", arguments: { threadId: "session-existing" } }, /'prompt'/],
+    [{ name: "unknown", arguments: { cwd: 0 } }, /'cwd'/],
+    [{ name: "unknown", arguments: {} }, /^Unknown tool: unknown$/]
+  ];
+  for (const [params, message] of invalidCalls) {
+    const response = await server.request("tools/call", params);
+    assert.equal(response.error.code, -32602);
+    assert.match(response.error.message, message);
+  }
+  assert.equal(fs.existsSync(server.capturePath), false);
+  await server.close();
+});
+
 test("surfaces a structured spend-limit error instead of SessionEnd hook noise", async () => {
   const server = startServer({ CLAUDE_STUB_SPEND_LIMIT: "1" });
   const response = await server.request("tools/call", {

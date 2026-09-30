@@ -1151,7 +1151,9 @@ ${removalReporting}
     const preflightStart = block.indexOf("preflight_failed=0");
     const abortGate = block.indexOf('if [ "$preflight_failed" -ne 0 ]');
     const removalLoop = block.indexOf("for s in $legacy_servers; do", abortGate);
-    assert.ok(preflightStart >= 0 && abortGate > preflightStart && removalLoop > abortGate);
+    assert.ok(preflightStart >= 0, `${label}: preflight must be present`);
+    assert.ok(abortGate > preflightStart, `${label}: abort gate must follow preflight`);
+    assert.ok(removalLoop > abortGate, `${label}: removal must follow the abort gate`);
     assert.doesNotMatch(
       block.slice(preflightStart, abortGate),
       /claude mcp remove/,
