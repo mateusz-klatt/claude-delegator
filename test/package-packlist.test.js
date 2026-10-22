@@ -14,6 +14,8 @@ const EXPECTED_PACKAGE_FILES = [
   "CLAUDE.md",
   "CONTRIBUTING.md",
   "LICENSE",
+  "LICENSE-MIT",
+  "NOTICE",
   "README.md",
   "claude-delegator.png",
   "commands/setup.md",
