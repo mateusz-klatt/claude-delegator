@@ -17,7 +17,7 @@
       },
       "homepage": "https://github.com/mateusz-klatt/claude-delegator",
       "repository": "https://github.com/mateusz-klatt/claude-delegator",
-      "license": "MIT",
+      "license": "Apache-2.0 AND MIT",
       "keywords": [
         "delegation",
         "mcp",

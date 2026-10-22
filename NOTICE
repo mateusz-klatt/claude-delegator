@@ -1,0 +1,14 @@
+claude-delegator
+Copyright 2026 Mateusz Klatt
+
+Original contributions by Mateusz Klatt are licensed under the Apache License,
+Version 2.0. See LICENSE.
+
+Third-party components retain their own licenses and copyright notices.
+
+This fork is based on jarrodwatts/claude-delegator.
+Copyright (c) 2025 Jarrod Watts.
+Upstream code remains under the MIT license reproduced in LICENSE-MIT.
+The Apache license applies to original contributions by Mateusz Klatt; it does
+not replace the upstream MIT license or grant patents on behalf of upstream
+contributors.

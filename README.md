@@ -493,4 +493,11 @@ Expert prompts adapted from [oh-my-opencode](https://github.com/code-yeongyu/oh-
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+Original contributions by Mateusz Klatt are licensed under the
+[Apache License, Version 2.0](LICENSE). Upstream code remains under
+[MIT](LICENSE-MIT); both licenses apply to this distribution. See [NOTICE](NOTICE)
+for attribution.
+
+Revisions through the `last-mit` tag were distributed under MIT. The Apache license
+applies to subsequent original contributions by Mateusz Klatt and does not revoke
+earlier MIT grants or replace the license of upstream contributions.
