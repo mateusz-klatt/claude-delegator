@@ -15,12 +15,12 @@ Before delegating, check which MCP tools are available in the current environmen
    - Use **Grok** when the user explicitly asks for Grok or wants an xAI second opinion.
    - Use **Cursor** when the user explicitly asks for Cursor or a Composer model.
    - Default to **Agy** for general reasoning.
-   - Do **not** use Agy, Kimi, or Cursor when the caller genuinely needs enforced denial; Agy and Cursor are advisory/deflecting, and Kimi refuses `read-only`. Use Claude or Copilot for provider-enforced denial, Grok for denial of its built-in write/shell tools, or a native Codex registration explicitly configured read-only instead of this project's `danger-full-access` default.
-   - Prefer Claude, Codex or Agy over Kimi when delegating into a repository you do not control: Kimi auto-loads its `AGENTS.md` with no off switch.
+   - Do **not** use Agy, Kimi, or Cursor when the caller genuinely needs enforced denial; Agy and Cursor are advisory/deflecting, and Kimi refuses `read-only`. Use Codex for denial enforced by its own operating-system sandbox, Claude or Copilot for provider-enforced denial, or Grok for denial of its built-in write/shell tools.
+   - Prefer Claude or Agy over Kimi when delegating into a repository you do not control: Kimi auto-loads its `AGENTS.md` with no off switch. Codex loads `AGENTS.md` too, but an operator can switch that off with `project_doc_max_bytes = 0`.
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-08-17 for the catalog snapshot. CLI versions were rechecked on 2026-08-18; Agy alone was re-enumerated that day after its version changed and returned the same 14 ids, while Claude's four ids were re-corroborated against its CLI bundle and the remaining rosters retain their 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-10-23 for the catalog snapshot. CLI versions were rechecked on 2026-10-23 against Codex 0.164.0, Agy 1.4.6, Kimi 2.3.1, Grok 1.0.67, Copilot 1.0.103, Claude Code 2.1.309 and cursor-agent 2026.10.14. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -36,7 +36,7 @@ For the account-specific roster, use `config/model-catalog.json` as the source o
 
 Every expert can operate in two modes:
 
-The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. The six custom bridges expose `read-only` and `workspace-write` (Kimi accepts `workspace-write` alone); unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. Native Codex retains its own setting name, `danger-full-access`, with `approval_policy = "never"`. These are provider permission policies, not a portable OS-level sandbox.
+The mode is determined by the task, not the expert, and must always be stated in `developer-instructions`. All seven bridges expose `read-only` and `workspace-write` (Kimi accepts `workspace-write` alone); unattended delegation defaults to `workspace-write`, which deliberately maps to each provider's non-interactive full-tool mode — for Codex, `danger-full-access` with `approval_policy = "never"`. Advisory calls use the same default while carrying an explicit "do not modify" instruction. Explicit `read-only` behavior is provider-specific: Codex uses its own OS-enforced sandbox, Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. Apart from Codex's sandbox these are provider permission policies, not a portable OS-level sandbox.
 
 ## Expert Details
 
@@ -119,28 +119,45 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
+The Codex bridge wraps `codex exec --json` (Codex CLI 0.164.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
+
 ### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
-| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
-| `sandbox` | `read-only`, `workspace-write`, `danger-full-access` | Controls file access. The distributed launcher starts the server with `danger-full-access` |
-| `approval-policy` | `untrusted`, `on-request`, `never` | Controls shell command approval. The distributed launcher starts the server with `never` |
-| `model` | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` | Models visible to this Codex account at verification time |
-| `config` | key-value object | Override `config.toml` settings per-call — including `model_reasoning_effort`, which a `model` override does not adjust on its own |
-| `cwd` | path | Working directory for the task |
-| `base-instructions` | string | Override default system instructions |
-| `compact-prompt` | string | Prompt used when compacting conversation |
+| `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), sent on Codex's native `developer_instructions` channel rather than prepended |
+| `sandbox` | `read-only`, `workspace-write` | `read-only` is Codex's own `sandbox_mode="read-only"`, enforced by the OS; `workspace-write` is `danger-full-access` with `approval_policy="never"`. Default: `workspace-write`. See **Sandbox honesty**. |
+| `model` | free-form; catalogued ids under `providers.codex.models` in `config/model-catalog.json` | Default: `gpt-6.1-sol`. An unknown id fails with HTTP 400 before any work happens |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Default: `ultra`, clamped per model — see **Effort guidance** |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `cwd` | path | Working directory and Codex workspace. **A repository `AGENTS.md` here is loaded.** |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Effort guidance**: the launcher pins `model_reasoning_effort=ultra` when it starts the server, and a per-call `model` override does **not** lower it. Only `gpt-5.6-sol` and `gpt-5.6-terra` accept `ultra`; `gpt-5.6-luna` stops at `max`, and `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` stop at `xhigh`. Delegating to any of those without also passing `config: {"model_reasoning_effort": "xhigh"}` (or `"max"` for `gpt-5.6-luna`) fails with an HTTP 400 `unsupported_value` on `reasoning.effort` before the session starts, so no work happens and no `threadId` comes back to resume. Codex reports the pinned value as `max` in that error because it normalises `ultra` at the API layer. Unlike the Copilot bridge, which clamps effort per model in `resolveEffort`, the transparent launcher never inspects the call and cannot correct this for you.
+**Model guidance**: `gpt-6.1-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
+
+**Effort guidance**: effort travels as `-c model_reasoning_effort`, and the bridge clamps it to the levels `config/model-catalog.json` records for the chosen model, so `ultra` on `gpt-6-luna` or `gpt-5.6-luna` runs at `max`. A model the catalog does not list is passed through unclamped. This retires the old launcher trap, where a per-call `model` override kept the server-wide `ultra` and older CLIs failed with HTTP 400 before a thread existed; 0.164.0 itself accepted `ultra` on `gpt-6-luna`.
+
+**Sandbox honesty**: `read-only` maps to Codex's own `sandbox_mode="read-only"`, which the operating system enforces rather than the model. Measured on WSL with a live positive control in the same directory: the read-only run's shell write failed with `Read-only file system` and no file appeared, while the `workspace-write` control wrote its file, and a resume honoured the mapping too. One host so far. `workspace-write` maps to `danger-full-access` plus `approval_policy="never"`, the unattended policy the plugin pinned before. Both travel as `-c` keys on every call because `codex exec resume` has no `-s`.
+
+**Workspace context**: a repository `AGENTS.md` in `cwd` is loaded into the session — a planted sentinel answered through the bridge while a clean directory did not. Unlike Kimi and Grok there is an off switch: `project_doc_max_bytes = 0` in the operator's `config.toml` silenced the same sentinel. The bridge does not set it, because project instructions are normally wanted.
+
+**Timeout guidance**: Codex has no deadline flag that the bridge uses, so the bridge timeout is the only one. On expiry the process group is terminated and edits already written to disk are **not** rolled back.
 
 ### `mcp__plugin_claude-delegator_codex__codex-reply` (Continue Session)
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
-| `threadId` | string | **Required.** Thread ID from previous `codex` call |
+| `threadId` | string | **Required.** `threadId` from the previous `codex` call. The bridge fails loudly if Codex resumes a different thread. |
 | `prompt` | string | **Required.** Follow-up instruction |
+| `model` | free-form | Default: `gpt-6.1-sol`. **Repeat a non-default start model** — a resume does not inherit it |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Default: `ultra`, clamped per model. Repeat a non-default start effort |
+| `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
+| `cwd` | path | **Repeat the start call's `cwd`** — a resume runs in the directory it is launched from |
+| `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
+| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+
+**Reply re-pins model and effort**: measured, a session started on `gpt-6-luna` resumed on the Codex config default, `gpt-6.1-sol`, when the resume named no model — with only a warning item to show for it. The bridge therefore always passes a model and an effort on reply, falling back to its own defaults, and appends any Codex warning to the answer. Developer instructions given on the start call stay in force without being repeated. `--last` is never used: it resumes the most recent session and would cross-talk between concurrent delegations.
 
 ## Agy Parameters Reference
 
@@ -151,12 +168,12 @@ The mode is determined by the task, not the expert, and must always be stated in
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
 | `sandbox` | `read-only`, `workspace-write` | `workspace-write` passes `--dangerously-skip-permissions`; `read-only` omits it. Default: `workspace-write`. See **Sandbox honesty**. |
-| `model` | one of the 14 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-3.1-pro-high` |
+| `model` | one of the 6 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-3.8-flash-high` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory; it becomes the session workspace |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gemini-3.1-pro-high` (default) for expert work. The reasoning tier is baked into most ids — `-low`, `-medium`, `-high` — so pick the tier by picking the model. Use `gemini-3.5-flash-low` for quick low-stakes checks, `claude-sonnet-4-6` or `claude-opus-4-6-thinking` for a cross-family second opinion, and `gpt-oss-120b-medium` for an open-weights perspective.
+**Model guidance**: `gemini-3.8-flash-high` (default) for expert work. Agy 1.4.6 offers no Gemini Pro id at all; the previous default, `gemini-3.1-pro-high`, now fails pre-flight as "not recognized". The reasoning tier is baked into most ids — `-low`, `-medium`, `-high` — so pick the tier by picking the model. Use `gemini-3.8-flash-low` for quick low-stakes checks, `claude-sonnet-4-6` or `claude-opus-4-6-thinking` for a cross-family second opinion, and `gpt-oss-120b-medium` for an open-weights perspective.
 
 **No effort parameter**: the bridge never emits `--effort` and the tools do not expose it. Combining `--effort` with a tier-suffixed id fails pre-flight (`conflicts with --effort=high`), the two Claude ids reject the flag outright, and a bare family id would require it. Selecting the tier through `model` makes all of those unreachable. This is the opposite of the Codex trap documented above: there, a `model` override without a matching effort override fails; here, effort simply is not a separate knob.
 
@@ -204,7 +221,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 **Timeout guidance**: kimi has no timeout flag of its own, so the bridge deadline is the only one. On expiry the bridge SIGTERMs the process group; edits already written to disk are **not** rolled back, and there is no resumable-id recovery path like Agy's. Estimate generously for implementation runs.
 
-**Sandbox honesty**: kimi print mode has **no permission tier at all**. `--plan`, `--yolo` and `--auto` are each rejected outright when combined with `--prompt` (`Cannot combine --prompt with --plan`), and a plain `-p` run created a file unprompted. There is nothing to map `read-only` onto, so the bridge **refuses** it with -32602 rather than accept a value that would change nothing. Every kimi delegation is effectively implementation-mode; carry any do-not-modify intent in `developer-instructions` and treat it as advisory only, not enforced. When a caller genuinely needs enforced denial, route to Claude or Copilot, use Grok for denial of its built-in write/shell tools, or use a native Codex registration explicitly configured read-only.
+**Sandbox honesty**: kimi print mode has **no permission tier at all**. `--plan`, `--yolo` and `--auto` are each rejected outright when combined with `--prompt` (`Cannot combine --prompt with --plan`), and a plain `-p` run created a file unprompted. There is nothing to map `read-only` onto, so the bridge **refuses** it with -32602 rather than accept a value that would change nothing. Every kimi delegation is effectively implementation-mode; carry any do-not-modify intent in `developer-instructions` and treat it as advisory only, not enforced. When a caller genuinely needs enforced denial, route to Claude or Copilot, use Grok for denial of its built-in write/shell tools, or use Codex, whose `read-only` is its own OS-enforced sandbox.
 
 **Workspace context**: a repository-supplied `AGENTS.md` in `cwd` is auto-loaded into the session. Verified: the sentinel instruction was honoured with the file present and the model answered `NO_CODEWORD` in a clean directory. `--skills-dir` pointed at an empty directory does **not** suppress it, and no off switch was found. This is a wider prompt-injection surface than Agy's, where omitting `--add-dir` prevents rules injection entirely — so treat every kimi delegation as trusting the target repository, and prefer another provider when delegating into code you did not write.
 
@@ -292,7 +309,7 @@ Three things are easy to get wrong, each measured:
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` is **enforced**, not advisory — see **Sandbox honesty** below. Default: `workspace-write` |
-| `model` | `grok-4.6` | Hard allowlist from `config/model-catalog.json`. This account sees one model |
+| `model` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6`, `grok-4.5` | Hard allowlist from `config/model-catalog.json`. Default: `grok-4.7` |
 | `effort` | free-form string | Passed through as `--reasoning-effort`. The CLI does not enumerate its values, so the bridge forwards the string rather than inventing an allowlist |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory. **Project instruction files here are auto-loaded** |
@@ -312,7 +329,7 @@ All four hosts returned identical verbatim denial strings; several runs put cont
 
 **Workspace context**: project instruction files in `cwd` are auto-loaded with no known off switch — `CLAUDE.md` was measured loading on Linux, macOS, WSL and Windows, and a planted `AGENTS.md` loaded too. Delegating grok into this repository injects its own `CLAUDE.md`. This is the same prompt-injection surface as Kimi's, so prefer another provider when delegating into code you do not control. `--no-memory` disables cross-session memory, not project instructions.
 
-**Model guidance**: `grok-4.6` is the only model this account advertises, and `grok models` lists the roster headlessly, so a refresh needs no PTY. A free account has a usage limit that returns a JSON error object rather than a non-zero exit — budget for it on long runs.
+**Model guidance**: `grok-4.7` (default, and the CLI's own default on 1.0.67) for expert work, `grok-4.7-build-fast` for quick checks, and `grok-4.6`/`grok-4.5` as older alternatives; `grok models` lists the roster headlessly, so a refresh needs no PTY. Logged out it still prints a list — "You are not authenticated." first, and only `grok-4.6` and `grok-4.5` — so a logged-out listing is neither complete nor proof of access; run `grok login` before relying on it. A free account has a usage limit that returns a JSON error object rather than a non-zero exit — budget for it on long runs.
 
 ### `mcp__plugin_claude-delegator_grok__grok-reply` (Continue Session)
 
@@ -344,13 +361,13 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
-Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account, and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
+Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August and **265** on 2026.10.14 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
 
 `auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. Pick a Composer id when a run has to be reproducible.
 
 **Sandbox honesty**: `read-only` **deflects, it does not deny.** `--mode ask` refused an insistent write-or-shell prompt twice, including under a permissive allow list — and was then defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls. Both the write and the shell command went through, and the model's own report read "the Ask mode label did not block either call". This is Agy's category, not Grok's: the value is kept because it is strictly more restrictive than the alternative, and it is documented for exactly what it is. Carry advisory intent in `developer-instructions` too.
 
-`--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Claude or Copilot for provider-enforced denial, to Grok for denial of its built-in write/shell tools, or to a native Codex registration explicitly configured read-only.**
+`--mode plan` is never emitted despite promising "no edits" in its own help: with workspace trust granted it wrote the file on the first insistent prompt. `--sandbox` is never emitted either — it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes Grok's `read-only` enforce is unavailable here; **route to Claude or Copilot for provider-enforced denial, to Grok for denial of its built-in write/shell tools, or to Codex, whose `read-only` is its own OS-enforced sandbox.**
 
 **Workspace trust**: the bridge always passes `--trust`, and this is load-bearing. Without it a headless run prints `Workspace Trust Required` and exits **0** having executed nothing — indistinguishable from a permission mode successfully denying the task. That false negative already cost one measurement here.
 
@@ -383,23 +400,23 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
-| `model` | One of the 27 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.80) |
+| `model` | One of the 31 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.103) |
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; verified per-model floors and ceilings are applied on start |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gpt-5.6-sol` (default) at `max` effort for expert work; its backend rejects `minimal`, while `low` and `max` completed live starts, so the bridge floors both `none` and `minimal` to `low` on start calls. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded without that start-only floor. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-5.6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5` for a cross-family second opinion, and `gpt-5.5`/`gpt-5.4` as fallbacks when 5.6 quota runs dry (Codex already runs `gpt-5.6-sol` natively at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work; 1.0.103 refuses `minimal` for it, while `low` and `max` completed live starts, so the bridge floors both `none` and `minimal` to `low` on start calls — the same floor measured on `gpt-5.6-sol`. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded without that start-only floor. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5.5` for a cross-family second opinion, and `gpt-5.6-sol`/`gpt-5.5` as fallbacks when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
 ## Claude Parameters Reference (external orchestrators)
 
-The Claude bridge wraps Claude Code 2.1.234 with the same start/reply contract used by the other providers.
+The Claude bridge wraps Claude Code 2.1.309 with the same start/reply contract used by the other providers.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
 | `prompt` | string | **Required.** Full delegation prompt; pass optional Agent Mail coordination through `coordination`, not by duplicating it here |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
-| `model` | `opus`, `fable`, `sonnet`, `haiku`, or their full IDs | Override the default `claude-opus-5` model |
+| `model` | `opus`, `fable`, `sonnet`, `haiku`, or their full IDs | Override the default `claude-opus-5-5` model |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Default: `xhigh` |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` maps to `plan`; `workspace-write` bypasses permission prompts. Default: `workspace-write`. |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
@@ -437,15 +454,11 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 
 | Field | Type | Description |
 |-------|------|-------------|
-| MCP result `content` | content-block array | The visible tool response; interpret its first text block according to the provider contract below |
-| Envelope `threadId` | string | Session ID for multi-turn follow-ups through a custom bridge |
-| Envelope `content` | string | Expert response text inside the custom bridge JSON envelope |
+| MCP result `content` | content-block array | The visible tool response; interpret its first text block as the JSON envelope below |
+| Envelope `threadId` | string | Session ID for multi-turn follow-ups |
+| Envelope `content` | string | Expert response text inside the JSON envelope |
 
-Native Codex leaves the expert response as plain text in `content[0].text`; do
-not JSON-parse it. Its resumable id is exposed separately as top-level
-`result.threadId` and/or `result.structuredContent.threadId`.
-
-The six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`. Parse that text to obtain the `threadId` needed for their `*-reply` calls; unlike native Codex, the custom contract does not require a sibling result field to survive the MCP client.
+All seven bridges (Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON envelope `{"threadId": "...", "content": "..."}` in `content[0].text`. Parse that text to obtain the `threadId` needed for their `*-reply` calls; the contract does not depend on a sibling result field surviving the MCP client. Codex no longer differs here: the plain-text `content[0].text` and `result.structuredContent.threadId` shape belonged to the retired `codex mcp-server`.
 
 ## When NOT to Delegate
 

@@ -37,7 +37,7 @@ const EXPECTED_PACKAGE_FILES = [
   "rules/triggers.md",
   "server/agy/index.js",
   "server/claude/index.js",
-  "server/codex/launcher.js",
+  "server/codex/index.js",
   "server/copilot/index.js",
   "server/cursor/index.js",
   "server/grok/index.js",

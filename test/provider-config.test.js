@@ -130,45 +130,28 @@ function normalizeEntrypoint(args) {
   return normalized;
 }
 
-function withoutCodexSelfDisable(args) {
-  const normalized = [...args];
-  const override = normalized.indexOf("mcp_servers.codex.enabled=false");
-  assert.ok(override > 0, "nested Codex must disable its inherited self-target");
-  assert.equal(normalized[override - 1], "-c");
-  normalized.splice(override - 1, 2);
-  return normalized;
-}
+// Codex removed `codex mcp-server` (openai/codex#42993); a current CLI parses the
+// word as an interactive prompt and exits with "stdin is not a terminal", which a
+// client reports as CONNECTION_CLOSED. Every distributed configuration therefore
+// runs the bridge over `codex exec`, with no arguments: the bridge pins model,
+// effort, sandbox and approval per call, so nothing is left to pin at startup.
+const EXPECTED_CODEX_ARGS = ["${CLAUDE_PLUGIN_ROOT}/server/codex/index.js"];
 
-// `-c mcp_servers.codex.enabled=false` is deliberately absent. A `-c` override
-// CREATES `mcp_servers.codex` when config.toml has no such section, and Codex
-// refuses to start on any `mcp_servers.<name>` that declares no transport:
-// measured on codex-cli 0.147.0 against two isolated CODEX_HOME directories,
-// the flag gave "error loading config: invalid transport" without the section
-// and started normally with it. A config carrying no self-reference is the
-// ordinary case, so these distributed configurations shipped a Codex server
-// that failed as CONNECTION_CLOSED — a symptom naming neither flag nor config.
-//
-// The manifest, providers catalog and Claude JSON example cannot guarantee that
-// a Codex table exists, so omitting the flag is correct for them. The separate
-// Codex-orchestrator TOML deliberately declares that table and disables it.
-const EXPECTED_CODEX_ARGS = [
-  "-m", "gpt-5.6-sol",
-  "-s", "danger-full-access",
-  "-a", "never",
-  "-c", "model_reasoning_effort=ultra",
-  "mcp-server"
-];
+test("distributed configurations run Codex through its bridge, never the retired mcp-server", () => {
+  for (const [where, configuration] of [
+    ["providers.json", providers.providers.codex.mcp],
+    ["mcp-servers.example.json", mcpServers.mcpServers.codex],
+    ["plugin.json", manifest.mcpServers.codex]
+  ]) {
+    assert.equal(configuration.command, "node", where);
+    assert.deepEqual(configuration.args, EXPECTED_CODEX_ARGS, where);
+  }
 
-function assertTransparentCodexLauncher(configuration) {
-  assert.equal(configuration.command, "node");
-  assert.match(configuration.args[0], /server[\\/]codex[\\/]launcher\.js$/);
-  assert.deepEqual(configuration.args.slice(1), EXPECTED_CODEX_ARGS);
-  assert.equal(path.basename(configuration.args[0]), "launcher.js");
-}
-
-test("distributed configurations run native Codex through the identity-boundary launcher", () => {
-  assertTransparentCodexLauncher(providers.providers.codex.mcp);
-  assertTransparentCodexLauncher(mcpServers.mcpServers.codex);
+  const codexTable = parseCodexMcpExample(CODEX_MCP_EXAMPLE).codex;
+  assert.deepEqual(normalizeEntrypoint(codexTable.args), ["server/codex/index.js"]);
+  for (const argument of codexTable.args) {
+    assert.doesNotMatch(argument, /mcp-server|launcher\.js/);
+  }
 });
 
 test("release metadata stays at one version until the dedicated release commit", () => {
@@ -239,9 +222,8 @@ test("provider catalog, plugin manifest and MCP examples stay in parity", () => 
     assert.equal(server.tool_timeout_sec, 3600, `${name}: tool timeout`);
     assert.equal(server.required, false, `${name}: optional server`);
 
-    const actualArgs = name === "codex" ? withoutCodexSelfDisable(server.args) : server.args;
     assert.deepEqual(
-      normalizeEntrypoint(actualArgs),
+      normalizeEntrypoint(server.args),
       normalizeEntrypoint(providers.providers[name].mcp.args),
       `${name}: Codex example must use the canonical provider entrypoint`
     );
@@ -287,6 +269,7 @@ test("README states the runtime and provider continuity contracts", () => {
 
   assert.match(readme, /repeat `sandbox: "read-only"` on every\s+reply/);
   assert.match(readme, /Agy replies must (?:also )?repeat[\s\S]{0,120}`model` and[\s\S]{0,40}`cwd`/);
+  assert.match(readme, /Codex\s+replies must repeat the start call's `cwd`/);
   assert.match(readme, /same `cwd`[\s\S]{0,120}Kimi[\s\S]{0,120}Cursor/);
   assert.doesNotMatch(readme, /mcp__claude__claude/);
 
@@ -300,7 +283,7 @@ test("README states the runtime and provider continuity contracts", () => {
 
 test("shipped guidance does not claim Grok is the only enforcing bridge", () => {
   const files = ["README.md", "CLAUDE.md", "rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md"];
-  const customProviders = ["Claude", "Agy", "Kimi", "Copilot", "Grok", "Cursor"];
+  const customProviders = ["Codex", "Claude", "Agy", "Kimi", "Copilot", "Grok", "Cursor"];
 
   for (const file of files) {
     const source = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
@@ -320,15 +303,14 @@ test("shipped guidance does not claim Grok is the only enforcing bridge", () => 
 
 test("shared bridge guidance names every custom provider", () => {
   const customProviders = Object.keys(providers.providers)
-    .filter((name) => name !== "codex")
     .map((name) => name === "agy" ? "Agy" : name[0].toUpperCase() + name.slice(1));
   const contracts = [
     ["rules/model-selection.md", /Claude, GPT \(Codex\),[^\n]+experts serve/],
     ["rules/model-selection.md", /1\. \*\*If multiple are available\*\*:[\s\S]+?2\. \*\*If only one is available\*\*/],
     ["rules/orchestration.md", /For the ([^.]+) bridges, do not manually inject/],
     ["rules/orchestration.md", /For the ([^.]+) bridges, pass the object only/],
-    ["rules/model-selection.md", /The six custom bridges \(([^)]+)\) put a JSON envelope/],
-    ["rules/triggers.md", /Codex native MCP[^\n]+?([^.]+) bridge calls should receive/]
+    ["rules/model-selection.md", /All seven bridges \(([^)]+)\) put a JSON envelope/],
+    ["rules/triggers.md", /^([^.\n]+) bridge calls should all receive/m]
   ];
 
   for (const [file, pattern] of contracts) {
@@ -351,19 +333,21 @@ test("catalog refresh prose follows the catalog dates and response envelope type
   assert.match(selection, /\| MCP result `content` \| content-block array \|/);
   assert.match(selection, /\| Envelope `content` \| string \|/);
   assert.match(selection, /JSON envelope `\{"threadId": "\.\.\.", "content": "\.\.\."\}`/);
-  assert.match(selection, /Native Codex leaves the expert response as plain text/);
-  assert.match(selection, /result\.structuredContent\.threadId/);
+  // The plain-text result belonged to the retired `codex mcp-server`. An
+  // orchestrator still told to read `structuredContent` would never find the id.
+  assert.doesNotMatch(selection, /Native Codex leaves the expert response as plain text/);
   assert.doesNotMatch(selection, /mirroring native Codex output/);
 
-  const nativeExtraction = /const threadId = result\.threadId \?\? result\.structuredContent\?\.threadId/g;
-  assert.equal(
-    [...orchestration.matchAll(nativeExtraction)].length,
-    3,
-    "every native Codex example must use its actual top-level/structured result shape"
+  const envelopeExtraction = /const threadId = JSON\.parse\(result\.content\[0\]\.text\)\.threadId/g;
+  assert.ok(
+    [...orchestration.matchAll(envelopeExtraction)].length >= 3,
+    "every example, Codex's included, must read the id from the JSON envelope"
   );
-  assert.match(orchestration, /Custom bridge extraction[\s\S]+JSON\.parse\(result\.content\[0\]\.text\)\.threadId/);
+  assert.doesNotMatch(orchestration, /result\.structuredContent\?\.threadId/);
+  assert.match(orchestration, /Bridge extraction[\s\S]+JSON\.parse\(result\.content\[0\]\.text\)\.threadId/);
   assert.doesNotMatch(orchestration, /const \{ threadId \} = JSON\.parse\(result\.content\[0\]\.text\)/);
-  assert.match(orchestration, /node "\$\{CLAUDE_PLUGIN_ROOT\}"\/server\/codex\/launcher\.js/);
+  assert.match(orchestration, /node "\$\{CLAUDE_PLUGIN_ROOT\}"\/server\/codex\/index\.js/);
+  assert.doesNotMatch(orchestration, /launcher\.js|mcp-server`? *\\$/m);
 });
 
 test("coordination guidance follows the live Agent Mail delivery shape", () => {
@@ -410,7 +394,9 @@ test("coordination guidance follows the live Agent Mail delivery shape", () => {
     );
   }
   assert.match(delegationFormat, /## Optional Coordination Transport/);
-  assert.match(delegationFormat, /append the[\s\S]+separate envelope after[\s\S]+seven-section task/);
+  // Codex gained the `coordination` argument with its bridge; the manual
+  // append-the-contract path would now inject it twice.
+  assert.doesNotMatch(delegationFormat, /Native Codex has no `coordination` argument/);
   assert.match(delegationFormat, /pass its\s+fields only through the\s+`coordination` argument/);
   assert.match(selection, /pass optional Agent Mail coordination through `coordination`, not by duplicating it here/);
 });
@@ -445,8 +431,10 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   const claudeBridge = require("../server/claude");
   const grokBridge = require("../server/grok");
   const cursorBridge = require("../server/cursor");
+  const codexBridge = require("../server/codex");
 
   for (const tool of [
+    ...codexBridge.toolDefinitions,
     ...agyBridge.toolDefinitions,
     ...kimiBridge.toolDefinitions,
     ...copilotBridge.toolDefinitions,
@@ -460,7 +448,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
     assert.equal(timeout.maximum, 3_600_000, `${tool.name} maximum timeout`);
   }
 
-  // All six custom bridges take these bounds from the shared core rather than
+  // All seven bridges take these bounds from the shared core rather than
   // declaring their own, so lock the single definition too. Previously the Claude
   // bridge could only be checked by regex over its source, because it resolved the
   // CLI at load and exited when it was absent, as it is on CI runners.
@@ -473,7 +461,7 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   // never sets it and long implementation runs die at the 15-minute default.
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const timeoutRows = rules.split(/\r?\n/).filter((line) => line.startsWith("| `timeout` |"));
-  assert.equal(timeoutRows.length, 12, "expected start and reply timeout rows for all six custom bridges");
+  assert.equal(timeoutRows.length, 14, "expected start and reply timeout rows for all seven bridges");
   for (const row of timeoutRows) {
     assert.match(row, /10000/);
     assert.match(row, /3600000/);
@@ -484,21 +472,19 @@ test("rules document the timeout escape hatch with the values the bridges enforc
   assert.match(rules, /not\*\* rolled back/);
 });
 
-test("rules document the Codex effort ceiling a per-call model override must respect", () => {
+test("rules document the Codex effort ceiling the bridge clamps to", () => {
   const catalog = require("../config/model-catalog.json");
+  const codexBridge = require("../server/codex");
   const codex = catalog.providers.codex;
 
-  // The launcher pins the server-level effort, and the transparent passthrough
-  // cannot lower it when a call overrides `model`, so the caller must do it.
-  assert.ok(
-    EXPECTED_CODEX_ARGS.includes(`model_reasoning_effort=${codex.defaultEffort}`),
-    "launcher args must pin the catalog default effort"
-  );
-
-  const capped = codex.models
-    .filter((model) => !model.efforts.includes(codex.defaultEffort))
-    .map((model) => model.id);
-  assert.ok(capped.length > 0, "expected models that cannot take the pinned default effort");
+  // The retired launcher pinned the effort server-wide and could not lower it
+  // when a call overrode `model`. The bridge clamps instead — but the caller
+  // should still know which models will not run at the default.
+  const capped = codex.models.filter((model) => !model.efforts.includes(codex.defaultEffort));
+  assert.ok(capped.length > 0, "expected models that cannot take the default effort");
+  for (const model of capped) {
+    assert.equal(codexBridge.resolveEffort(model.id, codex.defaultEffort), model.efforts.at(-1), model.id);
+  }
 
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   const guidance = rules
@@ -507,10 +493,10 @@ test("rules document the Codex effort ceiling a per-call model override must res
 
   assert.ok(guidance, "expected an Effort guidance paragraph in the Codex reference");
   assert.match(guidance, /model_reasoning_effort/);
-  for (const id of capped) {
+  for (const { id } of capped) {
     assert.ok(
       guidance.includes(id),
-      `Effort guidance must name ${id}, which rejects ${codex.defaultEffort}`
+      `Effort guidance must name ${id}, which does not support ${codex.defaultEffort}`
     );
   }
 });
@@ -572,6 +558,7 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
   // measured on three hosts, claude and copilot would not start while their
   // binaries sat in ~/.local/bin, the canonical install location.
   const bridges = {
+    codex: require("../server/codex"),
     agy: require("../server/agy"),
     kimi: require("../server/kimi"),
     copilot: require("../server/copilot"),
@@ -605,8 +592,9 @@ test("every bridge guards against the minimal PATH an MCP server inherits", () =
 });
 
 test("every custom bridge stamps and enforces its provider-specific depth guard", () => {
-  const customBridges = Object.keys(providers.providers).filter((name) => name !== "codex");
-  assert.deepEqual(customBridges.sort(), ["agy", "claude", "copilot", "cursor", "grok", "kimi"]);
+  // Codex is included since its launcher, which stamped no marker, was replaced.
+  const customBridges = Object.keys(providers.providers);
+  assert.deepEqual(customBridges.sort(), ["agy", "claude", "codex", "copilot", "cursor", "grok", "kimi"]);
   const sharedRuntime = fs.readFileSync(
     path.resolve(__dirname, "../server/shared/provider-runtime.js"),
     "utf8"
@@ -659,8 +647,8 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   // Claude Code a target of itself (decision 9).
   assert.equal(Object.hasOwn(servers, "claude"), false);
 
-  // Codex keeps the same launcher invocation the other distributed configs use.
-  assert.deepEqual(servers.codex.args.slice(1), EXPECTED_CODEX_ARGS);
+  // Codex is a bridge like the rest, started with no arguments.
+  assert.deepEqual(servers.codex.args, EXPECTED_CODEX_ARGS);
 
   // setup.md must not grow the hand-registration block back.
   const setup = fs.readFileSync(path.resolve(__dirname, "../commands/setup.md"), "utf8");
@@ -1355,7 +1343,10 @@ test("maintenance docs describe the active profile and conditional Codex self-di
 
   assert.doesNotMatch(readme, /Codex entry disables its own nested/);
   assert.match(readme, /static plugin manifest cannot safely disable `mcp_servers\.codex`/i);
-  assert.match(readme, /add `-c mcp_servers\.codex\.enabled=false`/);
+  // The depth marker replaced the self-disable; the README must say both that
+  // the override is unnecessary and that it is harmful where no table exists.
+  assert.match(readme, /stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`/);
+  assert.match(readme, /do not add `-c mcp_servers\.codex\.enabled=false` to a host whose `config\.toml` has no/);
   assert.match(
     readme,
     /`CODEX_DELEGATOR_CODEX_BIN` override must be a POSIX absolute path or a fully-qualified Windows drive\/UNC path/
@@ -1392,6 +1383,8 @@ test("no distributed config passes a -c override that would CREATE a config tabl
     "mcp-servers.example.json": mcpServers.mcpServers.codex.args
   };
 
+  sources["codex-mcp.example.toml"] = parseCodexMcpExample(CODEX_MCP_EXAMPLE).codex.args;
+
   for (const [where, args] of Object.entries(sources)) {
     const overrides = args.filter((argument, index) => args[index - 1] === "-c");
     for (const override of overrides) {
@@ -1401,11 +1394,10 @@ test("no distributed config passes a -c override that would CREATE a config tabl
         `${where} must not -c into mcp_servers.*; it creates the table it means to disable`
       );
     }
-    // The effort pin is the legitimate use of -c and must survive.
-    assert.ok(
-      overrides.some((override) => override.startsWith("model_reasoning_effort=")),
-      `${where} should still pin the reasoning effort`
-    );
+    // The bridge pins effort, sandbox and approval per call, so a startup -c
+    // has no legitimate use left, and the retired subcommand must not return.
+    assert.deepEqual(overrides, [], `${where} should start the bridge without config overrides`);
+    assert.equal(args.includes("mcp-server"), false, `${where} must not name the removed mcp-server`);
   }
 });
 

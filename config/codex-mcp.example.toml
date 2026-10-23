@@ -1,10 +1,10 @@
 # MCP targets for Codex as the orchestrator. Copy the relevant tables into the
 # active CODEX_HOME/config.toml and replace /absolute/path/to/claude-delegator.
-# For unattended nesting, the Codex server args below explicitly select
-# danger-full-access and never so a child approval prompt cannot suspend its parent.
-# Keep the registered model and model_reasoning_effort compatible: ultra is
-# verified for gpt-5.6-sol and gpt-5.6-terra; Luna tops out at max and the
-# remaining catalogued models top out at xhigh.
+# The codex table is the same uniform bridge as every other entry: it runs
+# `codex exec --json`, pins sandbox_mode and approval_policy per call so a child
+# approval prompt cannot suspend its parent, and clamps effort per model. It no
+# longer needs `-c mcp_servers.codex.enabled=false`: a nested Codex inherits
+# CLAUDE_DELEGATOR_CODEX_DEPTH and its own codex bridge refuses to delegate.
 
 [mcp_servers.claude]
 command = "node"
@@ -16,7 +16,7 @@ required = false
 
 [mcp_servers.codex]
 command = "node"
-args = ["/absolute/path/to/claude-delegator/server/codex/launcher.js", "-m", "gpt-5.6-sol", "-s", "danger-full-access", "-a", "never", "-c", "model_reasoning_effort=ultra", "-c", "mcp_servers.codex.enabled=false", "mcp-server"]
+args = ["/absolute/path/to/claude-delegator/server/codex/index.js"]
 enabled_tools = ["codex", "codex-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600

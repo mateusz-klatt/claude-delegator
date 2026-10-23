@@ -302,7 +302,7 @@ test("advertises the uniform grok/grok-reply MCP contract", async () => {
   const [startSchema, replySchema] = listed.result.tools.map((tool) => tool.inputSchema);
 
   assert.equal(startSchema.additionalProperties, false);
-  assert.equal(startSchema.properties.model.default, "grok-4.6");
+  assert.equal(startSchema.properties.model.default, "grok-4.7");
   assert.deepEqual(startSchema.required, ["prompt"]);
   // Unlike agy-reply, a resume needs no model re-pin: grok's -r keeps the model.
   assert.deepEqual(replySchema.required, ["threadId", "prompt"]);
@@ -361,7 +361,7 @@ test("builds start and resume calls and always forces json output", async () => 
   const [startCall] = readCalls(server.capturePath);
   assert.equal(startCall.cwd, server.workspacePath);
   assert.deepEqual(startCall.args.slice(-2), ["--output-format", "json"]);
-  assert.equal(startCall.args[startCall.args.indexOf("-m") + 1], "grok-4.6");
+  assert.equal(startCall.args[startCall.args.indexOf("-m") + 1], "grok-4.7");
   assert.equal(startCall.args[startCall.args.indexOf("--reasoning-effort") + 1], "high");
   // --verbatim stops the CLI reinterpreting a prompt that opens with something
   // it would otherwise treat as its own directive.

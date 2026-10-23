@@ -132,7 +132,7 @@ test("every bridge is a routable Agent Mail client, and none is only half-regist
   // instruction was not enough on its own. The list is now derived once; this
   // test is what makes the derivation obligatory.
   const bridges = fs.readdirSync(path.resolve(__dirname, "../server"), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "shared" && entry.name !== "codex")
+    .filter((entry) => entry.isDirectory() && entry.name !== "shared")
     .map((entry) => entry.name);
 
   assert.ok(bridges.length >= 5, `expected the bridge directories, saw ${bridges.join(", ")}`);
@@ -153,8 +153,8 @@ test("every bridge is a routable Agent Mail client, and none is only half-regist
     );
   }
 
-  // codex has no bridge directory of its own (it runs through the transparent
-  // launcher) but is still a caller, so the list is a superset, not a mirror.
-  assert.ok(CALLER_CLIENTS.includes("codex"));
+  // codex is a bridge directory like the rest now that its launcher is gone,
+  // so it must appear above rather than through an exception.
+  assert.ok(bridges.includes("codex"));
   assert.throws(() => validateCoordination({ projectKey: "/o/p", callerAgentName: "notaclient-wsl-host-1" }));
 });

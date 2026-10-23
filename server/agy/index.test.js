@@ -339,9 +339,9 @@ test("advertises the uniform agy/agy-reply MCP contract", async () => {
   const startSchema = listed.result.tools[0].inputSchema;
   const replySchema = listed.result.tools[1].inputSchema;
   assert.equal(startSchema.additionalProperties, false);
-  assert.equal(startSchema.properties.model.default, "gemini-3.1-pro-high");
+  assert.equal(startSchema.properties.model.default, "gemini-3.8-flash-high");
   assert.ok(startSchema.properties.model.enum.includes("claude-opus-4-6-thinking"));
-  assert.equal(startSchema.properties.model.enum.length, 14);
+  assert.equal(startSchema.properties.model.enum.length, 6);
   assert.deepEqual(startSchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
   assert.equal(startSchema.properties.sandbox.default, "workspace-write");
   assert.deepEqual(replySchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
@@ -380,7 +380,7 @@ test("constructs read-only and workspace-write calls with the forced non-interac
     arguments: {
       prompt: "Inspect the implementation",
       "developer-instructions": "Act as an architect.",
-      model: "gemini-3.5-flash-low",
+      model: "gemini-3.8-flash-low",
       sandbox: "read-only",
       cwd: server.workspacePath,
       coordination
@@ -402,7 +402,7 @@ test("constructs read-only and workspace-write calls with the forced non-interac
     arguments: {
       threadId: "conversation-original",
       prompt: "Continue the review",
-      model: "gemini-3.5-flash-low",
+      model: "gemini-3.8-flash-low",
       sandbox: "workspace-write"
     }
   });
@@ -444,7 +444,7 @@ test("constructs read-only and workspace-write calls with the forced non-interac
     assert.equal(call.preservedValue, "keep-me");
   }
 
-  assert.equal(planCall.args[planCall.args.indexOf("--model") + 1], "gemini-3.5-flash-low");
+  assert.equal(planCall.args[planCall.args.indexOf("--model") + 1], "gemini-3.8-flash-low");
   assert.equal(planCall.args.includes("--dangerously-skip-permissions"), false);
   assert.equal(planCall.cwd, server.workspacePath);
   const planPrompt = planCall.args[planCall.args.indexOf("-p") + 1];
@@ -454,10 +454,10 @@ test("constructs read-only and workspace-write calls with the forced non-interac
   assert.match(planPrompt, /"mailTopic": "agy-delegation-1"/);
 
   assert.equal(replyCall.args[replyCall.args.indexOf("--conversation") + 1], "conversation-original");
-  assert.equal(replyCall.args[replyCall.args.indexOf("--model") + 1], "gemini-3.5-flash-low");
+  assert.equal(replyCall.args[replyCall.args.indexOf("--model") + 1], "gemini-3.8-flash-low");
   assert.ok(replyCall.args.includes("--dangerously-skip-permissions"));
 
-  assert.equal(defaultCall.args[defaultCall.args.indexOf("--model") + 1], "gemini-3.1-pro-high");
+  assert.equal(defaultCall.args[defaultCall.args.indexOf("--model") + 1], "gemini-3.8-flash-high");
   assert.ok(defaultCall.args.includes("--dangerously-skip-permissions"));
   await server.close();
 });
@@ -519,7 +519,7 @@ test("fails loudly when agy resumes a different conversation", async () => {
     arguments: {
       threadId: "conversation-that-expired",
       prompt: "WRONG_CONVERSATION",
-      model: "gemini-3.5-flash-low"
+      model: "gemini-3.8-flash-low"
     }
   });
 
@@ -535,7 +535,7 @@ test("refuses to delegate from inside an already delegated agy session", async (
   for (const name of ["agy", "agy-reply"]) {
     const response = await server.request("tools/call", {
       name,
-      arguments: { threadId: "conversation-x", prompt: "hello", model: "gemini-3.5-flash-low" }
+      arguments: { threadId: "conversation-x", prompt: "hello", model: "gemini-3.8-flash-low" }
     });
     assert.equal(response.error.code, -32603);
     assert.match(response.error.message, /already running inside a delegated Agy session/);
@@ -554,8 +554,8 @@ test("rejects invalid inputs before invoking Agy", async () => {
     [{ name: "agy", arguments: { prompt: "hello", model: "gemini-3.1-pro-preview" } }, /model/],
     [{ name: "agy", arguments: { prompt: "hello", cwd: " " } }, /cwd/],
     [{ name: "agy", arguments: { prompt: "hello", "developer-instructions": 7 } }, /developer-instructions/],
-    [{ name: "agy-reply", arguments: { threadId: "latest", prompt: "hello", model: "gemini-3.5-flash-low" } }, /explicit conversation id/],
-    [{ name: "agy-reply", arguments: { threadId: "conversation", prompt: " ", model: "gemini-3.5-flash-low" } }, /prompt/],
+    [{ name: "agy-reply", arguments: { threadId: "latest", prompt: "hello", model: "gemini-3.8-flash-low" } }, /explicit conversation id/],
+    [{ name: "agy-reply", arguments: { threadId: "conversation", prompt: " ", model: "gemini-3.8-flash-low" } }, /prompt/],
     [{ name: "agy-reply", arguments: { threadId: "conversation", prompt: "hello" } }, /'model' is required for agy-reply/],
     [{
       name: "agy",
