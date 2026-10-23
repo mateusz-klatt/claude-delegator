@@ -36,13 +36,10 @@ Every delegation prompt MUST include these sections:
 ## Optional Coordination Transport
 
 The mandatory seven-section task above never contains an Agent Mail transport
-envelope. For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass its
+envelope. For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass its
 fields only through the `coordination` argument; the bridge appends the canonical
-coordination contract exactly once.
-
-Native Codex has no `coordination` argument. When reporting is needed, append the
-contents of `prompts/agent-mail-coordination.md` and this separate envelope after
-the complete seven-section task:
+coordination contract exactly once. Never paste `prompts/agent-mail-coordination.md`
+into the task yourself — Codex used to need that, and no longer does:
 
 ```json
 {

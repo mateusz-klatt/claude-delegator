@@ -284,9 +284,13 @@ test("advertises a uniform claude/claude-reply contract", async () => {
   assert.deepEqual(listed.result.tools.map((tool) => tool.name), ["claude", "claude-reply"]);
   const startSchema = listed.result.tools[0].inputSchema;
   const replySchema = listed.result.tools[1].inputSchema;
-  assert.equal(startSchema.properties.model.default, "claude-opus-5");
+  assert.equal(startSchema.properties.model.default, "claude-opus-5-5");
   assert.equal(startSchema.properties.effort.default, "xhigh");
   assert.deepEqual(startSchema.properties.model.enum, [
+    "claude-opus-5-5",
+    "claude-fable-5-1",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
     "claude-opus-5",
     "claude-fable-5",
     "claude-sonnet-5",

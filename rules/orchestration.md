@@ -55,17 +55,14 @@ Use `mcp__claude__claude`, `mcp__plugin_claude-delegator_codex__codex`, `mcp__pl
 
 ### Multi-Turn
 
-Every target returns a `threadId` from the initial call, but the result shape is
-not identical. For the six custom bridges (Claude, Agy, Kimi, Grok, Cursor, and
-Copilot), parse the JSON envelope in `content[0].text`. Native Codex leaves its
-expert response as plain `content[0].text` and exposes the id separately as
-top-level `result.threadId` and/or `result.structuredContent.threadId`. Pass the
-id to the corresponding `-reply` tool for follow-up turns with full context
-preservation.
+Every target returns a `threadId` from the initial call in the same shape: all
+seven bridges (Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot) put a JSON
+envelope in `content[0].text`. Pass the id to the corresponding `-reply` tool
+for follow-up turns with full context preservation.
 
 ```typescript
-// Custom bridge extraction (the same shape for all six custom providers)
-const customThreadId = JSON.parse(result.content[0].text).threadId
+// Bridge extraction (the same shape for all seven providers)
+const threadId = JSON.parse(result.content[0].text).threadId
 ```
 
 ```typescript
@@ -75,13 +72,14 @@ const result = mcp__plugin_claude-delegator_codex__codex({
   "developer-instructions": "[expert prompt]",
   cwd: "/path/to/project"
 })
-const threadId = result.threadId ?? result.structuredContent?.threadId
-// result.content[0].text is the plain Codex response, not a JSON envelope.
+const threadId = JSON.parse(result.content[0].text).threadId
 
-// Turn 2: Follow up with context preserved
+// Turn 2: Follow up with context preserved. A Codex resume inherits neither
+// model nor workspace, so repeat cwd (and any non-default model or effort).
 mcp__plugin_claude-delegator_codex__codex-reply({
   threadId,
-  prompt: "Now add tests for the validation you just implemented"
+  prompt: "Now add tests for the validation you just implemented",
+  cwd: "/path/to/project"
 })
 ```
 
@@ -149,12 +147,12 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract. For native Codex, read that file and append it with the envelope because its native tool has no `coordination` parameter.
+For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract.
 
 ### Step 3: Determine Mode
 | Provider | Advisory | Implementation |
 |----------|----------|----------------|
-| Codex native MCP | Default `danger-full-access` + `never`; state "do not modify" in developer instructions | Same non-interactive policy; edits are authorized in developer instructions |
+| Codex bridge | Default `workspace-write` (`danger-full-access` + approval `never`); state "do not modify". `read-only` is Codex's own sandbox, enforced by the OS | Default `workspace-write` |
 | Claude bridge | Default `workspace-write` (permission bypass); state "do not modify" | Default `workspace-write` |
 | Agy bridge | Default `workspace-write` (`--dangerously-skip-permissions`); state "do not modify". `read-only` soft-denies shell only; file writes and network remain available | Default `workspace-write` |
 | Kimi bridge | `workspace-write` only; state "do not modify". `read-only` is refused — print mode has no permission tier | `workspace-write` |
@@ -162,7 +160,7 @@ For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually in
 | Cursor bridge | Default `workspace-write` (`--force`); state "do not modify". `read-only` maps to `--mode ask`, which deflects but does not deny | Default `workspace-write` |
 | Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify". `read-only` denies shell, write and edit tools | Default `workspace-write` |
 
-The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. Explicit `read-only` behavior is provider-specific: Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. A denying policy may also prevent Agent Mail writes, which must fail open.
+The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. Explicit `read-only` behavior is provider-specific: Codex uses its OS-enforced sandbox, Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. A denying policy may also prevent Agent Mail writes, which must fail open.
 
 ### Step 4: Notify User
 Always inform the user before delegating:
@@ -193,16 +191,18 @@ When MCP Agent Mail is already available to the caller, resolve the caller's bou
 
 `callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
 
-The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].message.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, native `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].message.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
 
-For the Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. Codex's native server does not define that field, so embed the same envelope plus the contents of `agent-mail-coordination.md` in the Codex task prompt. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
+For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
 
 ### Step 6: Call the Expert
 ```typescript
-// Using Codex (GPT) — the plugin pins danger-full-access + approval never
+// Using Codex (GPT) — workspace-write is danger-full-access + approval never
 mcp__plugin_claude-delegator_codex__codex({
-  prompt: "[your 7-section delegation prompt with FULL context; embed Agent Mail envelope + contract here only when needed]",
+  prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert's prompt file — also carries advisory-vs-implementation intent]",
+  coordination: { /* optional caller envelope */ },
+  sandbox: "workspace-write",
   cwd: "[current working directory]"
 })
 
@@ -211,7 +211,7 @@ mcp__claude__claude({
   prompt: "[your 7-section delegation prompt with FULL context]",
   "developer-instructions": "[contents of the expert prompt]",
   coordination: { /* optional caller envelope */ },
-  model: "claude-opus-5",
+  model: "claude-opus-5-5",
   sandbox: "workspace-write",
   cwd: "[current working directory]"
 })
@@ -279,15 +279,14 @@ Escalate to user
 ### Retry with Multi-Turn
 
 ```typescript
-// Attempt 1 with native Codex
+// Attempt 1 (Codex here; every bridge returns the same envelope)
 const result = mcp__plugin_claude-delegator_codex__codex({ ... })
-const threadId = result.threadId ?? result.structuredContent?.threadId
-// For Claude, Agy, Kimi, Grok, Cursor, or Copilot instead:
-// const threadId = JSON.parse(result.content[0].text).threadId
+const threadId = JSON.parse(result.content[0].text).threadId
 
 // Attempt 2 (context preserved — expert remembers attempt 1)
 mcp__plugin_claude-delegator_codex__codex-reply({ // or the matching reply tool from the table above
   threadId,
+  cwd: "/path/to/project", // a Codex resume runs where it is launched
   prompt: `The previous implementation failed verification.
 Error: [exact error message]
 Fix the issue and verify the change works.`
@@ -298,8 +297,10 @@ Keep the original caller envelope and Agent Mail reply chain across retries. Do 
 
 Reply calls are new tool invocations, so repeat the original `sandbox` and any
 other defaulted argument when continuity matters; omitting `sandbox` returns
-custom bridges to their `workspace-write` default. Agy replies must also repeat
-the start call's `model` and `cwd`. Keep Kimi's `cwd` when the start used a
+bridges to their `workspace-write` default. Agy replies must also repeat
+the start call's `model` and `cwd`. Codex replies must repeat `cwd`, and the
+start call's `model` and `effort` when those were not the defaults, because a
+Codex resume inherits none of them. Keep Kimi's `cwd` when the start used a
 non-default directory, and always keep Cursor's `cwd` because its sessions are
 workspace-bound. The deliberate exception is `effort` on Claude and Copilot:
 omit it to inherit the resumed session's effort, and supply it only for an
@@ -372,14 +373,14 @@ REQUIREMENTS:
   "developer-instructions": "[contents of code-reviewer.md]",
   cwd: "/path/to/project"
 })
-const threadId = result.threadId ?? result.structuredContent?.threadId
-// result.content[0].text is the plain Codex response.
+const threadId = JSON.parse(result.content[0].text).threadId
 ```
 
 **Attempt 2 (retry via multi-turn):**
 ```typescript
 mcp__plugin_claude-delegator_codex__codex-reply({
   threadId,
+  cwd: "/path/to/project",
   prompt: `The previous implementation failed verification.
 Error: TypeError: Cannot read property 'x' of undefined at line 45
 The middleware was added but req.body was undefined.
@@ -393,17 +394,11 @@ Fix the issue — ensure validation runs after body parser.`
 
 ### Codex
 
-The native Codex MCP server is started through the transparent environment-boundary launcher with explicit unattended settings:
+The Codex bridge runs `node "${CLAUDE_PLUGIN_ROOT}"/server/codex/index.js`, which spawns one `codex exec --json` (or `codex exec resume --json`) per call. Every call pins its own policy with `-c` keys — `sandbox_mode`, `approval_policy = "never"`, `model_reasoning_effort` — and names the model with `-m`, so the operator's `config.toml` defaults never decide them. `--skip-git-repo-check` is always passed, because `exec` otherwise refuses to start outside a trusted git repository and the retired `mcp-server` never asked.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}"/server/codex/launcher.js \
-  -m gpt-5.6-sol -s danger-full-access -a never \
-  -c model_reasoning_effort=ultra mcp-server
-```
+This prevents an inner approval prompt from suspending the parent CLI. The bridge scrubs the caller's Agent Mail identity and credentials from the child environment and stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`, so a nested Codex refuses to delegate onward through its own codex target. That makes `-c mcp_servers.codex.enabled=false` unnecessary — which matters, because that override creates the table it means to disable when `config.toml` has none, and Codex then rejects the transport-less entry. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use `sandbox: "read-only"` only when refusal is preferable to autonomous completion.
 
-`-c mcp_servers.codex.enabled=false` belongs here **only when `config.toml` already declares `[mcp_servers.codex]`**. A `-c` override creates that table when it is absent, and Codex rejects any `mcp_servers.<name>` without a transport — measured on codex-cli 0.147.0, where the flag produced `error loading config: invalid transport` on a config lacking the section and started normally on one that had it. Passing it unconditionally left the server failing as `CONNECTION_CLOSED`, a symptom that names neither the flag nor the config — the same symptom the stale-cache-path defect produced, which is why the two were easy to confuse. The declaration in `.claude-plugin/plugin.json` is static and cannot test for the section, so it omits the flag; an operator who really keeps a self-referential `[mcp_servers.codex]` adds it back there by hand.
-
-This prevents an inner approval prompt from suspending the parent CLI. The launcher preserves native MCP stdio while scrubbing the caller's Agent Mail identity and credentials. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use a restrictive per-call override only when refusal is preferable to autonomous completion.
+`CODEX_DELEGATOR_CODEX_BIN` can still name the binary explicitly. Do not point it at a version-stamped release directory: a pin to 0.152.1 was how one host kept the retired `mcp-server` alive — and, with it, a model roster frozen at that release.
 
 Codex also supports per-project trust configuration:
 
@@ -416,7 +411,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; start calls default to `max`. On start, the bridge applies verified per-model bounds: `gpt-5.6-sol` is floored at `low` and accepts `max`, while unverified model ceilings stay capped at `xhigh`. A reply does not know the session model, so omit `effort` to retain the current session setting; an explicit reply override is forwarded without the start-only floor.
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; start calls default to `max`. On start, the bridge applies verified per-model bounds: `gpt-6.1-sol` and `gpt-5.6-sol` are floored at `low` and accept `max`, while unverified model ceilings stay capped at `xhigh`. A reply does not know the session model, so omit `effort` to retain the current session setting; an explicit reply override is forwarded without the start-only floor.
 
 ---
 

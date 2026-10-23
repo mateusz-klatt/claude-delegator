@@ -7,7 +7,7 @@ timeout: 60000
 
 # Setup
 
-Verify Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents via native MCP, then install their orchestration rules. Five domain experts can advise OR implement.
+Verify Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents through their MCP bridges, then install their orchestration rules. Five domain experts can advise OR implement.
 
 ## Step 1: Check CLI Dependencies
 

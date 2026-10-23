@@ -16,7 +16,6 @@
     "prompts/*.md",
     "rules/*.md",
     "server/*/index.js",
-    "server/codex/launcher.js",
     "server/shared/bridge.js",
     "server/shared/coordination.js",
     "server/shared/environment.js",

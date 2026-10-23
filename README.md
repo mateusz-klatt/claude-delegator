@@ -119,18 +119,20 @@ Use single-shot (`claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot
 
 Reply calls are new tool invocations, so arguments with bridge schema defaults
 are evaluated again. In particular, repeat `sandbox: "read-only"` on every
-reply in a read-only chain; otherwise the custom bridges default back to
+reply in a read-only chain; otherwise the bridges default back to
 `workspace-write`. This is not a blanket loss of provider session state:
 omitting `effort` on Claude and Copilot replies intentionally lets the resumed
 session retain its current effort. Agy replies must repeat the start call's
-`model` and `cwd`, because its resumed conversation inherits neither. Keep the
+`model` and `cwd`, because its resumed conversation inherits neither. Codex
+replies must repeat the start call's `cwd`, and its `model` and `effort` when
+they were not the defaults, because a Codex resume inherits none of them. Keep the
 same `cwd` for Kimi when the start used a non-default working directory, and for
 Cursor, whose sessions are workspace-bound. See each tool schema for the other
 provider-specific arguments.
 
 ### Long-running delegation progress
 
-When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. Pass the envelope through the dedicated `coordination` argument for Claude, Agy, Kimi, Copilot, Grok, and Cursor; their bridges inject the canonical prompt contract exactly once. Native Codex has no such argument, so its caller embeds the envelope and contract in the task prompt. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
+When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. Pass the envelope through the dedicated `coordination` argument for Codex, Claude, Agy, Kimi, Copilot, Grok, and Cursor; their bridges inject the canonical prompt contract exactly once. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
 
 ---
 
@@ -149,29 +151,53 @@ The orchestrator selects the mode based on your request.
 
 ### Configuration Defaults
 
-The native Codex target is launched with Codex's own `danger-full-access` sandbox and `never` approval values. A transparent Node launcher preserves the native `codex` / `codex-reply` contract while removing the caller's Agent Mail identity and credentials before Codex starts. The six custom bridges default to their non-interactive `workspace-write` modes so a nested approval prompt cannot suspend both CLIs; advisory intent is always carried in the expert instruction. Explicit `read-only` behavior is provider-specific: Claude uses plan mode, Grok adds deny rules for its built-in write and shell tools, Copilot denies shell/write/edit, Agy soft-denies shell but not file writes or network access, Cursor's ask mode deflects but does not enforce, and Kimi refuses the value because print mode has no permission tier.
+All seven bridges default to their non-interactive `workspace-write` modes so a nested approval prompt cannot suspend both CLIs; for Codex that is `danger-full-access` with approval `never`, pinned on every call. Advisory intent is always carried in the expert instruction. Explicit `read-only` behavior is provider-specific: Codex uses its own sandbox, enforced by the operating system; Claude uses plan mode, Grok adds deny rules for its built-in write and shell tools, Copilot denies shell/write/edit, Agy soft-denies shell but not file writes or network access, Cursor's ask mode deflects but does not enforce, and Kimi refuses the value because print mode has no permission tier.
+
+Codex no longer ships its own MCP server: `codex mcp-server` was removed by openai/codex#42993 (deprecated in 0.149.1), so on a current CLI the old passthrough failed as `CONNECTION_CLOSED`. The Codex target is now a bridge over `codex exec --json`, like every other provider, and returns the same JSON envelope.
 
 ### Supported Models
 
 | Provider | Default | Selectable models |
 |---|---|---|
-| **Claude** | `opus` / `claude-opus-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases and their full IDs. |
-| **Codex** | `gpt-5.6-sol` (`ultra`) | Seven account-visible models, from `gpt-5.6-sol` through `gpt-5.3-codex-spark`. |
-| **Agy** | `gemini-3.1-pro-high` | Fourteen ids across Gemini, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
+| **Claude** | `opus` / `claude-opus-5-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases (Opus 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5) and the full IDs of both generations. |
+| **Codex** | `gpt-6.1-sol` (`ultra`) | Seven account-visible models, from `gpt-6.1-sol` through `gpt-5.6-luna`; free-form ids are passed through, and effort is clamped per model. |
+| **Agy** | `gemini-3.8-flash-high` | Six ids across Gemini 3.8 Flash, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
-| **Grok** | `grok-4.6` | One model on this account. `read-only` adds deny rules for built-in write and shell tools. |
-| **Cursor** | `auto` | 204 ids listed, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-5.6-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; start calls clamp verified per-model effort floors and ceilings. Reply calls should omit `effort` to retain the session setting. |
+| **Grok** | `grok-4.7` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6` and `grok-4.5`. `read-only` adds deny rules for built-in write and shell tools. |
+| **Cursor** | `auto` | 265 ids listed on 2026.10.14, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
+| **Copilot** | `gpt-6.1-sol` (`max`) | 31 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; start calls clamp verified per-model effort floors and ceilings. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 
-The supplied Codex registration pins `model_reasoning_effort=ultra`, which is
-valid only for `gpt-5.6-sol` and `gpt-5.6-terra` in the verified catalog.
-`gpt-5.6-luna` tops out at `max`; the remaining listed Codex models top out at
-`xhigh`. When changing the registered Codex model, change the effort in the
-same `args` array to a supported value as well.
+The Codex bridge defaults to `model_reasoning_effort=ultra` and clamps it per
+model: `gpt-6-luna` and `gpt-5.6-luna` top out at `max`, so `ultra` runs at
+`max` there. A Codex resume inherits neither the model nor the effort nor the
+workspace, so `codex-reply` re-pins model and effort on every call; repeat the
+start call's `cwd`, and its `model` and `effort` when they were not the defaults.
 
 **Kimi as a bridge to Ollama.** The Kimi bridge reaches more than Moonshot: the same `kimi` / `kimi-reply` tools route to locally-run Ollama weights (VRAM, no cloud spend, code stays on the machine) and to Ollama's hosted models (a `:cloud` suffix, no VRAM). One `[providers.*]` block in `~/.kimi-code/config.toml` buys both; pass `model: "ollama-local/ornith-9b"` for a local model or `model: "ollama-cloud/deepseek-v4-pro"` for a hosted one. Local models are **advisory only** — a plausible-looking wrong edit is the failure that matters, not slowness, so read the work before using it. The full recipe, VRAM sizing arithmetic, and a tier-by-tier comparison live in [`rules/model-selection.md`](rules/model-selection.md) → "Ollama through the Kimi bridge".
+
+### Upgrading to 2.0
+
+2.0 changes the Codex target's contract, because current Codex has no
+`codex mcp-server` to pass through. In order:
+
+1. Update the plugin, then run `/claude-delegator:setup` so the installed rules
+   stop telling the orchestrator to read Codex results as plain text.
+2. Only then remove any `CODEX_DELEGATOR_CODEX_BIN` that pins a pre-0.153
+   release to keep `mcp-server` alive. Removing it first leaves a 1.x launcher
+   starting a CLI that no longer has the subcommand.
+3. In a Codex host's `config.toml`, replace the old `[mcp_servers.codex]` args
+   (`launcher.js … -c mcp_servers.codex.enabled=false mcp-server`) with just
+   `server/codex/index.js`, as in `config/codex-mcp.example.toml`.
+
+What callers see: `codex` and `codex-reply` now return the same
+`{"threadId","content"}` JSON envelope as every other bridge and accept
+`effort`, `timeout` and `coordination`; `approval-policy`, `config`,
+`base-instructions` and `compact-prompt` are gone, and `sandbox` takes
+`read-only` or `workspace-write`. The 1.x defaults `gemini-3.1-pro-high` (Agy)
+and `grok-4.6` (Grok) gave way to `gemini-3.8-flash-high` and `grok-4.7`; the
+former is now rejected by Agy itself.
 
 ### Repair MCP registration after an upgrade
 
@@ -390,7 +416,7 @@ tool_timeout_sec = 3600
 
 See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for all seven targets: Claude, Codex, Agy, Kimi, Copilot, Grok, and Cursor. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 
-The static plugin manifest cannot safely disable `mcp_servers.codex`: that override creates an invalid transport when the host has no such table. If the active Codex host does keep a self-referential `[mcp_servers.codex]`, add `-c mcp_servers.codex.enabled=false` to that registration as shown in `config/codex-mcp.example.toml`. `server/codex/launcher.js` is not a protocol bridge and does not load or restrict models: native Codex still owns its tool schema and model selection. The launcher forwards stdio unchanged, scrubs caller identity and credentials, resolves Windows npm shims, and terminates the child process tree with its parent. An explicit `CODEX_DELEGATOR_CODEX_BIN` override must be a POSIX absolute path or a fully-qualified Windows drive/UNC path to an executable or JS loader; Windows root-relative (`\path`) and drive-relative (`C:path`) values are rejected. Omit the override to use the normal PATH lookup.
+The static plugin manifest cannot safely disable `mcp_servers.codex`: that override creates an invalid transport when the host has no such table. It is no longer needed either: the Codex bridge stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`, so a Codex it starts refuses to delegate onward through its own codex target. If an older registration still says `-c mcp_servers.codex.enabled=false`, remove it together with the old `launcher.js … mcp-server` arguments; do not add `-c mcp_servers.codex.enabled=false` to a host whose `config.toml` has no `[mcp_servers.codex]` table. An explicit `CODEX_DELEGATOR_CODEX_BIN` override must be a POSIX absolute path or a fully-qualified Windows drive/UNC path to an executable or JS loader; Windows root-relative (`\path`) and drive-relative (`C:path`) values are rejected. Omit the override to use the normal PATH lookup — and never point it at a version-stamped release directory, which freezes the CLI and its model roster at that release.
 
 ### Tests and CI
 

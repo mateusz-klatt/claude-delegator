@@ -13,8 +13,10 @@ const kimiBridge = require("../server/kimi");
 const claudeBridge = require("../server/claude");
 const grokBridge = require("../server/grok");
 const cursorBridge = require("../server/cursor");
+const codexBridge = require("../server/codex");
 
 const customBridges = [
+  [codexBridge, "codex"],
   [claudeBridge, "claude"],
   [agyBridge, "agy"],
   [kimiBridge, "kimi"],
@@ -39,34 +41,40 @@ async function captureJsonRpcResponse(action) {
 }
 
 test("model catalog records the empirically discovered CLI rosters", () => {
-  assert.equal(catalog.verifiedAt, "2026-08-17");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-08-18");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.234");
-  assert.equal(catalog.providers.claude.models.length, 4);
-  assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5");
+  assert.equal(catalog.verifiedAt, "2026-10-23");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-10-23");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.309");
+  assert.equal(catalog.providers.claude.models.length, 8);
+  assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   assert.ok(
     rules.includes(`Claude Code ${catalog.providers.claude.cliVersion}`),
     "Claude reference must name the catalogued CLI version"
   );
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.147.0");
+  assert.equal(catalog.providers.codex.cliVersion, "0.164.0");
   assert.equal(catalog.providers.codex.models.length, 7);
   assert.deepEqual(
-    catalog.providers.codex.models.find((model) => model.id === "gpt-5.6-sol").efforts,
+    catalog.providers.codex.models.find((model) => model.id === "gpt-6.1-sol").efforts,
     ["low", "medium", "high", "xhigh", "max", "ultra"]
   );
+  // `codex mcp-server` is gone; the catalog must say why the transport changed.
+  assert.match(catalog.providers.codex.transport, /codex exec --json/);
+  assert.match(catalog.providers.codex.removalNote, /openai\/codex#42993/);
+  assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.1.14");
-  assert.equal(catalog.providers.agy.models.length, 14);
+  assert.equal(catalog.providers.agy.cliVersion, "1.4.6");
+  assert.equal(catalog.providers.agy.models.length, 6);
+  // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
+  assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
   // A hard allowlist, unlike the free-form roster gemini exposed: agy validates
   // --model itself and an unknown id fails pre-flight before any work happens.
   assert.equal(catalog.providers.agy.freeFormModel, false);
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.kimi.cliVersion, "0.36.1");
+  assert.equal(catalog.providers.kimi.cliVersion, "2.3.1");
   assert.equal(catalog.providers.kimi.models.length, 4);
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
   assert.equal(catalog.providers.kimi.freeFormModel, true);
@@ -76,8 +84,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // extra provider, so the catalog records it without an MCP server entry.
   assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
   const grokBridge = require("../server/grok");
-  assert.equal(catalog.providers.grok.cliVersion, "1.0.4");
-  assert.deepEqual(catalog.providers.grok.models, ["grok-4.6"]);
+  assert.equal(catalog.providers.grok.cliVersion, "1.0.67");
+  assert.deepEqual(catalog.providers.grok.models, ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"]);
   assert.equal(catalog.providers.grok.freeFormModel, false);
   assert.equal(catalog.providers.grok.emitsEffortFlag, true);
   assert.deepEqual(
@@ -105,8 +113,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.80");
-  assert.equal(catalog.providers.copilot.models.length, 27);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.103");
+  assert.equal(catalog.providers.copilot.models.length, 31);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -147,6 +155,9 @@ test("Copilot tool schema is sourced from the catalog and applies effort bounds"
   assert.equal(start.inputSchema.properties.model.default, catalog.providers.copilot.defaultModel);
   assert.equal(start.inputSchema.properties.effort.default, catalog.providers.copilot.defaultEffort);
   assert.equal(reply.inputSchema.properties.effort.default, undefined);
+  assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "max"), "max");
+  assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "minimal"), "low");
+  assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "none"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "max"), "max");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "minimal"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "none"), "low");
@@ -155,6 +166,26 @@ test("Copilot tool schema is sourced from the catalog and applies effort bounds"
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-terra", "minimal"), "minimal");
   assert.equal(copilotBridge.resolveEffort("gpt-5-mini", "minimal"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-5-mini", "none"), "low");
+});
+
+test("Codex tool schema is sourced from the catalog and clamps effort per model", () => {
+  const codex = catalog.providers.codex;
+  const start = codexBridge.toolDefinitions.find((tool) => tool.name === "codex");
+  const reply = codexBridge.toolDefinitions.find((tool) => tool.name === "codex-reply");
+
+  assert.equal(start.inputSchema.properties.model.default, codex.defaultModel);
+  assert.equal(start.inputSchema.properties.model.enum, undefined, "Codex model ids stay free-form");
+  assert.deepEqual(start.inputSchema.properties.effort.enum, codex.efforts);
+  assert.equal(start.inputSchema.properties.effort.default, codex.defaultEffort);
+  // A resume inherits neither model nor effort, so the reply re-pins both.
+  assert.equal(reply.inputSchema.properties.model.default, codex.defaultModel);
+  assert.equal(reply.inputSchema.properties.effort.default, codex.defaultEffort);
+
+  for (const model of codex.models) {
+    const resolved = codexBridge.resolveEffort(model.id, codex.defaultEffort);
+    assert.ok(model.efforts.includes(resolved), `${model.id} must run at a level it supports`);
+    for (const effort of model.efforts) assert.ok(codex.efforts.includes(effort), `${model.id}: ${effort}`);
+  }
 });
 
 test("Agy tool schema is sourced from the catalog and exposes no effort knob", () => {

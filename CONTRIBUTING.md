@@ -39,7 +39,7 @@ claude-delegator/
 ├── commands/               # Slash commands (/setup, /uninstall)
 ├── rules/                  # Orchestration logic (installed to ~/.claude/rules/)
 ├── prompts/                # Five expert prompts + Agent Mail contract
-├── server/                 # MCP bridges plus the transparent Codex launcher
+├── server/                 # One MCP bridge per provider CLI
 │   └── shared/             # bridge.js core, coordination, environment, result
 ├── test/                   # Shared contract and catalog tests
 ├── config/                 # Provider registry and model catalog
@@ -85,9 +85,12 @@ Examples:
 
 ## Adding a New Provider
 
-1. **Check native MCP support** - If the CLI has `mcp-server` like Codex, no wrapper needed
+1. **Do not lean on a vendor MCP server** - Codex once shipped `codex mcp-server` and this
+   plugin passed it through; Codex then removed it (openai/codex#42993) and every delegation
+   failed as `CONNECTION_CLOSED` until a bridge replaced it. Wrap the CLI's non-interactive mode
+   instead, so the vendor's print/exec contract is the only dependency.
 
-2. **Create an MCP bridge** (if needed):
+2. **Create an MCP bridge**:
    ```
    server/your-provider/
    ├── index.js
