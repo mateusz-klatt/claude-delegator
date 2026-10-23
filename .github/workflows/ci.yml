@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-26.04, windows-latest]
         node-version: [22.x, 24.x]
 
     steps:
@@ -42,7 +42,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Upload coverage for SonarCloud
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24.x'
+        if: matrix.os == 'ubuntu-26.04' && matrix.node-version == '24.x'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: coverage-${{ github.sha }}
@@ -58,7 +58,7 @@ jobs:
         github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name == github.repository
       }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
