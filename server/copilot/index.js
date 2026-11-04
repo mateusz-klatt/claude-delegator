@@ -33,29 +33,24 @@ const DEFAULT_EFFORT = COPILOT_CATALOG.defaultEffort;
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 const VALID_EFFORT_VALUES = new Set(COPILOT_CATALOG.efforts);
 const VALID_MODELS = new Set(COPILOT_CATALOG.models);
-// Models known to reject the --effort flag entirely. The CLI advertises effort
-// values globally, but individual model/value combinations can still be rejected
-// by the backend; the catalog records only combinations actually called live.
-const MODELS_WITHOUT_EFFORT = new Set([]);
-
-// Per-model effort ceilings override the catalog fallback. Only gpt-5.6-sol is
-// verified to accept --effort max (2026-08-10); every other model stays capped
-// at xhigh until individually verified — the CLI parser takes "max" for any
-// model, but backend support is per-model. The fallback is conservative rather
-// than a claim that every listed model was called live at xhigh.
-const MAX_EFFORT_BY_MODEL = COPILOT_CATALOG.maxEffortByModel;
-const MIN_EFFORT_BY_MODEL = COPILOT_CATALOG.minEffortByModel || {};
+// Per-model effort sets come from Copilot's own model catalog
+// (capabilities.supports.reasoning_effort) and are not contiguous: kimi-k3
+// takes low, high and max but rejects medium and xhigh. An empty set means the
+// model rejects --effort outright (claude-haiku-4.5) or picks its own model
+// (auto), so the flag is omitted.
+const EFFORTS_BY_MODEL = COPILOT_CATALOG.effortsByModel;
+// A reply does not know its session's model, so max is capped conservatively.
 const FALLBACK_MAX_EFFORT = COPILOT_CATALOG.fallbackMaxEffort;
 
+// Returns the highest supported level at or below the request, else the lowest
+// supported one, or null when --effort must not be sent.
 function resolveEffort(model, requestedEffort) {
   const effort = requestedEffort || DEFAULT_EFFORT;
-  const maxEffort = MAX_EFFORT_BY_MODEL[model] || FALLBACK_MAX_EFFORT;
-  const minEffort = MIN_EFFORT_BY_MODEL[model];
-  const maxIdx = COPILOT_CATALOG.efforts.indexOf(maxEffort);
+  const supported = EFFORTS_BY_MODEL[model];
+  if (supported.length === 0) return null;
   const reqIdx = COPILOT_CATALOG.efforts.indexOf(effort);
-  if (minEffort && reqIdx < COPILOT_CATALOG.efforts.indexOf(minEffort)) return minEffort;
-  if (reqIdx > maxIdx) return maxEffort;
-  return effort;
+  const atOrBelow = supported.filter((level) => COPILOT_CATALOG.efforts.indexOf(level) <= reqIdx);
+  return atOrBelow.length > 0 ? atOrBelow.at(-1) : supported[0];
 }
 
 // --- MCP Protocol Helpers ---
@@ -169,7 +164,7 @@ const COPILOT_TOOLS = [
         sandbox: { type: "string", enum: [...VALID_SANDBOX_VALUES], default: "workspace-write", description: "read-only denies shell/write/edit; workspace-write enables all tools for unattended execution" },
         cwd: { type: "string", description: "Current working directory" },
         model: { type: "string", enum: COPILOT_CATALOG.models, default: DEFAULT_MODEL, description: "Model to use" },
-        effort: { type: "string", enum: COPILOT_CATALOG.efforts, default: DEFAULT_EFFORT, description: "Reasoning effort level (max verified on gpt-5.6-sol only; other models cap at xhigh)" },
+        effort: { type: "string", enum: COPILOT_CATALOG.efforts, default: DEFAULT_EFFORT, description: "Reasoning effort level, resolved to the highest level the chosen model supports at or below it" },
         timeout: timeoutSchema(),
         coordination: coordinationSchema
       },
@@ -228,9 +223,8 @@ function permissionArgs(sandbox) {
 function buildStartArgs(args, coordination) {
   const model = args.model || DEFAULT_MODEL;
   const copilotArgs = ["--model", model];
-  if (!MODELS_WITHOUT_EFFORT.has(model)) {
-    copilotArgs.push("--effort", resolveEffort(model, args.effort));
-  }
+  const effort = resolveEffort(model, args.effort);
+  if (effort !== null) copilotArgs.push("--effort", effort);
   copilotArgs.push(...permissionArgs(args.sandbox));
 
   let prompt = args.prompt;

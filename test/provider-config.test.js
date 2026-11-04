@@ -411,17 +411,17 @@ test("reply guidance distinguishes defaulted arguments from inherited effort", (
   }
 });
 
-test("Copilot effort floors are documented as start-only", () => {
+test("Copilot per-model effort resolution is documented as start-only", () => {
   const readme = fs.readFileSync(path.resolve(__dirname, "../README.md"), "utf8");
   const claude = fs.readFileSync(path.resolve(__dirname, "../CLAUDE.md"), "utf8");
   const orchestration = fs.readFileSync(path.resolve(__dirname, "../rules/orchestration.md"), "utf8");
   const selection = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
 
-  assert.match(readme, /start calls clamp verified per-model effort floors and ceilings/);
-  assert.match(claude, /Start calls default to `max`[\s\S]{0,180}omit `effort`/);
-  assert.match(orchestration, /On start, the bridge applies verified per-model bounds[\s\S]{0,260}omit `effort`/);
-  assert.match(selection, /floors both `none` and `minimal` to `low` on start calls/);
-  assert.match(selection, /explicit reply override is forwarded without that start-only floor/);
+  assert.match(readme, /start calls resolve effort to each model's supported set/);
+  assert.match(claude, /Start calls default to `max`[\s\S]{0,600}omit `effort`/);
+  assert.match(orchestration, /On start, the bridge resolves the request[\s\S]{0,300}omit `effort`/);
+  assert.match(selection, /highest level the chosen model supports at or below it/);
+  assert.match(selection, /explicit reply override is forwarded unresolved, with `max` capped to `xhigh`/);
 });
 
 test("rules document the timeout escape hatch with the values the bridges enforce", () => {

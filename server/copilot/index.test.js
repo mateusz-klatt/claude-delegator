@@ -354,7 +354,7 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
     arguments: {
       prompt: "Inspect the implementation",
       "developer-instructions": "Act as a reviewer.",
-      model: "claude-opus-5",
+      model: "gpt-5.3-codex",
       effort: "max",
       sandbox: "read-only",
       cwd: server.directory,
@@ -375,7 +375,7 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
 
   const [call] = readCalls(server.capturePath);
   assert.equal(call.cwd, server.directory);
-  assert.equal(argumentValue(call.args, "--model"), "claude-opus-5");
+  assert.equal(argumentValue(call.args, "--model"), "gpt-5.3-codex");
   assert.equal(argumentValue(call.args, "--effort"), "xhigh");
   assert.ok(call.args.includes("--deny-tool=shell"));
   assert.ok(call.args.includes("--deny-tool=write"));
@@ -425,14 +425,14 @@ test("refuses to delegate from inside an already delegated Copilot session", asy
   await server.close();
 });
 
-test("forwards efforts without a verified floor and maps workspace-write to allow-all", async () => {
+test("resolves efforts against the model's supported set and maps workspace-write to allow-all", async () => {
   const server = startServer();
   for (const effort of ["none", "minimal"]) {
     const response = await server.request("tools/call", {
       name: "copilot",
       arguments: {
         prompt: `Use ${effort} effort`,
-        model: "claude-opus-5",
+        model: "gpt-6-luna",
         effort,
         sandbox: "workspace-write"
       }
@@ -442,7 +442,7 @@ test("forwards efforts without a verified floor and maps workspace-write to allo
 
   const calls = readCalls(server.capturePath);
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls.map((call) => argumentValue(call.args, "--effort")), ["none", "minimal"]);
+  assert.deepEqual(calls.map((call) => argumentValue(call.args, "--effort")), ["none", "none"]);
   for (const call of calls) {
     assert.ok(call.args.includes("--allow-all-tools"));
     assert.equal(call.args.some((arg) => arg.startsWith("--deny-tool=")), false);
@@ -450,29 +450,33 @@ test("forwards efforts without a verified floor and maps workspace-write to allo
   await server.close();
 });
 
-test("uses verified model effort floors and ceilings and caps max conservatively on resume", async () => {
-  assert.equal(resolveEffort("gpt-5.6-sol", "max"), "max");
-  assert.equal(resolveEffort("gpt-5.6-sol", "none"), "low");
-  assert.equal(resolveEffort("gpt-5.6-sol", "minimal"), "low");
-  assert.equal(resolveEffort("gpt-5.6-sol", "low"), "low");
-  assert.equal(resolveEffort("gpt-5.6-terra", "minimal"), "minimal");
-  assert.equal(resolveEffort("gpt-5.6-terra", "low"), "low");
-  assert.equal(resolveEffort("gpt-5.6-terra", "max"), "xhigh");
-  assert.equal(resolveEffort("claude-opus-5", "minimal"), "minimal");
-  assert.equal(resolveEffort("gpt-5-mini", "none"), "low");
-  assert.equal(resolveEffort("gpt-5-mini", "minimal"), "low");
+test("uses each model's supported effort set and caps max conservatively on resume", async () => {
+  assert.equal(resolveEffort("gpt-6.1-sol", "max"), "max");
+  assert.equal(resolveEffort("gpt-6.1-sol", "none"), "low");
+  assert.equal(resolveEffort("gpt-6.1-sol", "minimal"), "low");
+  assert.equal(resolveEffort("gpt-6.1-sol", "low"), "low");
+  assert.equal(resolveEffort("gpt-5.6-terra", "minimal"), "none");
+  assert.equal(resolveEffort("gpt-5.6-terra", "max"), "max");
+  assert.equal(resolveEffort("gpt-5.3-codex", "max"), "xhigh");
+  assert.equal(resolveEffort("gemini-3.8-flash", "max"), "high");
+  assert.equal(resolveEffort("kimi-k3", "xhigh"), "high");
+  assert.equal(resolveEffort("kimi-k3", "medium"), "low");
+  assert.equal(resolveEffort("kimi-k3", "minimal"), "low");
+  assert.equal(resolveEffort("kimi-k3", undefined), "max");
+  assert.equal(resolveEffort("claude-haiku-4.5", "max"), null);
+  assert.equal(resolveEffort("auto", undefined), null);
 
   const server = startServer();
   const start = await server.request("tools/call", {
     name: "copilot",
-    arguments: { prompt: "Use the verified maximum", model: "gpt-5.6-sol", effort: "max" }
+    arguments: { prompt: "Use the verified maximum", model: "gpt-6.1-sol", effort: "max" }
   });
   assert.equal(start.result.threadId, "thread-start");
 
   for (const effort of ["none", "minimal", "low"]) {
     const flooredStart = await server.request("tools/call", {
       name: "copilot",
-      arguments: { prompt: `Use the verified minimum from ${effort}`, model: "gpt-5.6-sol", effort }
+      arguments: { prompt: `Use the verified minimum from ${effort}`, model: "gpt-6.1-sol", effort }
     });
     assert.equal(flooredStart.result.threadId, "thread-start");
   }
@@ -497,7 +501,7 @@ test("uses verified model effort floors and ceilings and caps max conservatively
   assert.ok(startCall.args.includes("--allow-all-tools"));
   assert.equal(flooredStartCalls.length, 3);
   for (const flooredStartCall of flooredStartCalls) {
-    assert.equal(argumentValue(flooredStartCall.args, "--model"), "gpt-5.6-sol");
+    assert.equal(argumentValue(flooredStartCall.args, "--model"), "gpt-6.1-sol");
     assert.equal(argumentValue(flooredStartCall.args, "--effort"), "low");
     assert.equal(flooredStartCall.args.filter((arg) => arg === "--effort").length, 1);
     assert.ok(flooredStartCall.args.includes("--allow-all-tools"));
@@ -511,6 +515,22 @@ test("uses verified model effort floors and ceilings and caps max conservatively
   assert.ok(replyCall.args.includes("--deny-tool=edit"));
   assert.equal(replyCall.args.includes("--allow-all-tools"), false);
   assert.equal(argumentValue(replyCall.args, "-p"), "Continue the review");
+  await server.close();
+});
+
+test("omits --effort for models that reject it or pick their own model", async () => {
+  const server = startServer();
+  for (const model of ["claude-haiku-4.5", "auto"]) {
+    const response = await server.request("tools/call", {
+      name: "copilot",
+      arguments: { prompt: `Use ${model}`, model, effort: "max" }
+    });
+    assert.equal(response.result.isError, undefined);
+  }
+
+  const calls = readCalls(server.capturePath);
+  assert.deepEqual(calls.map((call) => argumentValue(call.args, "--model")), ["claude-haiku-4.5", "auto"]);
+  for (const call of calls) assert.equal(call.args.includes("--effort"), false);
   await server.close();
 });
 
