@@ -113,8 +113,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.103");
-  assert.equal(catalog.providers.copilot.models.length, 31);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.105");
+  assert.equal(catalog.providers.copilot.models.length, 26);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -138,15 +138,15 @@ test("catalog defaults, aliases, and effort overrides reference unique advertise
     assert.equal(new Set(provider.models).size, provider.models.length);
     assert.ok(provider.models.includes(provider.defaultModel));
   }
-  for (const model of Object.keys(catalog.providers.copilot.maxEffortByModel)) {
-    assert.ok(catalog.providers.copilot.models.includes(model));
-  }
-  for (const model of Object.keys(catalog.providers.copilot.minEffortByModel)) {
-    assert.ok(catalog.providers.copilot.models.includes(model));
+  const copilot = catalog.providers.copilot;
+  assert.deepEqual(Object.keys(copilot.effortsByModel), copilot.models);
+  for (const levels of Object.values(copilot.effortsByModel)) {
+    const indexes = levels.map((level) => copilot.efforts.indexOf(level));
+    assert.ok(indexes.every((index, i) => index >= 0 && (i === 0 || index > indexes[i - 1])));
   }
 });
 
-test("Copilot tool schema is sourced from the catalog and applies effort bounds", () => {
+test("Copilot tool schema is sourced from the catalog and resolves effort per model", () => {
   const start = copilotBridge.toolDefinitions.find((tool) => tool.name === "copilot");
   const reply = copilotBridge.toolDefinitions.find((tool) => tool.name === "copilot-reply");
 
@@ -159,13 +159,12 @@ test("Copilot tool schema is sourced from the catalog and applies effort bounds"
   assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "minimal"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "none"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "max"), "max");
-  assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "minimal"), "low");
-  assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "none"), "low");
-  assert.equal(copilotBridge.resolveEffort("claude-opus-5", "max"), "xhigh");
-  assert.equal(copilotBridge.resolveEffort("gpt-5.6-terra", undefined), "xhigh");
-  assert.equal(copilotBridge.resolveEffort("gpt-5.6-terra", "minimal"), "minimal");
-  assert.equal(copilotBridge.resolveEffort("gpt-5-mini", "minimal"), "low");
-  assert.equal(copilotBridge.resolveEffort("gpt-5-mini", "none"), "low");
+  assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "minimal"), "none");
+  assert.equal(copilotBridge.resolveEffort("claude-opus-5", "max"), "max");
+  assert.equal(copilotBridge.resolveEffort("grok-4.7", undefined), "xhigh");
+  assert.equal(copilotBridge.resolveEffort("mai-code-1.1-flash", undefined), "high");
+  assert.equal(copilotBridge.resolveEffort("kimi-k3", "xhigh"), "high");
+  assert.equal(copilotBridge.resolveEffort("claude-haiku-4.5", undefined), null);
 });
 
 test("Codex tool schema is sourced from the catalog and clamps effort per model", () => {

@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-10-23 for the catalog snapshot. CLI versions were rechecked on 2026-10-23 against Codex 0.164.0, Agy 1.4.6, Kimi 2.3.1, Grok 1.0.67, Copilot 1.0.103, Claude Code 2.1.309 and cursor-agent 2026.10.14. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-10-23 for the catalog snapshot. CLI versions were rechecked on 2026-10-23 against Codex 0.164.0, Agy 1.4.6, Kimi 2.3.1, Grok 1.0.67, Copilot 1.0.105 (2026-11-04, roster read from Copilot's own model catalog), Claude Code 2.1.309 and cursor-agent 2026.10.14. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -400,13 +400,17 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
-| `model` | One of the 31 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist mirrored from Copilot CLI 1.0.103) |
-| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; verified per-model floors and ceilings are applied on start |
+| `model` | One of the 26 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist: the Pro+ roster from Copilot's own model catalog, plus `auto`) |
+| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; resolved on start to the highest level the model supports at or below it |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work; 1.0.103 refuses `minimal` for it, while `low` and `max` completed live starts, so the bridge floors both `none` and `minimal` to `low` on start calls — the same floor measured on `gpt-5.6-sol`. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded without that start-only floor. `gpt-5.6-terra` is suitable for everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-sonnet-5.5` for a cross-family second opinion, and `gpt-5.6-sol`/`gpt-5.5` as fallbacks when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work. Every catalogued id completed a live start on a Pro+ account on 2026-11-04, including `claude-opus-5.5`, `claude-fable-5.1` and `gpt-6.1-terra`, which `copilot help config` does not list. `gpt-5.6-terra` or `gpt-6.1-terra` suit everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-opus-5.5` or `claude-sonnet-5.5` for a cross-family second opinion, `auto` to let Copilot route (it picks its own model, so no `--effort` is sent), and `gpt-5.6-sol` as a fallback when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+
+**Effort sets**: Start calls default to `max` and resolve each request to the highest level the chosen model supports at or below it, from the per-model sets in `effortsByModel`. The sets are not contiguous — `kimi-k3` takes `low`, `high` and `max` only — and `claude-haiku-4.5` and `auto` get no `--effort` at all. So `max` runs as `high` on `gemini-3.8-flash` and `mai-code-1.1-flash`, and as `xhigh` on `grok-4.7` and `gpt-5.3-codex`; `minimal` runs as `low` where `none` is unsupported. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded unresolved, with `max` capped to `xhigh`.
+
+**Pro+ models reported as "not available"**: if every Pro+-only model (`claude-opus-*`, `claude-fable-*`, `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-astra`, `gpt-5.6-sol`, `gemini-4-argon`) fails with `Model "…" from --model flag is not available` while Pro models work, the CLI is reading a stale plan from `~/.cache/copilot/copilot-user-cache.json`. That file is a disposable cache; moving it aside made the CLI refetch the plan and every model ran.
 
 ## Claude Parameters Reference (external orchestrators)
 

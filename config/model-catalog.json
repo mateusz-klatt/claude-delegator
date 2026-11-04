@@ -276,8 +276,8 @@
       ]
     },
     "copilot": {
-      "cliVersion": "1.0.103",
-      "discoverySource": "`copilot help config` on 2026-10-23 (31 ids, up from 27 on 1.0.80). New: claude-sonnet-5.5, claude-fable-5.1, claude-opus-5.5, claude-haiku-5.5, gpt-6.1-sol, gpt-6-sol, gpt-6-luna, gpt-6-astra, mai-code-1.1-flash (replacing mai-code-1-flash-picker), gemini-4-argon, gemini-3.8-flash, grok-4.7 and grok-4.6. Gone: claude-opus-4.7, claude-opus-4.6, claude-sonnet-4.5, claude-opus-4.5, gemini-3.6-flash, gemini-3.5-flash, gemini-3.1-pro-preview and kimi-k2.7-code. This is the CLI parser allowlist, not account entitlement, and parser acceptance is not backend acceptance.",
+      "cliVersion": "1.0.105",
+      "discoverySource": "Copilot's own model catalog for a Pro+ account on 2026-11-04, read from the `fetched model catalog from CAPI` line that `copilot --log-level all` logs: every id with `model_picker_enabled` whose `billing.restricted_to` is absent or includes `pro_plus`, plus `auto`. The `copilot help config` allowlist on 1.0.105 is unchanged from 1.0.103 and is not the account roster: it omits gpt-6.1-terra, which the CLI accepts and which ran, and still lists claude-sonnet-4.6, gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5-mini, gemini-3.7-flash and grok-4.5, which the server no longer offers and the CLI rejects as 'not available'. Every listed id completed a live start on 2026-11-04. A stale ~/.cache/copilot/copilot-user-cache.json can make a Pro+ account look like Pro, hiding every pro_plus-only model as 'not available'; that file is disposable and moving it aside fixed it.",
       "defaultModel": "gpt-6.1-sol",
       "defaultEffort": "max",
       "efforts": [
@@ -298,42 +298,216 @@
         "claude-opus-5",
         "claude-opus-4.8",
         "claude-opus-4.8-fast",
-        "claude-sonnet-4.6",
         "claude-haiku-5.5",
         "claude-haiku-4.5",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.4-mini",
         "gpt-5.3-codex",
-        "gpt-5-mini",
         "mai-code-1.1-flash",
         "gemini-4-argon",
         "gemini-3.8-flash",
-        "gemini-3.7-flash",
         "grok-4.7",
         "grok-4.6",
-        "grok-4.5",
-        "kimi-k3"
+        "kimi-k3",
+        "auto"
       ],
-      "maxEffortByModel": {
-        "gpt-6.1-sol": "max",
-        "gpt-5.6-sol": "max"
+      "effortsByModel": {
+        "claude-sonnet-5.5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-sonnet-5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-fable-5.1": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-fable-5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-opus-5.5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-opus-5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-opus-4.8": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-opus-4.8-fast": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-haiku-5.5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "claude-haiku-4.5": [],
+        "gpt-6.1-sol": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-6.1-terra": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-6-sol": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-6-luna": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-6-astra": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.6-sol": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.6-terra": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.6-luna": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.3-codex": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "mai-code-1.1-flash": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "gemini-4-argon": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "gemini-3.8-flash": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "grok-4.7": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "grok-4.6": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "kimi-k3": [
+          "low",
+          "high",
+          "max"
+        ],
+        "auto": []
       },
-      "minEffortByModel": {
-        "gpt-6.1-sol": "low",
-        "gpt-5.6-sol": "low",
-        "gpt-5-mini": "low"
-      },
-      "minEffortNote": "On gpt-6.1-sol, 1.0.103 refused minimal itself — 'Reasoning effort \"minimal\" is not supported for model \"gpt-6.1-sol\"', exit 1 — while low and max completed live starts; none was not called and is clamped to low because it sits below the rejected value. On gpt-5.6-sol, minimal was backend-rejected before a threadId was returned while low completed a live start. gpt-5-mini independently rejected both none and minimal and succeeded at low.",
+      "effortsNote": "From capabilities.supports.reasoning_effort in the server catalog, and live-checked where it matters: kimi-k3 accepts low, high and max but rejects medium and xhigh; mai-code-1.1-flash and gemini-3.8-flash reject xhigh and max; claude-haiku-4.5 rejects any --effort and runs without it. The bridge resolves a requested effort to the highest supported level at or below it (else the lowest supported), and omits --effort for an empty list. auto picks its own model, so it is sent without --effort.",
       "fallbackMaxEffort": "xhigh",
       "liveCalls": [
+        {
+          "model": "*",
+          "effort": "low (none for claude-haiku-4.5 and auto)",
+          "transport": "copilot (direct)",
+          "operations": [
+            "start"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-04",
+          "note": "All 26 ids returned the OK canary on a Pro+ account with CLI 1.0.105, after the stale plan cache was moved aside. auto routed to gpt-6-luna."
+        },
+        {
+          "model": "kimi-k3, gemini-3.8-flash, mai-code-1.1-flash, claude-haiku-4.5, auto, claude-opus-5.5, gpt-6.1-terra, gpt-5.6-sol",
+          "effort": "bridge default (max), and minimal on gpt-5.6-sol",
+          "transport": "uniform bridge",
+          "operations": [
+            "start"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-04",
+          "note": "Sandbox read-only. Resolved to max, high, high, no flag, no flag, max, max and none respectively; the first four had failed at the previous xhigh fallback."
+        },
         {
           "model": "gpt-6.1-sol",
           "effort": "max",

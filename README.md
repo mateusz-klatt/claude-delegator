@@ -165,7 +165,7 @@ Codex no longer ships its own MCP server: `codex mcp-server` was removed by open
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.7` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6` and `grok-4.5`. `read-only` adds deny rules for built-in write and shell tools. |
 | **Cursor** | `auto` | 265 ids listed on 2026.10.14, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-6.1-sol` (`max`) | 31 models across Claude, GPT, Gemini, Grok, Kimi, and MAI; start calls clamp verified per-model effort floors and ceilings. Reply calls should omit `effort` to retain the session setting. |
+| **Copilot** | `gpt-6.1-sol` (`max`) | 26 Pro+ models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 

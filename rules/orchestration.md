@@ -411,7 +411,7 @@ Trusted projects allow the expert full access within the sandbox policy.
 
 ### Copilot
 
-Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; start calls default to `max`. On start, the bridge applies verified per-model bounds: `gpt-6.1-sol` and `gpt-5.6-sol` are floored at `low` and accept `max`, while unverified model ceilings stay capped at `xhigh`. A reply does not know the session model, so omit `effort` to retain the current session setting; an explicit reply override is forwarded without the start-only floor.
+Copilot persists session state to disk (`~/.copilot/session-state/`), so sessions survive process restarts. The `effort` parameter accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; start calls default to `max`. On start, the bridge resolves the request to the highest level the chosen model supports at or below it, using the per-model sets in `config/model-catalog.json`; `claude-haiku-4.5` and `auto` are sent without `--effort`. A reply does not know the session model, so omit `effort` to retain the current session setting; an explicit reply override is forwarded unresolved, with `max` capped to `xhigh`.
 
 ---
 
