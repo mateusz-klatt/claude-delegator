@@ -369,7 +369,7 @@ claude_plugin_list=$(claude plugin list --json)
 CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
-const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi", "usage"];
 const records = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON).filter((record) =>
   record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
 if (records.length !== 1 || !records[0]["installPath"]) {
@@ -435,7 +435,7 @@ if (!cacheVersion.test(activeVersion) || records[0].version !== activeVersion ||
     pathApi.basename(marketplaceRoot) !== "jarrodwatts-claude-delegator") {
   throw new Error("active plugin installPath is not a verified marketplace-cache root");
 }
-const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi", "usage"];
 const activeManifest = JSON.parse(fs.readFileSync(
   pathApi.join(normalizedInstall, ".claude-plugin", "plugin.json"), "utf8"
 ));
@@ -635,7 +635,7 @@ else
   check_cli_version "Copilot" "copilot" "$HOME/.local/bin/copilot"
 fi
 
-# Check 2: all six plugin-owned MCP servers. `claude mcp get` exits zero and
+# Check 2: all seven plugin-owned MCP servers. `claude mcp get` exits zero and
 # prints the configured path even when connection failed, so only Status counts.
 for server in \
   plugin:claude-delegator:codex \
@@ -643,7 +643,8 @@ for server in \
   plugin:claude-delegator:kimi \
   plugin:claude-delegator:copilot \
   plugin:claude-delegator:grok \
-  plugin:claude-delegator:cursor
+  plugin:claude-delegator:cursor \
+  plugin:claude-delegator:usage
 do
   config=$(claude mcp get "$server" 2>&1)
   name=${server##*:}

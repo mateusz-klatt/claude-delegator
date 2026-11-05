@@ -133,6 +133,8 @@ test("every bridge is a routable Agent Mail client, and none is only half-regist
   // test is what makes the derivation obligatory.
   const bridges = fs.readdirSync(path.resolve(__dirname, "../server"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== "shared")
+    // Utility servers such as usage delegate nothing, so they have no caller identity.
+    .filter((entry) => !Object.hasOwn(require("../config/providers.json").utilities, entry.name))
     .map((entry) => entry.name);
 
   assert.ok(bridges.length >= 5, `expected the bridge directories, saw ${bridges.join(", ")}`);

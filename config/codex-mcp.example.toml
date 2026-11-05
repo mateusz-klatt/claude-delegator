@@ -61,3 +61,11 @@ enabled_tools = ["cursor", "cursor-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+
+[mcp_servers.usage]
+command = "node"
+args = ["/absolute/path/to/claude-delegator/server/usage/index.js"]
+enabled_tools = ["usage"]
+startup_timeout_sec = 45
+tool_timeout_sec = 300
+required = false

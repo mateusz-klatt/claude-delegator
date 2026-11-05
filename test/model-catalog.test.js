@@ -41,9 +41,9 @@ async function captureJsonRpcResponse(action) {
 }
 
 test("model catalog records the empirically discovered CLI rosters", () => {
-  assert.equal(catalog.verifiedAt, "2026-10-23");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-10-23");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.309");
+  assert.equal(catalog.verifiedAt, "2026-11-05");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-05");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.318");
   assert.equal(catalog.providers.claude.models.length, 8);
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
@@ -52,8 +52,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
     "Claude reference must name the catalogued CLI version"
   );
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.164.0");
-  assert.equal(catalog.providers.codex.models.length, 7);
+  assert.equal(catalog.providers.codex.cliVersion, "0.166.0");
+  assert.equal(catalog.providers.codex.models.length, 8);
   assert.deepEqual(
     catalog.providers.codex.models.find((model) => model.id === "gpt-6.1-sol").efforts,
     ["low", "medium", "high", "xhigh", "max", "ultra"]
@@ -64,7 +64,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.4.6");
+  assert.equal(catalog.providers.agy.cliVersion, "1.5.0");
   assert.equal(catalog.providers.agy.models.length, 6);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
@@ -74,8 +74,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.kimi.cliVersion, "2.3.1");
-  assert.equal(catalog.providers.kimi.models.length, 4);
+  assert.equal(catalog.providers.kimi.cliVersion, "2.5.0");
+  assert.equal(catalog.providers.kimi.models.length, 5);
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
   assert.equal(catalog.providers.kimi.freeFormModel, true);
   assert.equal(catalog.providers.kimi.emitsEffortFlag, false);
@@ -84,7 +84,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // extra provider, so the catalog records it without an MCP server entry.
   assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
   const grokBridge = require("../server/grok");
-  assert.equal(catalog.providers.grok.cliVersion, "1.0.67");
+  assert.equal(catalog.providers.grok.cliVersion, "1.0.70");
   assert.deepEqual(catalog.providers.grok.models, ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"]);
   assert.equal(catalog.providers.grok.freeFormModel, false);
   assert.equal(catalog.providers.grok.emitsEffortFlag, true);
