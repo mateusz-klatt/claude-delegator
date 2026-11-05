@@ -74,7 +74,7 @@ if (!cacheVersion.test(activeVersion) || records[0].version !== activeVersion ||
     pathApi.basename(marketplaceRoot) !== "jarrodwatts-claude-delegator") {
   throw new Error("active plugin installPath is not a verified marketplace-cache root");
 }
-const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi", "usage"];
 const activeManifest = JSON.parse(fs.readFileSync(
   pathApi.join(normalizedInstall, ".claude-plugin", "plugin.json"), "utf8"
 ));

@@ -240,5 +240,21 @@
         "runs that must be reproducible on the default model: 'auto' is server-routed and resolved to two different models across one session"
       ]
     }
+  },
+  "utilities": {
+    "usage": {
+      "name": "Usage",
+      "description": "Subscription usage (short window, weekly, monthly, balance) and per-model cost for every delegated CLI, read without running a model",
+      "tools": [
+        "usage"
+      ],
+      "mcp": {
+        "type": "stdio",
+        "command": "node",
+        "args": [
+          "${CLAUDE_PLUGIN_ROOT}/server/usage/index.js"
+        ]
+      }
+    }
   }
 }

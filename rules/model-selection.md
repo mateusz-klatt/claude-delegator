@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-10-23 for the catalog snapshot. CLI versions were rechecked on 2026-10-23 against Codex 0.164.0, Agy 1.4.6, Kimi 2.3.1, Grok 1.0.67, Copilot 1.0.105 (2026-11-04, roster read from Copilot's own model catalog), Claude Code 2.1.309 and cursor-agent 2026.10.14. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-05 for the catalog snapshot. CLI versions were rechecked on 2026-11-05 against Codex 0.166.0, Agy 1.5.0, Kimi 2.5.0, Grok 1.0.70, Copilot 1.0.105 (roster read from Copilot's own model catalog on 2026-11-04), Claude Code 2.1.318 and cursor-agent 2026.11.05; only Codex changed, adding `gpt-6.1-terra`. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -119,7 +119,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
-The Codex bridge wraps `codex exec --json` (Codex CLI 0.164.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
+The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.166.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
 
 ### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
@@ -134,7 +134,7 @@ The Codex bridge wraps `codex exec --json` (Codex CLI 0.164.0) with the same sta
 | `cwd` | path | Working directory and Codex workspace. **A repository `AGENTS.md` here is loaded.** |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `gpt-6.1-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
+**Model guidance**: `gpt-6.1-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6.1-terra` for everyday work at lower cost, `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
 
 **Effort guidance**: effort travels as `-c model_reasoning_effort`, and the bridge clamps it to the levels `config/model-catalog.json` records for the chosen model, so `ultra` on `gpt-6-luna` or `gpt-5.6-luna` runs at `max`. A model the catalog does not list is passed through unclamped. This retires the old launcher trap, where a per-call `model` override kept the server-wide `ultra` and older CLIs failed with HTTP 400 before a thread existed; 0.164.0 itself accepted `ultra` on `gpt-6-luna`.
 
@@ -213,7 +213,7 @@ The Codex bridge wraps `codex exec --json` (Codex CLI 0.164.0) with the same sta
 | `cwd` | path | Working directory. **A repository `AGENTS.md` here is auto-loaded.** |
 | `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
 
-**Model guidance**: `moonshot-ai/kimi-k3` (default) for expert work; `moonshot-ai/kimi-k2.7-code` for coding tasks, `moonshot-ai/kimi-k2.7-code-highspeed` for quick low-stakes checks, `moonshot-ai/kimi-k2.6` as a fallback. The alias is free-form because `kimi provider catalog` can import more providers; an unknown alias fails with exit 1 and a clear message before any work happens.
+**Model guidance**: `moonshot-ai/kimi-k3` (default) for expert work, `moonshot-ai/kimi-k3.1-pro` (paid subscription, same efforts and 1M context) as the stronger option; `moonshot-ai/kimi-k2.7-code` for coding tasks, `moonshot-ai/kimi-k2.7-code-highspeed` for quick low-stakes checks, `moonshot-ai/kimi-k2.6` as a fallback. The alias is free-form because `kimi provider catalog` can import more providers; an unknown alias fails with exit 1 and a clear message before any work happens.
 
 **Authentication**: Kimi Code supports a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17 — in practice it is the API key. Put it in `~/.kimi-code/config.toml` or export `KIMI_API_KEY` / `MOONSHOT_API_KEY`; the bridge forwards the caller environment untouched apart from Agent Mail identity. Be aware the CLI also recognises a large catalog of third-party provider key variables (`ANTHROPIC_API_KEY`, `AZURE_API_KEY` and many more), so any such key exported in the parent shell is visible to the delegated process.
 
@@ -361,7 +361,7 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
-Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August and **265** on 2026.10.14 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
+Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August **265** on 2026.10.14 and **274** on 2026.11.05 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
 
 `auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. Pick a Composer id when a run has to be reproducible.
 
@@ -414,7 +414,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 
 ## Claude Parameters Reference (external orchestrators)
 
-The Claude bridge wraps Claude Code 2.1.309 with the same start/reply contract used by the other providers.
+The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.1.318) with the same start/reply contract used by the other providers.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|

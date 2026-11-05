@@ -47,6 +47,7 @@ const EXPECTED_PACKAGE_FILES = [
   "server/shared/environment.js",
   "server/shared/provider-runtime.js",
   "server/shared/result.js",
+  "server/usage/index.js",
   "test/mcp-probe.mjs"
 ];
 

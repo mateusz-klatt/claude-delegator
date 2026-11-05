@@ -20,6 +20,7 @@ You have access to Claude, GPT, Agy, Kimi, Grok, Cursor, and Copilot experts via
 | `mcp__plugin_claude-delegator_cursor__cursor-reply` | Cursor (Cursor Agent) | Continue an existing session (multi-turn) |
 | `mcp__plugin_claude-delegator_copilot__copilot` | Copilot (GPT/Claude) | Start a new expert session; `read-only` denies shell/write/edit |
 | `mcp__plugin_claude-delegator_copilot__copilot-reply` | Copilot (GPT/Claude) | Continue an existing session (multi-turn) |
+| `mcp__plugin_claude-delegator_usage__usage` | All seven CLIs | Report subscription windows, balance and per-model cost; runs no model |
 
 **`mcp__claude__claude` is deliberately not in that form, and making the table look consistent would
 break the one row that is currently right.** The six others carry the `plugin_claude-delegator_`
@@ -417,6 +418,7 @@ Copilot persists session state to disk (`~/.copilot/session-state/`), so session
 
 ## Cost Awareness
 
+- **Check usage before a large delegation** - `mcp__plugin_claude-delegator_usage__usage` reports Codex's 5h and weekly windows, Claude's session and weekly windows, Copilot's monthly AI credits with per-model prices, Agy's weekly limit per model group, Kimi's Moonshot balance and Grok's billing period, without spending any of them. Cursor exposes only its plan. A Copilot reading marked `routable: false` came from a stale cache; do not route on it. Prefer a provider with headroom when the task could go to several, and say so when the chosen one is above about 80%
 - **Don't spam** - One well-structured delegation beats multiple vague ones
 - **Include full context** - Saves retry costs from missing information
 - **Reserve for high-value tasks** - Architecture, security, complex analysis

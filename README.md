@@ -164,7 +164,7 @@ Codex no longer ships its own MCP server: `codex mcp-server` was removed by open
 | **Agy** | `gemini-3.8-flash-high` | Six ids across Gemini 3.8 Flash, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
 | **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.7` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6` and `grok-4.5`. `read-only` adds deny rules for built-in write and shell tools. |
-| **Cursor** | `auto` | 265 ids listed on 2026.10.14, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
+| **Cursor** | `auto` | 274 ids listed on 2026.11.05, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
 | **Copilot** | `gpt-6.1-sol` (`max`) | 26 Pro+ models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
@@ -227,12 +227,12 @@ claude plugin update --scope user claude-delegator@jarrodwatts-claude-delegator
 
 # Ask Claude Code which install is active instead of assuming its default state
 # or cache directories; both can be overridden. Fail closed unless that active
-# user-scope install declares all six servers.
+# user-scope install declares all seven servers.
 claude_plugin_list=$(claude plugin list --json)
 CLAUDE_PLUGIN_LIST_JSON="$claude_plugin_list" node - <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
-const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const expected = ["agy", "codex", "copilot", "cursor", "grok", "kimi", "usage"];
 const records = JSON.parse(process.env.CLAUDE_PLUGIN_LIST_JSON).filter((record) =>
   record.id === "claude-delegator@jarrodwatts-claude-delegator" && record.scope === "user");
 if (records.length !== 1 || !records[0]["installPath"]) {
@@ -298,7 +298,7 @@ if (!cacheVersion.test(activeVersion) || records[0].version !== activeVersion ||
     pathApi.basename(marketplaceRoot) !== "jarrodwatts-claude-delegator") {
   throw new Error("active plugin installPath is not a verified marketplace-cache root");
 }
-const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi"];
+const expectedServers = ["agy", "codex", "copilot", "cursor", "grok", "kimi", "usage"];
 const activeManifest = JSON.parse(fs.readFileSync(
   pathApi.join(normalizedInstall, ".claude-plugin", "plugin.json"), "utf8"
 ));
@@ -473,6 +473,22 @@ dot-segment roots are ignored.
 - Grok: run `grok login`
 - Cursor: run `cursor-agent login`; on macOS, unlock the login keychain if the CLI cannot start
 
+
+### Checking usage before delegating
+
+The plugin also ships a `usage` server with one tool, `mcp__plugin_claude-delegator_usage__usage`. It reports how much of each subscription is left and runs no model, so it spends no tokens or credits:
+
+| Provider | Short window | Weekly | Monthly | Per-model cost | Source |
+|----------|--------------|--------|---------|----------------|--------|
+| **Codex** | 5h | yes | credits balance | modes only (reasoning efforts, the Fast tier) | `codex app-server`: `account/rateLimits/read`, `model/list` |
+| **Claude** | session | yes | — | none reported | `claude -p /usage` with no user settings, hooks or MCP servers |
+| **Copilot** | — | — | AI credits | AI credits per 1M tokens, per model | `gh api /copilot_internal/user` (the CLI's plan cache as fallback), plus the model catalog from a model-less probe run |
+| **Agy** | — | per model group (Gemini; Claude and GPT) | — | quota drawn in proportion to token cost | `agy -p /usage`, answered by the CLI with zero turns |
+| **Kimi** | — | — | API balance (cash, voucher) | none reported | Moonshot `/v1/users/me/balance`, only for providers in `~/.kimi-code/config.toml` on a Moonshot host |
+| **Grok** | — | billing period (weekly on SuperGrok) | on-demand cap and use, prepaid balance | efforts and relative price hints | `grok agent stdio` (ACP): `_x.ai/billing`, no session created |
+| **Cursor** | — | — | plan name | — | `cursor-agent about`; `/usage` in print mode is sent to the model |
+
+Pass `provider` (`codex`, `claude`, `copilot`, `agy`, `kimi`, `grok`, `cursor` or `all`, the default) and `includeModels: false` to skip the model tables. A provider that fails reports an `error` without hiding the others.
 
 ---
 

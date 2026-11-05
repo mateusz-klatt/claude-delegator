@@ -186,16 +186,24 @@ test("coverage exclusions are shell-independent on Windows and POSIX", () => {
 test("provider catalog, plugin manifest and MCP examples stay in parity", () => {
   const canonical = Object.keys(providers.providers);
   const claudeCodeTargets = canonical.filter((name) => name !== "claude");
+  // Utility servers delegate nothing, so Claude Code and Codex both register them.
+  const utilities = Object.keys(providers.utilities);
   const codexExample = parseCodexMcpExample(CODEX_MCP_EXAMPLE);
 
   // Claude Code must not target itself. Codex can target Claude, and the
   // self-target Codex table remains available for explicitly nested runs.
-  assert.deepEqual(Object.keys(manifest.mcpServers).sort(), claudeCodeTargets.sort());
-  assert.deepEqual(Object.keys(mcpServers.mcpServers).sort(), claudeCodeTargets.sort());
-  assert.deepEqual(Object.keys(codexExample).sort(), canonical.sort());
+  assert.deepEqual(Object.keys(manifest.mcpServers).sort(), [...claudeCodeTargets, ...utilities].sort());
+  assert.deepEqual(Object.keys(mcpServers.mcpServers).sort(), [...claudeCodeTargets, ...utilities].sort());
+  assert.deepEqual(Object.keys(codexExample).sort(), [...canonical, ...utilities].sort());
   assert.equal(Object.hasOwn(manifest.mcpServers, "claude"), false);
   assert.equal(Object.hasOwn(mcpServers.mcpServers, "claude"), false);
   assert.ok(Object.hasOwn(codexExample, "claude"));
+
+  for (const name of utilities) {
+    assert.deepEqual(manifest.mcpServers[name], providers.utilities[name].mcp, `${name}: plugin manifest`);
+    assert.deepEqual(mcpServers.mcpServers[name], providers.utilities[name].mcp, `${name}: JSON example`);
+    assert.equal(codexExample[name].command, providers.utilities[name].mcp.command, `${name}: Codex command`);
+  }
 
   for (const name of claudeCodeTargets) {
     assert.deepEqual(
@@ -631,7 +639,10 @@ test("the plugin declares its MCP servers, so no version-stamped path is ever st
   // died the moment the version directory did: three bridges failed with
   // CONNECTION_CLOSED after a routine cache cleanup, with nothing explaining why.
   // Declared here instead, Claude Code resolves the variable on every launch.
-  const expected = Object.keys(providers.providers).filter((name) => name !== "claude");
+  const expected = [
+    ...Object.keys(providers.providers).filter((name) => name !== "claude"),
+    ...Object.keys(providers.utilities)
+  ];
   assert.deepEqual(Object.keys(servers).sort(), [...expected].sort());
 
   for (const [name, server] of Object.entries(servers)) {
