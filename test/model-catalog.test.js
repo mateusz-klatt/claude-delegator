@@ -209,7 +209,7 @@ test("all bridge tools expose the strict optional coordination object", () => {
       assert.equal(coordination.additionalProperties, false);
       assert.deepEqual(
         coordination.required,
-        ["projectKey", "callerAgentName"]
+        ["callerAgentName"]
       );
     }
   }
@@ -234,9 +234,8 @@ test("bridge validation rejects token-bearing coordination before invoking a CLI
         arguments: {
           prompt: "Do not execute",
           coordination: {
-            projectKey: "project-a",
-            callerAgentName: "codex-wsl-home-1",
-            mailTopic: "delegation-1",
+            callerAgentName: "codex-home-claude-delegator",
+            topic: "delegation-1",
             callerToken: "must-not-cross-the-boundary"
           }
         }

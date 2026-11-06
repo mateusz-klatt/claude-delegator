@@ -63,13 +63,8 @@ fs.appendFileSync(process.env.AGY_STUB_CAPTURE, JSON.stringify({
   pid: process.pid,
   args,
   cwd: process.cwd(),
-  hasAgentName: Object.prototype.hasOwnProperty.call(process.env, "AGENT_NAME"),
   hasClaudeCode: Object.prototype.hasOwnProperty.call(process.env, "CLAUDECODE"),
-  hasAgentMailAgent: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_AGENT"),
-  hasAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_REGISTRATION_TOKEN"),
-  hasMcpAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "MCP_AGENT_MAIL_TOKEN"),
-  hasHttpBearerToken: Object.prototype.hasOwnProperty.call(process.env, "HTTP_BEARER_TOKEN"),
-  hasIntegrationBearerToken: Object.prototype.hasOwnProperty.call(process.env, "INTEGRATION_BEARER_TOKEN"),
+  hasIrisExecution: Object.prototype.hasOwnProperty.call(process.env, "IRIS_EXECUTION"),
   preservedValue: process.env.PRESERVED_VALUE,
   delegationDepth: process.env.CLAUDE_DELEGATOR_AGY_DEPTH
 }) + "\\n");
@@ -164,12 +159,7 @@ process.stdout.write(JSON.stringify({
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       AGY_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_AGENT: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
-      MCP_AGENT_MAIL_TOKEN: "caller-mcp-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
-      INTEGRATION_BEARER_TOKEN: "caller-integration-token",
+      IRIS_EXECUTION: "ex_caller",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_AGY_DEPTH: ""
     }
@@ -361,7 +351,7 @@ test("advertises the uniform agy/agy-reply MCP contract", async () => {
   assert.ok(startSchema.properties.coordination);
   assert.deepEqual(
     startSchema.properties.coordination.required,
-    ["projectKey", "callerAgentName"]
+    ["callerAgentName"]
   );
   await server.close();
 });
@@ -369,9 +359,8 @@ test("advertises the uniform agy/agy-reply MCP contract", async () => {
 test("constructs read-only and workspace-write calls with the forced non-interactive flags", async () => {
   const server = startServer();
   const coordination = {
-    projectKey: "/workspace/project",
-    callerAgentName: "codex-wsl-home-1",
-    mailTopic: "agy-delegation-1",
+    callerAgentName: "codex-home-claude-delegator",
+    topic: "agy-delegation-1",
     checkpointIntervalSeconds: 120
   };
 
@@ -435,12 +424,7 @@ test("constructs read-only and workspace-write calls with the forced non-interac
     // The delegated child is stamped one level deeper than this bridge.
     assert.equal(call.delegationDepth, "1");
     assert.equal(call.hasClaudeCode, false);
-    assert.equal(call.hasAgentName, false);
-    assert.equal(call.hasAgentMailAgent, false);
-    assert.equal(call.hasAgentMailToken, false);
-    assert.equal(call.hasMcpAgentMailToken, false);
-    assert.equal(call.hasHttpBearerToken, false);
-    assert.equal(call.hasIntegrationBearerToken, false);
+    assert.equal(call.hasIrisExecution, false);
     assert.equal(call.preservedValue, "keep-me");
   }
 
@@ -449,9 +433,9 @@ test("constructs read-only and workspace-write calls with the forced non-interac
   assert.equal(planCall.cwd, server.workspacePath);
   const planPrompt = planCall.args[planCall.args.indexOf("-p") + 1];
   assert.match(planPrompt, /^Act as an architect\.\n\nInspect the implementation/);
-  assert.match(planPrompt, /Optional MCP Agent Mail Coordination/);
-  assert.match(planPrompt, /"callerAgentName": "codex-wsl-home-1"/);
-  assert.match(planPrompt, /"mailTopic": "agy-delegation-1"/);
+  assert.match(planPrompt, /Optional Iris Coordination/);
+  assert.match(planPrompt, /"callerAgentName": "codex-home-claude-delegator"/);
+  assert.match(planPrompt, /"topic": "agy-delegation-1"/);
 
   assert.equal(replyCall.args[replyCall.args.indexOf("--conversation") + 1], "conversation-original");
   assert.equal(replyCall.args[replyCall.args.indexOf("--model") + 1], "gemini-3.8-flash-low");
@@ -561,7 +545,7 @@ test("rejects invalid inputs before invoking Agy", async () => {
       name: "agy",
       arguments: {
         prompt: "hello",
-        coordination: { projectKey: "project", mailTopic: "agy-delegation-1" }
+        coordination: { topic: "agy-delegation-1" }
       }
     }, /callerAgentName/],
     [{ name: "not-agy", arguments: { prompt: "hello" } }, /Unknown tool/]
@@ -686,19 +670,15 @@ test("maps sandbox tiers to the only flag agy actually honours", () => {
   assert.deepEqual(bridge.sandboxArguments("read-only"), []);
 });
 
-test("stamps the delegation depth while scrubbing caller Agent Mail identity", () => {
+test("stamps the delegation depth while scrubbing the caller Iris identity", () => {
   const env = bridge.buildAgyEnv({
     PATH: "/usr/bin",
-    AGENT_NAME: "CallerAgent",
-    AGENT_MAIL_REGISTRATION_TOKEN: "secret",
-    HTTP_BEARER_TOKEN: "secret",
+    IRIS_EXECUTION: "ex_caller",
     PRESERVED_VALUE: "keep-me"
   });
   assert.equal(env.CLAUDE_DELEGATOR_AGY_DEPTH, "1");
   assert.equal(env.PRESERVED_VALUE, "keep-me");
-  assert.equal(env.AGENT_NAME, undefined);
-  assert.equal(env.AGENT_MAIL_REGISTRATION_TOKEN, undefined);
-  assert.equal(env.HTTP_BEARER_TOKEN, undefined);
+  assert.equal(env.IRIS_EXECUTION, undefined);
 
   const nested = bridge.buildAgyEnv({ CLAUDE_DELEGATOR_AGY_DEPTH: "1" });
   assert.equal(nested.CLAUDE_DELEGATOR_AGY_DEPTH, "2");

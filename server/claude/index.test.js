@@ -49,9 +49,7 @@ fs.appendFileSync(process.env.CLAUDE_STUB_CAPTURE, JSON.stringify({
   args,
   hasClaudeCode: Object.prototype.hasOwnProperty.call(process.env, "CLAUDECODE"),
   preservedValue: process.env.PRESERVED_VALUE,
-  agentName: process.env.AGENT_NAME,
-  agentMailAgent: process.env.AGENT_MAIL_AGENT,
-  agentMailToken: process.env.AGENT_MAIL_REGISTRATION_TOKEN,
+  irisExecution: process.env.IRIS_EXECUTION,
   providerAuth: process.env.ANTHROPIC_API_KEY,
   delegationDepth: process.env.CLAUDE_DELEGATOR_CLAUDE_DEPTH
 }) + "\\n");
@@ -108,9 +106,7 @@ process.stdout.write(JSON.stringify(result) + "\\n");
       CLAUDE_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
       PRESERVED_VALUE: "keep-me",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_AGENT: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-token",
+      IRIS_EXECUTION: "ex_caller",
       ANTHROPIC_API_KEY: "provider-auth"
     }
   };
@@ -323,9 +319,8 @@ test("starts Claude with read-only mode, coordination, and a clean nested marker
       effort: "high",
       sandbox: "read-only",
       coordination: {
-        projectKey: "/workspace/project",
-        callerAgentName: "codex-wsl-home-1",
-        mailTopic: "delegation-1",
+        callerAgentName: "codex-home-claude-delegator",
+        topic: "delegation-1",
         checkpointIntervalSeconds: 60
       }
     }
@@ -347,13 +342,11 @@ test("starts Claude with read-only mode, coordination, and a clean nested marker
   assert.equal(call.args.includes("--bare"), false);
   assert.match(call.args.at(-1), /Inspect the implementation/);
   assert.match(call.args.at(-1), /Useful native subagents are allowed/);
-  assert.match(call.args.at(-1), /codex-wsl-home-1/);
-  assert.match(call.args.at(-1), /"mailTopic": "delegation-1"/);
+  assert.match(call.args.at(-1), /codex-home-claude-delegator/);
+  assert.match(call.args.at(-1), /"topic": "delegation-1"/);
   assert.equal(call.hasClaudeCode, false);
   assert.equal(call.preservedValue, "keep-me");
-  assert.equal(call.agentName, undefined);
-  assert.equal(call.agentMailAgent, undefined);
-  assert.equal(call.agentMailToken, undefined);
+  assert.equal(call.irisExecution, undefined);
   assert.equal(call.providerAuth, "provider-auth");
   await server.close();
 });
@@ -367,9 +360,8 @@ test("resumes the explicit session and retains it when Claude omits session_id",
       prompt: "Continue the review",
       sandbox: "workspace-write",
       coordination: {
-        projectKey: "/workspace/project",
-        callerAgentName: "codex-wsl-home-1",
-        mailTopic: "delegation-9"
+        callerAgentName: "codex-home-claude-delegator",
+        topic: "delegation-9"
       }
     }
   });
@@ -377,14 +369,14 @@ test("resumes the explicit session and retains it when Claude omits session_id",
   assert.deepEqual(JSON.parse(response.result.content[0].text), { threadId: response.result.threadId, content: "reply result" });
   assert.equal(response.result.threadId, "session-original");
   assert.equal(response.result.coordinationRequested, true);
-  assert.equal(Object.hasOwn(response.result, "agentMailThreadId"), false);
+  assert.equal(Object.hasOwn(response.result, "irisThreadId"), false);
 
   const [call] = readCalls(server.capturePath);
   assert.equal(call.args[call.args.indexOf("--resume") + 1], "session-original");
   assert.equal(call.args.includes("--effort"), false);
   assert.equal(call.args.includes("--permission-mode"), false);
   assert.equal(call.args.includes("--dangerously-skip-permissions"), true);
-  assert.match(call.args.at(-1), /"mailTopic": "delegation-9"/);
+  assert.match(call.args.at(-1), /"topic": "delegation-9"/);
   assert.match(call.args.at(-1), /provider session `threadId`/);
   await server.close();
 });
@@ -402,7 +394,7 @@ test("rejects invalid catalog and coordination inputs before invoking Claude", a
     name: "claude",
     arguments: {
       prompt: "hello",
-      coordination: { projectKey: "project" }
+      coordination: {}
     }
   });
   assert.equal(invalidCoordination.error.code, -32602);

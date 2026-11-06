@@ -38,7 +38,7 @@ claude-delegator/
 │   └── plugin.json
 ├── commands/               # Slash commands (/setup, /uninstall)
 ├── rules/                  # Orchestration logic (installed to ~/.claude/rules/)
-├── prompts/                # Five expert prompts + Agent Mail contract
+├── prompts/                # Five expert prompts + Iris contract
 ├── server/                 # One MCP bridge per provider CLI
 │   └── shared/             # bridge.js core, coordination, environment, result
 ├── test/                   # Shared contract and catalog tests
@@ -132,13 +132,12 @@ Examples:
 
 5. **Add to `config/model-catalog.json`** - Record `cliVersion`, `discoverySource`, `defaultModel` and the roster. Bridges read their schema enums from here, so a missing entry crashes the bridge at load. Say how you discovered the roster; `agy models`, `copilot help config` and `~/.codex/models_cache.json` all work headlessly, while Claude's `/model` selector does not.
 
-6. **Add your client to `CALLER_CLIENTS`** - one array in `server/shared/coordination.js`; the advertised schema `pattern` and the runtime check are both derived from it. This used to be two hard-coded literals with a note asking you to remember both, and grok shipped with neither updated — so `test/coordination.test.js` now walks `server/*` and fails if a bridge directory is not a routable client. You will be told rather than trusted.
 
-7. **Update the hard-coded provider lists in `test/`** - `result-format.test.js`, `model-catalog.test.js` and `provider-config.test.js` each enumerate bridges by name. A new bridge that is not added there is silently untested.
+6. **Update the hard-coded provider lists in `test/`** - `result-format.test.js`, `model-catalog.test.js` and `provider-config.test.js` each enumerate bridges by name. A new bridge that is not added there is silently untested.
 
-8. **Update setup and uninstall commands** - Add detection, registration and a health check to `commands/setup.md`, and a `claude mcp remove` line to `commands/uninstall.md`
+7. **Update setup and uninstall commands** - Add detection, registration and a health check to `commands/setup.md`, and a `claude mcp remove` line to `commands/uninstall.md`
 
-9. **Document in README, CLAUDE.md and `rules/`** - Add to provider tables, the component table, and `rules/model-selection.md` (a `timeout` row there is asserted by tests)
+8. **Document in README, CLAUDE.md and `rules/`** - Add to provider tables, the component table, and `rules/model-selection.md` (a `timeout` row there is asserted by tests)
 
 Land the bridge and its test file in the same commit: coverage counts `server/**` from the moment the file exists, so a bridge merged ahead of its tests drags the coverage gate down.
 
@@ -156,7 +155,7 @@ Land the bridge and its test file in the same commit: coverage counts `server/**
 
 - Keep the runtime zero-dependency; development-only test dependencies are acceptable
 - Validate all public tool arguments before invoking a CLI
-- Never forward caller identity or Agent Mail credentials into a delegated process
+- Never forward the caller's Iris identity into a delegated process
 
 ---
 

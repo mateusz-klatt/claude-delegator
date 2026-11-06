@@ -82,7 +82,7 @@ const COPILOT_CATALOG = [
 
 function writeStub(directory, name, body) {
   const scriptPath = path.join(directory, `${name}-stub.js`);
-  fs.writeFileSync(scriptPath, `#!/usr/bin/env node\n"use strict";\nconst fs = require("node:fs");\nconst path = require("node:path");\nconst args = process.argv.slice(2);\nif (args.includes("--version")) { process.stdout.write("${name} 1.0.0\\n"); process.exit(0); }\nif (process.env.USAGE_STUB_CAPTURE) fs.appendFileSync(process.env.USAGE_STUB_CAPTURE, JSON.stringify({ name: ${JSON.stringify(name)}, args, cwd: process.cwd(), agentMailToken: process.env.AGENT_MAIL_REGISTRATION_TOKEN }) + "\\n");\n${body}\n`, { mode: 0o755 });
+  fs.writeFileSync(scriptPath, `#!/usr/bin/env node\n"use strict";\nconst fs = require("node:fs");\nconst path = require("node:path");\nconst args = process.argv.slice(2);\nif (args.includes("--version")) { process.stdout.write("${name} 1.0.0\\n"); process.exit(0); }\nif (process.env.USAGE_STUB_CAPTURE) fs.appendFileSync(process.env.USAGE_STUB_CAPTURE, JSON.stringify({ name: ${JSON.stringify(name)}, args, cwd: process.cwd(), irisExecution: process.env.IRIS_EXECUTION }) + "\\n");\n${body}\n`, { mode: 0o755 });
   if (process.platform === "win32") {
     fs.writeFileSync(path.join(directory, `${name}.cmd`), `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`);
   } else {
@@ -214,7 +214,7 @@ process.stdout.write(process.env.GH_STUB_USER);`);
       CLAUDE_STUB_TEXT: CLAUDE_USAGE_TEXT,
       COPILOT_STUB_CATALOG: JSON.stringify(COPILOT_CATALOG),
       GH_STUB_USER: JSON.stringify(COPILOT_USER),
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token"
+      IRIS_EXECUTION: "ex_caller"
     }
   };
 }
@@ -321,7 +321,7 @@ test("reports every provider without running a model on any of them", async () =
   assert.ok(claudeCall.args.includes("--no-session-persistence"));
   const copilotCall = calls.find((call) => call.name === "copilot");
   assert.equal(copilotCall.args[copilotCall.args.indexOf("--model") + 1], "claude-delegator-usage-probe-not-a-model");
-  for (const call of calls) assert.equal(call.agentMailToken, undefined, `${call.name} must not see Agent Mail credentials`);
+  for (const call of calls) assert.equal(call.irisExecution, undefined, `${call.name} must not inherit the caller Iris identity`);
   // The probe's session is removed; nothing it recorded survives.
   assert.deepEqual(fs.readdirSync(path.join(server.copilotHome, "session-state")).filter((name) => !name.startsWith(".")), []);
   assert.deepEqual(fs.readdirSync(path.join(server.copilotHome, "session-state", ".session-operation-locks")), []);

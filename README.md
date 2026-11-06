@@ -5,7 +5,7 @@ Multi-provider expert subagents over MCP. Claude Code can orchestrate Codex, Agy
 [![License](https://img.shields.io/github/license/mateusz-klatt/claude-delegator?v=2)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/mateusz-klatt/claude-delegator?v=2)](https://github.com/mateusz-klatt/claude-delegator/stargazers)
 
-> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Claude, Copilot, Grok, and Cursor targets, empirically refreshed per-CLI model catalogs, and optional out-of-band progress reporting through MCP Agent Mail.
+> Fork of [jarrodwatts/claude-delegator](https://github.com/jarrodwatts/claude-delegator) with Claude, Copilot, Grok, and Cursor targets, empirically refreshed per-CLI model catalogs, and optional out-of-band progress reporting through Iris.
 
 ![Claude Delegator in action](claude-delegator.png)
 
@@ -132,7 +132,7 @@ provider-specific arguments.
 
 ### Long-running delegation progress
 
-When the caller supplies a complete Agent Mail coordination envelope and the invoked CLI already has MCP Agent Mail, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. Pass the envelope through the dedicated `coordination` argument for Codex, Claude, Agy, Kimi, Copilot, Grok, and Cursor; their bridges inject the canonical prompt contract exactly once. The envelope carries only `projectKey`, the canonical routable `callerAgentName` (`<client>-<os>-<host>-<slot>`), an optional `mailTopic`, and a checkpoint interval—never a caller token, database id, delegation id, or mail thread id. After `STARTED`, the callee replies to its own outbound message, so Agent Mail establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub inherited Agent Mail identities and bearer credentials so the callee cannot accidentally report as the caller; provider authentication remains available. If Agent Mail is unavailable or contact policy prevents delivery, delegation continues normally.
+When the caller passes a `coordination` envelope and the invoked CLI has [Iris](https://github.com/mateusz-klatt/iris) configured, the target reports `STARTED`, milestone `PROGRESS`, genuine `BLOCKED`, and terminal `COMPLETED` checkpoints out of band. Pass the envelope through the dedicated `coordination` argument for Codex, Claude, Agy, Kimi, Copilot, Grok, and Cursor; their bridges inject the canonical prompt contract exactly once. The envelope carries only `callerAgentName` (the caller's `agent.name` from the Iris `whoami` tool), an optional `topic` tag for message subjects, and a checkpoint interval, never a token or an execution handle. The callee threads its checkpoints with `reply_to`, and the provider session `threadId` remains separate and is used only by `*-reply`. Bridge subprocesses scrub `IRIS_EXECUTION` so the callee registers as its own session and cannot report as the caller, while hub configuration and provider authentication stay available. Iris routes only inside one repository, so the delegate needs a `cwd` in the caller's repository. A delegate is a separate session, so a path the caller holds is refused to it; release those claims before delegating edits to them. If Iris is unavailable, delegation continues normally.
 
 ---
 

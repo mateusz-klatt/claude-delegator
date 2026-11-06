@@ -35,24 +35,23 @@ Every delegation prompt MUST include these sections:
 
 ## Optional Coordination Transport
 
-The mandatory seven-section task above never contains an Agent Mail transport
+The mandatory seven-section task above never contains an Iris transport
 envelope. For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass its
 fields only through the `coordination` argument; the bridge appends the canonical
-coordination contract exactly once. Never paste `prompts/agent-mail-coordination.md`
+coordination contract exactly once. Never paste `prompts/iris-coordination.md`
 into the task yourself — Codex used to need that, and no longer does:
 
 ```json
 {
-  "projectKey": "/owner/project",
-  "callerAgentName": "codex-wsl-home-1",
-  "mailTopic": "optional-topic-tag",
+  "callerAgentName": "claude-home-claude-delegator",
+  "topic": "optional-subject-tag",
   "checkpointIntervalSeconds": 300
 }
 ```
 
-Never include the caller's registration token or another credential. `callerAgentName` is the canonical routable value that Agent Mail accepts in `to`; it is neither the numeric database `Agent.id` nor a display label. A native subagent used only as a runner must forward the original caller envelope unchanged.
+`callerAgentName` is the caller's `agent.name` from the Iris `whoami` tool. Never include a hub token, an execution handle or another credential. A native subagent used only as a runner must forward the original caller envelope unchanged.
 
-The callee sends `STARTED` without a caller-provided mail thread id, remembers `deliveries[0].message.id`, and uses `reply_message` on that outbound message for subsequent checkpoints. Agent Mail then establishes and preserves the thread internally. The provider session `threadId` remains separate and is used only by the matching `*-reply` tool.
+The callee sends `STARTED` with `send`, keeps the `message_id` it gets back, and passes it as `reply_to` on later checkpoints so Iris keeps them in one thread. The provider session `threadId` remains separate and is used only by the matching `*-reply` tool.
 
 ---
 

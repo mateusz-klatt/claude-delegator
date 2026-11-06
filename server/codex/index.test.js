@@ -66,9 +66,7 @@ fs.appendFileSync(process.env.CODEX_STUB_CAPTURE, JSON.stringify({
   args,
   outputFile,
   cwd: process.cwd(),
-  hasAgentName: Object.prototype.hasOwnProperty.call(process.env, "AGENT_NAME"),
-  hasAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_REGISTRATION_TOKEN"),
-  hasHttpBearerToken: Object.prototype.hasOwnProperty.call(process.env, "HTTP_BEARER_TOKEN"),
+  hasIrisExecution: Object.prototype.hasOwnProperty.call(process.env, "IRIS_EXECUTION"),
   hasOverride: Object.keys(process.env).some((key) => key.toLowerCase() === "codex_delegator_codex_bin"),
   providerAuth: process.env.OPENAI_API_KEY,
   preservedValue: process.env.PRESERVED_VALUE,
@@ -149,9 +147,7 @@ if (outputFile && !prompt.includes("NO_LAST_FILE")) {
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       CODEX_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
+      IRIS_EXECUTION: "ex_caller",
       OPENAI_API_KEY: "provider-auth",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_CODEX_DEPTH: "",
@@ -544,9 +540,7 @@ test("scrubs the caller identity and the binary override while stamping the dept
 
   // The explicit override selected the stub's JS loader, and stayed with the bridge.
   assert.equal(call.hasOverride, false);
-  assert.equal(call.hasAgentName, false);
-  assert.equal(call.hasAgentMailToken, false);
-  assert.equal(call.hasHttpBearerToken, false);
+  assert.equal(call.hasIrisExecution, false);
   assert.equal(call.providerAuth, "provider-auth");
   assert.equal(call.preservedValue, "keep-me");
   assert.equal(call.delegationDepth, "1");

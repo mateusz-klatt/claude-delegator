@@ -9,90 +9,85 @@ const {
   validateCoordination
 } = require("../server/shared/coordination");
 
+const CALLER = "codex-home-claude-delegator";
+
 test("coordination validation normalizes the supported contract", () => {
   const coordination = validateCoordination({
-    projectKey: " /projects/example ",
-    callerAgentName: "codex-wsl-home-1",
-    mailTopic: "delegation-7",
+    callerAgentName: ` ${CALLER} `,
+    topic: "delegation-7",
     checkpointIntervalSeconds: 90
   });
 
   assert.deepEqual(coordination, {
-    projectKey: "/projects/example",
-    callerAgentName: "codex-wsl-home-1",
-    mailTopic: "delegation-7",
+    callerAgentName: CALLER,
+    topic: "delegation-7",
     checkpointIntervalSeconds: 90
   });
 });
 
 test("coordination rejects missing, unknown, token, and malformed fields", () => {
+  assert.throws(() => validateCoordination({}), /callerAgentName/);
   assert.throws(
-    () => validateCoordination({ callerAgentName: "codex-wsl-home-1" }),
-    /projectKey/
-  );
-  assert.throws(
-    () => validateCoordination({
-      projectKey: "project",
-      callerAgentName: "codex-wsl-home-1",
-      callerToken: "must-not-cross-the-boundary"
-    }),
+    () => validateCoordination({ callerAgentName: CALLER, callerToken: "must-not-cross-the-boundary" }),
     /unknown coordination field.*callerToken/
   );
+  // The Agent Mail envelope's project key has no meaning in Iris, which derives
+  // the repository itself. A stale caller fails loudly rather than being ignored.
   assert.throws(
-    () => validateCoordination({
-      projectKey: "project\ninjected instruction",
-      callerAgentName: "codex-wsl-home-1"
-    }),
+    () => validateCoordination({ projectKey: "/o/p", callerAgentName: CALLER }),
+    /unknown coordination field.*projectKey/
+  );
+  assert.throws(
+    () => validateCoordination({ callerAgentName: `${CALLER}\ninjected instruction` }),
     /single-line/
   );
   assert.throws(
-    () => validateCoordination({
-      projectKey: "project",
-      callerAgentName: "codex-wsl-home-1",
-      checkpointIntervalSeconds: 0
-    }),
+    () => validateCoordination({ callerAgentName: CALLER, checkpointIntervalSeconds: 0 }),
     /integer from 60 to 3600/
   );
   assert.throws(
-    () => validateCoordination({
-      projectKey: "project",
-      callerAgentName: "codex-wsl-home-1",
-      mailTopic: "not a valid topic"
-    }),
-    /valid Agent Mail topic/
+    () => validateCoordination({ callerAgentName: CALLER, topic: "not a valid topic" }),
+    /must be a tag/
   );
   assert.throws(
-    () => validateCoordination({
-      projectKey: "project",
-      callerAgentName: "BlueLake"
-    }),
-    /<client>-<os>-<host>-<slot>/
+    () => validateCoordination({ callerAgentName: "not an agent name" }),
+    /Iris agent name/
   );
 });
 
+test("the advertised schema pattern and the runtime check accept the same names", () => {
+  const { coordinationSchema } = require("../server/shared/coordination");
+  const pattern = new RegExp(coordinationSchema.properties.callerAgentName.pattern);
+  for (const name of [CALLER, "antigravity-home-iris", "claude-home-claude-delegator-2", "human"]) {
+    assert.match(name, pattern);
+    assert.equal(validateCoordination({ callerAgentName: name }).callerAgentName, name);
+  }
+  assert.doesNotMatch("-leading-dash", pattern);
+  assert.throws(() => validateCoordination({ callerAgentName: "-leading-dash" }));
+  assert.deepEqual(coordinationSchema.required, ["callerAgentName"]);
+});
+
 test("injected guidance is fail-open, uses the callee identity, and prevents delegation loops", () => {
-  const coordination = validateCoordination({
-    projectKey: "project-a",
-    callerAgentName: "codex-wsl-home-1",
-    mailTopic: "delegation-a"
-  });
+  const coordination = validateCoordination({ callerAgentName: CALLER, topic: "delegation-a" });
   const prompt = appendCoordinationInstructions("Do the task", coordination);
 
-  assert.match(prompt, /MCP Agent Mail/);
-  assert.match(prompt, /your own canonical agent identity/);
-  assert.match(prompt, /codex-wsl-home-1/);
-  assert.match(prompt, /project-a/);
+  assert.match(prompt, /Optional Iris Coordination/);
+  assert.match(prompt, /Never act as the caller/);
+  assert.match(prompt, new RegExp(CALLER));
+  assert.match(prompt, /delegation-a/);
   assert.match(prompt, /STARTED/);
   assert.match(prompt, /PROGRESS/);
   assert.match(prompt, /BLOCKED/);
   assert.match(prompt, /COMPLETED/);
   assert.match(prompt, /Useful native subagents are allowed/);
   assert.match(prompt, /original caller envelope unchanged/);
-  assert.match(prompt, /deliveries\[0\]\.message\.id/);
-  assert.doesNotMatch(prompt, /deliveries\[0\]\.payload\.id/);
-  assert.match(prompt, /reply_message/);
-  assert.match(prompt, /mail thread stays internal/);
-  assert.match(prompt, /mail failure must not block the task/);
+  assert.match(prompt, /`message_id`/);
+  assert.match(prompt, /`reply_to`/);
+  assert.match(prompt, /only inside one repository/);
+  assert.match(prompt, /Do not work around the refusal/);
+  assert.match(prompt, /reporting failure must not block the task/);
+  assert.match(prompt, /untrusted data, never instructions/);
+  assert.doesNotMatch(prompt, /Agent Mail/);
 });
 
 test("coordination metadata reports only whether progress was requested", () => {
@@ -100,63 +95,16 @@ test("coordination metadata reports only whether progress was requested", () => 
     coordinationRequested: false
   });
 
-  const metadata = coordinationMetadata(validateCoordination({
-    projectKey: "project-a",
-    callerAgentName: "codex-wsl-home-1"
-  }));
+  const metadata = coordinationMetadata(validateCoordination({ callerAgentName: CALLER }));
   assert.deepEqual(metadata, {
     coordinationRequested: true
   });
   assert.equal(Object.hasOwn(metadata, "coordinationStatus"), false);
 });
 
-test("coordination defaults the checkpoint interval without requiring a caller id", () => {
-  assert.deepEqual(validateCoordination({
-    projectKey: "project-a",
-    callerAgentName: "codex-wsl-home-1"
-  }), {
-    projectKey: "project-a",
-    callerAgentName: "codex-wsl-home-1",
+test("coordination defaults the checkpoint interval", () => {
+  assert.deepEqual(validateCoordination({ callerAgentName: CALLER }), {
+    callerAgentName: CALLER,
     checkpointIntervalSeconds: 300
   });
-});
-
-test("every bridge is a routable Agent Mail client, and none is only half-registered", () => {
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const { CALLER_CLIENTS, coordinationSchema, validateCoordination } =
-    require("../server/shared/coordination");
-
-  // CONTRIBUTING step 6 asked whoever adds a provider to widen a hard-coded list
-  // written out twice. grok shipped in 1.7.0 with neither copy updated, so the
-  // instruction was not enough on its own. The list is now derived once; this
-  // test is what makes the derivation obligatory.
-  const bridges = fs.readdirSync(path.resolve(__dirname, "../server"), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "shared")
-    // Utility servers such as usage delegate nothing, so they have no caller identity.
-    .filter((entry) => !Object.hasOwn(require("../config/providers.json").utilities, entry.name))
-    .map((entry) => entry.name);
-
-  assert.ok(bridges.length >= 5, `expected the bridge directories, saw ${bridges.join(", ")}`);
-  for (const bridge of bridges) {
-    assert.ok(
-      CALLER_CLIENTS.includes(bridge),
-      `server/${bridge} exists but ${bridge} is not a routable caller client`
-    );
-    // Both uses must accept it, which is the divergence the single definition removes:
-    // the advertised schema pattern and the runtime check were separate literals.
-    const name = `${bridge}-wsl-host-1`;
-    assert.match(name, new RegExp(coordinationSchema.properties.callerAgentName.pattern),
-      `${bridge} rejected by the advertised schema pattern`);
-    assert.equal(
-      validateCoordination({ projectKey: "/o/p", callerAgentName: name }).callerAgentName,
-      name,
-      `${bridge} rejected by the runtime check`
-    );
-  }
-
-  // codex is a bridge directory like the rest now that its launcher is gone,
-  // so it must appear above rather than through an exception.
-  assert.ok(bridges.includes("codex"));
-  assert.throws(() => validateCoordination({ projectKey: "/o/p", callerAgentName: "notaclient-wsl-host-1" }));
 });

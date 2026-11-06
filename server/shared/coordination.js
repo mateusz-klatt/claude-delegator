@@ -4,50 +4,42 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const COORDINATION_PROMPT = fs.readFileSync(
-  path.resolve(__dirname, "../../prompts/agent-mail-coordination.md"),
+  path.resolve(__dirname, "../../prompts/iris-coordination.md"),
   "utf8"
 ).trim();
 
 const COORDINATION_FIELDS = new Set([
-  "projectKey",
   "callerAgentName",
-  "mailTopic",
+  "topic",
   "checkpointIntervalSeconds"
 ]);
 
-// Agent Mail's routable address is <client>-<os>-<host>-<slot>. The client list
-// was previously written out twice, once in the advertised schema pattern and
-// once in the runtime check, with a CONTRIBUTING note asking whoever adds a
-// provider to remember both. grok shipped in 1.7.0 with neither updated, which
-// is the answer to whether that note is sufficient. One definition, two uses.
-const CALLER_CLIENTS = ["agy", "claude", "codex", "copilot", "cursor", "grok", "kimi"];
-const CALLER_AGENT_NAME_PATTERN =
-  String.raw`^(?:${CALLER_CLIENTS.join("|")})-(?:linux|wsl|win|mac|other)-[A-Za-z0-9][A-Za-z0-9._-]{0,95}-[1-9]\d*$`;
+// The caller's own `agent.name` from Iris, passed back verbatim. Iris chooses
+// the form (<client>-<host>-<worktree> by default, with a slot for concurrent
+// sessions), so this checks only that the value is one safe token.
+const CALLER_AGENT_NAME_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$";
 const CALLER_AGENT_NAME_RE = new RegExp(CALLER_AGENT_NAME_PATTERN);
+const TOPIC_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$";
+const TOPIC_RE = new RegExp(TOPIC_PATTERN);
 
 const coordinationSchema = Object.freeze({
   type: "object",
-  description: "Optional fail-open progress reporting through MCP Agent Mail",
+  description: "Optional fail-open progress reporting through Iris",
   additionalProperties: false,
   properties: {
-    projectKey: {
-      type: "string",
-      minLength: 1,
-      description: "MCP Agent Mail project key shared with the caller"
-    },
     callerAgentName: {
       type: "string",
       minLength: 1,
       maxLength: 128,
       pattern: CALLER_AGENT_NAME_PATTERN,
-      description: "Canonical routable Agent Mail name (<client>-<os>-<host>-<slot>) used in the message 'to' field"
+      description: "The caller's Iris agent name, from whoami, used in the message 'to' field"
     },
-    mailTopic: {
+    topic: {
       type: "string",
       minLength: 1,
       maxLength: 64,
-      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
-      description: "Optional Agent Mail topic tag for filtering; the callee derives a concise message subject from the task"
+      pattern: TOPIC_PATTERN,
+      description: "Optional tag the callee puts at the start of each message subject"
     },
     checkpointIntervalSeconds: {
       type: "integer",
@@ -57,7 +49,7 @@ const coordinationSchema = Object.freeze({
       description: "Requested interval between PROGRESS checkpoints"
     }
   },
-  required: ["projectKey", "callerAgentName"]
+  required: ["callerAgentName"]
 });
 
 function isPlainObject(value) {
@@ -85,21 +77,17 @@ function validateCoordination(value) {
     throw new TypeError(`unknown coordination field(s): ${unknownFields.join(", ")}`);
   }
 
-  const projectKey = validateSingleLineString(value.projectKey, "projectKey");
   const callerAgentName = validateSingleLineString(value.callerAgentName, "callerAgentName");
-  if (callerAgentName.length > 128 || !CALLER_AGENT_NAME_RE.test(callerAgentName)) {
-    throw new TypeError("'coordination.callerAgentName' must use <client>-<os>-<host>-<slot> and be at most 128 characters");
+  if (!CALLER_AGENT_NAME_RE.test(callerAgentName)) {
+    throw new TypeError("'coordination.callerAgentName' must be an Iris agent name of at most 128 characters");
   }
 
-  const coordination = {
-    projectKey,
-    callerAgentName
-  };
+  const coordination = { callerAgentName };
 
-  if (value.mailTopic !== undefined) {
-    coordination.mailTopic = validateSingleLineString(value.mailTopic, "mailTopic");
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(coordination.mailTopic)) {
-      throw new TypeError("'coordination.mailTopic' must be a valid Agent Mail topic of at most 64 characters");
+  if (value.topic !== undefined) {
+    coordination.topic = validateSingleLineString(value.topic, "topic");
+    if (!TOPIC_RE.test(coordination.topic)) {
+      throw new TypeError("'coordination.topic' must be a tag of at most 64 characters");
     }
   }
 
@@ -139,7 +127,6 @@ function coordinationMetadata(coordination) {
 }
 
 module.exports = {
-  CALLER_CLIENTS,
   appendCoordinationInstructions,
   coordinationInstructions,
   coordinationMetadata,
