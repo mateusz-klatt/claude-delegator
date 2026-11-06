@@ -75,10 +75,8 @@ fs.appendFileSync(process.env.CURSOR_STUB_CAPTURE, JSON.stringify({
   pid: process.pid,
   args,
   cwd: process.cwd(),
-  hasAgentName: Object.prototype.hasOwnProperty.call(process.env, "AGENT_NAME"),
   hasClaudeCode: Object.prototype.hasOwnProperty.call(process.env, "CLAUDECODE"),
-  hasAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_REGISTRATION_TOKEN"),
-  hasHttpBearerToken: Object.prototype.hasOwnProperty.call(process.env, "HTTP_BEARER_TOKEN"),
+  hasIrisExecution: Object.prototype.hasOwnProperty.call(process.env, "IRIS_EXECUTION"),
   preservedValue: process.env.PRESERVED_VALUE,
   delegationDepth: process.env.CLAUDE_DELEGATOR_CURSOR_DEPTH
 }) + "\\n");
@@ -163,9 +161,7 @@ process.stdout.write(JSON.stringify({
       CURSOR_STUB_CAPTURE: capturePath,
       CURSOR_STUB_PROBE_CAPTURE: probeCapturePath,
       CLAUDECODE: "nested-session-marker",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
+      IRIS_EXECUTION: "ex_caller",
       CURSOR_API_KEY: "provider-auth",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_CURSOR_DEPTH: ""
@@ -547,10 +543,8 @@ test("severs caller identity but preserves unrelated environment", async () => {
   });
 
   const [call] = readCalls(server.capturePath);
-  assert.equal(call.hasAgentName, false);
   assert.equal(call.hasClaudeCode, false);
-  assert.equal(call.hasAgentMailToken, false);
-  assert.equal(call.hasHttpBearerToken, false);
+  assert.equal(call.hasIrisExecution, false);
   assert.equal(call.preservedValue, "keep-me");
   assert.equal(call.delegationDepth, "1");
 });
@@ -560,9 +554,7 @@ test("scrubs caller credentials from the provider runtime startup probe", async 
   await server.request("initialize");
   const captured = JSON.parse(fs.readFileSync(server.probeCapturePath, "utf8"));
   for (const key of [
-    "agent_name",
-    "agent_mail_registration_token",
-    "http_bearer_token",
+    "iris_execution",
     "claudecode"
   ]) {
     assert.equal(captured.keys.includes(key), false, key);

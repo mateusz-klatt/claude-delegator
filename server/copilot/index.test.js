@@ -58,13 +58,7 @@ fs.appendFileSync(process.env.COPILOT_STUB_CAPTURE, JSON.stringify({
   cwd: process.cwd(),
   preservedValue: process.env.PRESERVED_VALUE,
   providerAuth: process.env.GITHUB_TOKEN,
-  agentName: process.env.AGENT_NAME,
-  agentMailAgent: process.env.AGENT_MAIL_AGENT,
-  agentMailProject: process.env.Agent_Mail_Project_Key,
-  agentMailToken: process.env.AGENT_MAIL_REGISTRATION_TOKEN,
-  mcpAgentMailToken: process.env.MCP_AGENT_MAIL_TOKEN,
-  httpBearerToken: process.env.HTTP_BEARER_TOKEN,
-  integrationBearerToken: process.env.integration_bearer_token,
+  irisExecution: process.env.IRIS_EXECUTION,
   claudeCode: process.env.CLAUDECODE,
   delegationDepth: process.env.CLAUDE_DELEGATOR_COPILOT_DEPTH
 }) + "\\n");
@@ -133,13 +127,7 @@ if (process.env.COPILOT_STUB_HANG === "1") {
       COPILOT_STUB_CAPTURE: capturePath,
       PRESERVED_VALUE: "keep-me",
       GITHUB_TOKEN: "provider-auth",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_AGENT: "CallerAgent",
-      Agent_Mail_Project_Key: "/caller/project",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token",
-      MCP_AGENT_MAIL_TOKEN: "caller-project-token",
-      HTTP_BEARER_TOKEN: "caller-server-token",
-      integration_bearer_token: "caller-integration-token",
+      IRIS_EXECUTION: "ex_caller",
       CLAUDECODE: "nested-session-marker",
       CLAUDE_DELEGATOR_COPILOT_DEPTH: ""
     }
@@ -340,9 +328,9 @@ test("advertises the uniform copilot/copilot-reply contract", async () => {
   assert.equal(reply.properties.effort.default, undefined);
   assert.ok(start.properties.coordination);
   assert.ok(reply.properties.coordination);
-  assert.deepEqual(start.properties.coordination.required, ["projectKey", "callerAgentName"]);
-  assert.deepEqual(reply.properties.coordination.required, ["projectKey", "callerAgentName"]);
-  assert.equal(start.properties.coordination.properties.mailTopic.pattern, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+  assert.deepEqual(start.properties.coordination.required, ["callerAgentName"]);
+  assert.deepEqual(reply.properties.coordination.required, ["callerAgentName"]);
+  assert.equal(start.properties.coordination.properties.topic.pattern, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
   assert.equal(start.properties.coordination.properties.checkpointIntervalSeconds.minimum, 60);
   await server.close();
 });
@@ -360,9 +348,8 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
       cwd: server.directory,
       timeout: 10_000,
       coordination: {
-        projectKey: "/workspace/project",
-        callerAgentName: "codex-wsl-home-1",
-        mailTopic: "copilot-review-1",
+        callerAgentName: "codex-home-claude-delegator",
+        topic: "copilot-review-1",
         checkpointIntervalSeconds: 60
       }
     }
@@ -389,22 +376,16 @@ test("starts Copilot read-only with capped effort, coordination, cwd, and a scru
 
   const prompt = argumentValue(call.args, "-p");
   assert.match(prompt, /^Act as a reviewer\.\n\nInspect the implementation/);
-  assert.match(prompt, /Optional MCP Agent Mail Coordination/);
+  assert.match(prompt, /Optional Iris Coordination/);
   assert.match(prompt, /Useful native subagents are allowed/);
-  assert.match(prompt, /"callerAgentName": "codex-wsl-home-1"/);
-  assert.match(prompt, /"mailTopic": "copilot-review-1"/);
+  assert.match(prompt, /"callerAgentName": "codex-home-claude-delegator"/);
+  assert.match(prompt, /"topic": "copilot-review-1"/);
   assert.match(prompt, /"checkpointIntervalSeconds": 60/);
-  assert.match(prompt, /reply_message/);
+  assert.match(prompt, /`reply_to`/);
 
   assert.equal(call.preservedValue, "keep-me");
   assert.equal(call.providerAuth, "provider-auth");
-  assert.equal(call.agentName, undefined);
-  assert.equal(call.agentMailAgent, undefined);
-  assert.equal(call.agentMailProject, undefined);
-  assert.equal(call.agentMailToken, undefined);
-  assert.equal(call.mcpAgentMailToken, undefined);
-  assert.equal(call.httpBearerToken, undefined);
-  assert.equal(call.integrationBearerToken, undefined);
+  assert.equal(call.irisExecution, undefined);
   assert.equal(call.claudeCode, undefined);
   assert.equal(call.delegationDepth, "1");
   await server.close();
@@ -543,8 +524,7 @@ test("adds coordination to replies and preserves an explicit effort without appl
       prompt: "Finish the task",
       effort: "none",
       coordination: {
-        projectKey: "project-a",
-        callerAgentName: "codex-wsl-home-1"
+        callerAgentName: "codex-home-claude-delegator"
       }
     }
   });
@@ -555,10 +535,9 @@ test("adds coordination to replies and preserves an explicit effort without appl
   assert.equal(argumentValue(call.args, "--resume"), "thread-original");
   assert.equal(argumentValue(call.args, "--effort"), "none");
   assert.ok(call.args.includes("--allow-all-tools"));
-  assert.match(argumentValue(call.args, "-p"), /"callerAgentName": "codex-wsl-home-1"/);
-  assert.match(argumentValue(call.args, "-p"), /"projectKey": "project-a"/);
-  assert.match(argumentValue(call.args, "-p"), /reply_message/);
-  assert.match(argumentValue(call.args, "-p"), /mail failure must not block the task/);
+  assert.match(argumentValue(call.args, "-p"), /"callerAgentName": "codex-home-claude-delegator"/);
+  assert.match(argumentValue(call.args, "-p"), /`reply_to`/);
+  assert.match(argumentValue(call.args, "-p"), /reporting failure must not block the task/);
   await server.close();
 });
 
@@ -580,7 +559,7 @@ test("rejects invalid tool inputs and timeout bounds before invoking Copilot", a
       name: "copilot",
       arguments: {
         prompt: "hello",
-        coordination: { projectKey: "project-a" }
+        coordination: {}
       }
     },
     { name: "not-a-tool", arguments: {} }

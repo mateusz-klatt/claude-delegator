@@ -60,10 +60,8 @@ fs.appendFileSync(process.env.GROK_STUB_CAPTURE, JSON.stringify({
   pid: process.pid,
   args,
   cwd: process.cwd(),
-  hasAgentName: Object.prototype.hasOwnProperty.call(process.env, "AGENT_NAME"),
   hasClaudeCode: Object.prototype.hasOwnProperty.call(process.env, "CLAUDECODE"),
-  hasAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_REGISTRATION_TOKEN"),
-  hasHttpBearerToken: Object.prototype.hasOwnProperty.call(process.env, "HTTP_BEARER_TOKEN"),
+  hasIrisExecution: Object.prototype.hasOwnProperty.call(process.env, "IRIS_EXECUTION"),
   preservedValue: process.env.PRESERVED_VALUE,
   delegationDepth: process.env.CLAUDE_DELEGATOR_GROK_DEPTH
 }) + "\\n");
@@ -129,9 +127,7 @@ process.stdout.write(JSON.stringify({
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       GROK_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
+      IRIS_EXECUTION: "ex_caller",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_GROK_DEPTH: ""
     }
@@ -566,21 +562,17 @@ test("parses the result past a diagnostic line and rejects unusable output", () 
   assert.throws(() => parseGrokOutput("{oops"), /unparsable JSON/);
 });
 
-test("stamps the delegation depth while scrubbing caller Agent Mail identity", () => {
+test("stamps the delegation depth while scrubbing the caller Iris identity", () => {
   const { buildGrokEnv } = require("./index.js");
   const child = buildGrokEnv({
-    AGENT_NAME: "CallerAgent",
-    AGENT_MAIL_REGISTRATION_TOKEN: "caller-token",
-    HTTP_BEARER_TOKEN: "caller-http-token",
+    IRIS_EXECUTION: "ex_caller",
     CLAUDECODE: "nested-session-marker",
     PRESERVED_VALUE: "keep-me"
   });
 
   assert.equal(child.CLAUDE_DELEGATOR_GROK_DEPTH, "1");
   assert.equal(child.PRESERVED_VALUE, "keep-me");
-  assert.equal(Object.hasOwn(child, "AGENT_NAME"), false);
-  assert.equal(Object.hasOwn(child, "AGENT_MAIL_REGISTRATION_TOKEN"), false);
-  assert.equal(Object.hasOwn(child, "HTTP_BEARER_TOKEN"), false);
+  assert.equal(Object.hasOwn(child, "IRIS_EXECUTION"), false);
 });
 
 test("binds the shared shim resolver to its own CLI name", () => {

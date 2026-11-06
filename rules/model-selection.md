@@ -132,7 +132,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Default: `ultra`, clamped per model — see **Effort guidance** |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory and Codex workspace. **A repository `AGENTS.md` here is loaded.** |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: `gpt-6.1-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6.1-terra` for everyday work at lower cost, `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
 
@@ -155,7 +155,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
 | `cwd` | path | **Repeat the start call's `cwd`** — a resume runs in the directory it is launched from |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Reply re-pins model and effort**: measured, a session started on `gpt-6-luna` resumed on the Codex config default, `gpt-6.1-sol`, when the resume named no model — with only a warning item to show for it. The bridge therefore always passes a model and an effort on reply, falling back to its own defaults, and appends any Codex warning to the answer. Developer instructions given on the start call stay in force without being repeated. `--last` is never used: it resumes the most recent session and would cross-talk between concurrent delegations.
 
@@ -171,7 +171,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `model` | one of the 6 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-3.8-flash-high` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory; it becomes the session workspace |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: `gemini-3.8-flash-high` (default) for expert work. Agy 1.4.6 offers no Gemini Pro id at all; the previous default, `gemini-3.1-pro-high`, now fails pre-flight as "not recognized". The reasoning tier is baked into most ids — `-low`, `-medium`, `-high` — so pick the tier by picking the model. Use `gemini-3.8-flash-low` for quick low-stakes checks, `claude-sonnet-4-6` or `claude-opus-4-6-thinking` for a cross-family second opinion, and `gpt-oss-120b-medium` for an open-weights perspective.
 
@@ -197,7 +197,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
 | `cwd` | path | Repeat the original value; a resume does not inherit the workspace |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 ## Kimi Parameters Reference
 
@@ -211,11 +211,11 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `model` | alias from `~/.kimi-code/config.toml` | Free-form; the roster is user-extensible. Default: `moonshot-ai/kimi-k3` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory. **A repository `AGENTS.md` here is auto-loaded.** |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: `moonshot-ai/kimi-k3` (default) for expert work, `moonshot-ai/kimi-k3.1-pro` (paid subscription, same efforts and 1M context) as the stronger option; `moonshot-ai/kimi-k2.7-code` for coding tasks, `moonshot-ai/kimi-k2.7-code-highspeed` for quick low-stakes checks, `moonshot-ai/kimi-k2.6` as a fallback. The alias is free-form because `kimi provider catalog` can import more providers; an unknown alias fails with exit 1 and a clear message before any work happens.
 
-**Authentication**: Kimi Code supports a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17 — in practice it is the API key. Put it in `~/.kimi-code/config.toml` or export `KIMI_API_KEY` / `MOONSHOT_API_KEY`; the bridge forwards the caller environment untouched apart from Agent Mail identity. Be aware the CLI also recognises a large catalog of third-party provider key variables (`ANTHROPIC_API_KEY`, `AZURE_API_KEY` and many more), so any such key exported in the parent shell is visible to the delegated process.
+**Authentication**: Kimi Code supports a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17 — in practice it is the API key. Put it in `~/.kimi-code/config.toml` or export `KIMI_API_KEY` / `MOONSHOT_API_KEY`; the bridge forwards the caller environment untouched apart from Iris identity. Be aware the CLI also recognises a large catalog of third-party provider key variables (`ANTHROPIC_API_KEY`, `AZURE_API_KEY` and many more), so any such key exported in the parent shell is visible to the delegated process.
 
 **No effort parameter**: kimi exposes no effort flag. Reasoning depth is the `[thinking]` toggle in `~/.kimi-code/config.toml`, which is user state the bridge deliberately does not touch.
 
@@ -234,7 +234,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `sandbox` | `workspace-write` only | Repeat the supported start value; `read-only` is refused |
 | `cwd` | path | Working directory. **Match the start call's `cwd`** when it was non-default — see below |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 The bridge never passes `--continue`, which resumes "the previous session for the working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
@@ -313,7 +313,7 @@ Three things are easy to get wrong, each measured:
 | `effort` | free-form string | Passed through as `--reasoning-effort`. The CLI does not enumerate its values, so the bridge forwards the string rather than inventing an allowlist |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory. **Project instruction files here are auto-loaded** |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Sandbox honesty**: Grok's `read-only` denies rather than advises because of the explicit deny rules, not the permission mode. (Copilot also enforces its narrower `read-only` contract through its own shell/write/edit deny flags.) `--permission-mode plan` on its own cancelled both a write attempt and a shell escape under an insistent prompt, then was **defeated** by a permissive allow list in the caller's own Claude Code settings, which grok reads. The bridge therefore always adds `--deny` for `Write`, `Edit` and `Bash`; with those, the model tried the file tool, the shell and a third path, was denied each time, and said so. `--sandbox read-only` is never emitted: the CLI accepts it and it did **not** stop a write. Real sandbox profiles live in `~/.grok/sandbox.toml` and are operator configuration the bridge never writes.
 
@@ -341,7 +341,7 @@ All four hosts returned identical verbatim denial strings; several runs put cont
 | `effort` | free-form string | Optional override for this turn |
 | `cwd` | path | Working directory |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its model. The bridge never passes `--continue`/`-c`, which resumes "the most recent session for the current working directory" and would cross-talk between concurrent delegations sharing a `cwd`.
 
@@ -357,7 +357,7 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 | `model` | free-form string | Default: `auto`. Not an enum — see **Model guidance** |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory; it also becomes the workspace |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
@@ -386,7 +386,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value |
 | `cwd` | path | **Use the same workspace path as the start call** |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **No `model` on reply**, and this is the opposite of Agy: a Cursor resume **inherits** the model the session started with. Verified by starting on `auto` while the configured default was `composer-2.5-fast` and finding no fallback. `--continue` is never emitted — it resumes the previous session for the working directory and would cross-talk between concurrent delegations sharing a `cwd`, as on Kimi.
 
@@ -404,7 +404,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; resolved on start to the highest level the model supports at or below it |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work. Every catalogued id completed a live start on a Pro+ account on 2026-11-04, including `claude-opus-5.5`, `claude-fable-5.1` and `gpt-6.1-terra`, which `copilot help config` does not list. `gpt-5.6-terra` or `gpt-6.1-terra` suit everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-opus-5.5` or `claude-sonnet-5.5` for a cross-family second opinion, `auto` to let Copilot route (it picks its own model, so no `--effort` is sent), and `gpt-5.6-sol` as a fallback when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
@@ -418,12 +418,12 @@ The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
-| `prompt` | string | **Required.** Full delegation prompt; pass optional Agent Mail coordination through `coordination`, not by duplicating it here |
+| `prompt` | string | **Required.** Full delegation prompt; pass optional Iris coordination through `coordination`, not by duplicating it here |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `model` | `opus`, `fable`, `sonnet`, `haiku`, or their full IDs | Override the default `claude-opus-5-5` model |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | Default: `xhigh` |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` maps to `plan`; `workspace-write` bypasses permission prompts. Default: `workspace-write`. |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 
@@ -437,7 +437,7 @@ The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value for permission continuity |
 | `cwd` | path | Working directory for the task |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 Do not add this target to Claude Code's own MCP configuration; that would create a self-delegation path.
 
@@ -451,7 +451,7 @@ Do not add this target to Claude Code's own MCP configuration; that would create
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; otherwise the reply defaults to `workspace-write` |
 | `cwd` | path | Working directory for the task |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
-| `coordination` | object | Optional Agent Mail caller envelope; never include credentials |
+| `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 
 ### Response Format

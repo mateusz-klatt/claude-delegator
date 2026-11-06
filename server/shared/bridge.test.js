@@ -386,8 +386,7 @@ test("resolveCli bounds the startup --version probe at the cold-start budget", (
   const calls = [];
   const environment = {
     PATH: process.env.PATH || "",
-    Agent_Mail_Registration_Token: "caller-mail-token",
-    HTTP_bEaReR_TOKEN: "caller-bearer-token",
+    Iris_Execution: "ex_caller",
     KIMI_API_KEY: "provider-auth",
     PRESERVED_VALUE: "keep-me"
   };
@@ -418,7 +417,7 @@ test("resolveCli bounds the startup --version probe at the cold-start budget", (
   assert.equal(core.CLI_VERSION_TIMEOUT_MS, 30_000);
 });
 
-test("a real startup version child cannot inherit caller identity or bearer credentials", () => {
+test("a real startup version child cannot inherit the caller identity", () => {
   const fs = require("node:fs");
   const os = require("node:os");
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-version-environment-"));
@@ -443,11 +442,7 @@ process.stdout.write("demo 1.0.0\\n");
     ...process.env,
     PATH: process.env.PATH || "",
     PROBE_CAPTURE: capturePath,
-    aGeNt_NaMe: "caller-agent",
-    Agent_Mail_Registration_Token: "caller-mail-token",
-    McP_AgEnT_MaIl_ToKeN: "caller-project-token",
-    HTTP_bEaReR_TOKEN: "caller-http-token",
-    InTeGrAtIoN_BeArEr_ToKeN: "caller-integration-token",
+    Iris_Execution: "ex_caller",
     cLaUdEcOdE: "nested-caller",
     KIMI_API_KEY: "provider-auth",
     PRESERVED_VALUE: "keep-me"
@@ -461,11 +456,7 @@ process.stdout.write("demo 1.0.0\\n");
     }), command);
     const captured = JSON.parse(fs.readFileSync(capturePath, "utf8"));
     for (const key of [
-      "agent_name",
-      "agent_mail_registration_token",
-      "mcp_agent_mail_token",
-      "http_bearer_token",
-      "integration_bearer_token",
+      "iris_execution",
       "claudecode"
     ]) {
       assert.equal(captured.keys.includes(key), false, key);
@@ -550,12 +541,7 @@ test("uses an absolute System32 taskkill path with a scrubbed child environment"
       PATH: "C:\\attacker",
       SystemRoot: "D:\\Windows",
       PROVIDER_AUTH: "preserved",
-      AGENT_NAME: "CallerAgent",
-      Agent_Mail_Agent: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token",
-      MCP_AGENT_MAIL_TOKEN: "caller-mail-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
-      integration_bearer_token: "caller-integration-token",
+      IRIS_EXECUTION: "ex_caller",
       CLAUDECODE: "nested-session"
     },
     executeFile: (...args) => calls.push(args),
@@ -570,12 +556,7 @@ test("uses an absolute System32 taskkill path with a scrubbed child environment"
   assert.equal(calls[0][2].env.SystemRoot, "D:\\Windows");
   assert.equal(calls[0][2].env.PROVIDER_AUTH, "preserved");
   for (const key of [
-    "AGENT_NAME",
-    "Agent_Mail_Agent",
-    "AGENT_MAIL_REGISTRATION_TOKEN",
-    "MCP_AGENT_MAIL_TOKEN",
-    "HTTP_BEARER_TOKEN",
-    "integration_bearer_token",
+    "IRIS_EXECUTION",
     "CLAUDECODE"
   ]) {
     assert.equal(calls[0][2].env[key], undefined, `${key} leaked into taskkill`);

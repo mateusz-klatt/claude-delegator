@@ -60,10 +60,8 @@ fs.appendFileSync(process.env.KIMI_STUB_CAPTURE, JSON.stringify({
   pid: process.pid,
   args,
   cwd: process.cwd(),
-  hasAgentName: Object.prototype.hasOwnProperty.call(process.env, "AGENT_NAME"),
   hasClaudeCode: Object.prototype.hasOwnProperty.call(process.env, "CLAUDECODE"),
-  hasAgentMailToken: Object.prototype.hasOwnProperty.call(process.env, "AGENT_MAIL_REGISTRATION_TOKEN"),
-  hasHttpBearerToken: Object.prototype.hasOwnProperty.call(process.env, "HTTP_BEARER_TOKEN"),
+  hasIrisExecution: Object.prototype.hasOwnProperty.call(process.env, "IRIS_EXECUTION"),
   preservedValue: process.env.PRESERVED_VALUE,
   delegationDepth: process.env.CLAUDE_DELEGATOR_KIMI_DEPTH
 }) + "\\n");
@@ -123,9 +121,7 @@ process.stdout.write(JSON.stringify({
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
       KIMI_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
-      AGENT_NAME: "CallerAgent",
-      AGENT_MAIL_REGISTRATION_TOKEN: "caller-agent-mail-token",
-      HTTP_BEARER_TOKEN: "caller-http-token",
+      IRIS_EXECUTION: "ex_caller",
       PRESERVED_VALUE: "keep-me",
       CLAUDE_DELEGATOR_KIMI_DEPTH: ""
     }
@@ -312,9 +308,8 @@ test("advertises the uniform kimi/kimi-reply MCP contract", async () => {
 test("builds start and resume calls and always forces stream-json", async () => {
   const server = startServer();
   const coordination = {
-    projectKey: "/workspace/project",
-    callerAgentName: "codex-wsl-home-1",
-    mailTopic: "kimi-delegation-1",
+    callerAgentName: "codex-home-claude-delegator",
+    topic: "kimi-delegation-1",
     checkpointIntervalSeconds: 120
   };
 
@@ -359,9 +354,7 @@ test("builds start and resume calls and always forces stream-json", async () => 
     assert.equal(call.args.includes("--auto"), false);
     assert.equal(call.delegationDepth, "1");
     assert.equal(call.hasClaudeCode, false);
-    assert.equal(call.hasAgentName, false);
-    assert.equal(call.hasAgentMailToken, false);
-    assert.equal(call.hasHttpBearerToken, false);
+    assert.equal(call.hasIrisExecution, false);
     assert.equal(call.preservedValue, "keep-me");
   }
 
@@ -369,8 +362,8 @@ test("builds start and resume calls and always forces stream-json", async () => 
   assert.equal(startCall.cwd, server.workspacePath);
   const startPrompt = startCall.args[startCall.args.indexOf("-p") + 1];
   assert.match(startPrompt, /^Act as an architect\.\n\nInspect the implementation/);
-  assert.match(startPrompt, /Optional MCP Agent Mail Coordination/);
-  assert.match(startPrompt, /"callerAgentName": "codex-wsl-home-1"/);
+  assert.match(startPrompt, /Optional Iris Coordination/);
+  assert.match(startPrompt, /"callerAgentName": "codex-home-claude-delegator"/);
 
   assert.equal(replyCall.args[replyCall.args.indexOf("-S") + 1], "session_original");
   // No model override was requested, so the resumed session keeps its own.
@@ -461,7 +454,7 @@ test("rejects invalid inputs before invoking Kimi", async () => {
       name: "kimi",
       arguments: {
         prompt: "hello",
-        coordination: { projectKey: "project", mailTopic: "kimi-delegation-1" }
+        coordination: { topic: "kimi-delegation-1" }
       }
     }, /callerAgentName/],
     [{ name: "not-kimi", arguments: { prompt: "hello" } }, /Unknown tool/]
@@ -567,17 +560,15 @@ test("parses JSONL past non-JSON noise and concatenates assistant events", () =>
   assert.deepEqual(bridge.parseKimiOutput(""), { response: "", sessionId: "unknown" });
 });
 
-test("stamps the delegation depth while scrubbing caller Agent Mail identity", () => {
+test("stamps the delegation depth while scrubbing the caller Iris identity", () => {
   const env = bridge.buildKimiEnv({
     PATH: "/usr/bin",
-    AGENT_NAME: "CallerAgent",
-    AGENT_MAIL_REGISTRATION_TOKEN: "secret",
+    IRIS_EXECUTION: "ex_caller",
     PRESERVED_VALUE: "keep-me"
   });
   assert.equal(env.CLAUDE_DELEGATOR_KIMI_DEPTH, "1");
   assert.equal(env.PRESERVED_VALUE, "keep-me");
-  assert.equal(env.AGENT_NAME, undefined);
-  assert.equal(env.AGENT_MAIL_REGISTRATION_TOKEN, undefined);
+  assert.equal(env.IRIS_EXECUTION, undefined);
 
   const nested = bridge.buildKimiEnv({ CLAUDE_DELEGATOR_KIMI_DEPTH: "1" });
   assert.equal(nested.CLAUDE_DELEGATOR_KIMI_DEPTH, "2");

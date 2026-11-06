@@ -148,7 +148,7 @@ Read ${CLAUDE_PLUGIN_ROOT}/prompts/[expert].md
 
 For example, for Architect: `Read ${CLAUDE_PLUGIN_ROOT}/prompts/architect.md`
 
-For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually inject the Agent Mail prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/agent-mail-coordination.md` contract.
+For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manually inject the Iris prompt: passing a complete `coordination` object makes the bridge append the canonical `${CLAUDE_PLUGIN_ROOT}/prompts/iris-coordination.md` contract.
 
 ### Step 3: Determine Mode
 | Provider | Advisory | Implementation |
@@ -161,7 +161,7 @@ For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, do not manu
 | Cursor bridge | Default `workspace-write` (`--force`); state "do not modify". `read-only` maps to `--mode ask`, which deflects but does not deny | Default `workspace-write` |
 | Copilot bridge | Default `workspace-write` (`--allow-all-tools`); state "do not modify". `read-only` denies shell, write and edit tools | Default `workspace-write` |
 
-The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. Explicit `read-only` behavior is provider-specific: Codex uses its OS-enforced sandbox, Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. A denying policy may also prevent Agent Mail writes, which must fail open.
+The unrestricted default is deliberate: an approval prompt inside a headless child blocks both the child and its parent. Bridge `workspace-write` therefore names the full non-interactive provider policy, not an OS boundary. Always carry advisory/implementation intent in `developer-instructions`. Explicit `read-only` behavior is provider-specific: Codex uses its OS-enforced sandbox, Grok and Copilot add deny rules, Claude uses plan mode, Agy soft-denies only shell, Cursor deflects rather than enforces, and Kimi refuses the value. A denying policy may also prevent Iris messages, which must fail open.
 
 ### Step 4: Notify User
 Always inform the user before delegating:
@@ -177,24 +177,29 @@ Use the 7-section format from `rules/delegation-format.md`.
 - Relevant code/files
 - Any previous attempts and their results (for retries)
 
-#### Optional Agent Mail coordination
+#### Optional Iris coordination
 
-When MCP Agent Mail is already available to the caller, resolve the caller's bound identity and pass a coordination envelope containing:
+When the Iris tools are available to the caller, call `whoami` and pass a coordination envelope containing its `agent.name`:
 
 ```json
 {
-  "projectKey": "/owner/project",
-  "callerAgentName": "codex-wsl-home-1",
-  "mailTopic": "optional-topic-tag",
+  "callerAgentName": "claude-home-claude-delegator",
+  "topic": "optional-subject-tag",
   "checkpointIntervalSeconds": 300
 }
 ```
 
-`callerAgentName` is the canonical `<client>-<os>-<host>-<slot>` mailbox address that Agent Mail uses in `to`; do not substitute the numeric database `Agent.id` or a display label. Never pass the caller's registration token, bearer token, or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
+Never pass a hub token, an execution handle or another credential. If a native subagent is only acting as the CLI runner, it must forward the original parent caller envelope unchanged so the parent can receive progress while the runner is blocked.
 
-The callee sends `STARTED` without a `thread_id`, saves `deliveries[0].message.id`, and calls `reply_message` on that first outbound message for later checkpoints. Agent Mail routes a self-reply to the original `to` recipients and maintains the resulting mail thread internally. The provider session `threadId` is unrelated: it is returned by `claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+Three properties of Iris shape what the envelope can do:
 
-For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. If Agent Mail or a complete caller identity is unavailable, omit the envelope and continue normally.
+- **Only the same repository.** A message to a peer in another repository is refused, so delegate with a `cwd` inside the caller's repository, or expect no progress.
+- **Only an integrated client.** A delegate reports only if its CLI has Iris configured; `iris doctor` lists which do. Otherwise it completes normally without reporting.
+- **Claims apply to delegates.** A delegate is a separate session, not a subagent of the caller, so a path the caller has claimed or edited is refused to it by the delegate's own hook. Before implementation work on those paths, release them with the Iris `release` tool, or give the delegate a task that does not touch them.
+
+The callee sends `STARTED` with `send`, keeps the `message_id` it gets back, and passes it as `reply_to` on later checkpoints so Iris keeps them in one thread. The provider session `threadId` is unrelated: it is returned by `claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
+
+For the Codex, Claude, Agy, Kimi, Grok, Cursor, and Copilot bridges, pass the object only through the `coordination` parameter; the bridge injects the canonical contract exactly once. If Iris or the caller's agent name is unavailable, omit the envelope and continue normally.
 
 ### Step 6: Call the Expert
 ```typescript
@@ -294,7 +299,7 @@ Fix the issue and verify the change works.`
 })
 ```
 
-Keep the original caller envelope and Agent Mail reply chain across retries. Do not redirect progress to an intermediary runner. Continue using the provider's independently returned `threadId` only for `*-reply` calls.
+Keep the original caller envelope and Iris thread across retries. Do not redirect progress to an intermediary runner. Continue using the provider's independently returned `threadId` only for `*-reply` calls.
 
 Reply calls are new tool invocations, so repeat the original `sandbox` and any
 other defaulted argument when continuity matters; omitting `sandbox` returns
@@ -397,7 +402,7 @@ Fix the issue — ensure validation runs after body parser.`
 
 The Codex bridge runs `node "${CLAUDE_PLUGIN_ROOT}"/server/codex/index.js`, which spawns one `codex exec --json` (or `codex exec resume --json`) per call. Every call pins its own policy with `-c` keys — `sandbox_mode`, `approval_policy = "never"`, `model_reasoning_effort` — and names the model with `-m`, so the operator's `config.toml` defaults never decide them. `--skip-git-repo-check` is always passed, because `exec` otherwise refuses to start outside a trusted git repository and the retired `mcp-server` never asked.
 
-This prevents an inner approval prompt from suspending the parent CLI. The bridge scrubs the caller's Agent Mail identity and credentials from the child environment and stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`, so a nested Codex refuses to delegate onward through its own codex target. That makes `-c mcp_servers.codex.enabled=false` unnecessary — which matters, because that override creates the table it means to disable when `config.toml` has none, and Codex then rejects the transport-less entry. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use `sandbox: "read-only"` only when refusal is preferable to autonomous completion.
+This prevents an inner approval prompt from suspending the parent CLI. The bridge scrubs the caller's Iris identity from the child environment and stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`, so a nested Codex refuses to delegate onward through its own codex target. That makes `-c mcp_servers.codex.enabled=false` unnecessary — which matters, because that override creates the table it means to disable when `config.toml` has none, and Codex then rejects the transport-less entry. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use `sandbox: "read-only"` only when refusal is preferable to autonomous completion.
 
 `CODEX_DELEGATOR_CODEX_BIN` can still name the binary explicitly. Do not point it at a version-stamped release directory: a pin to 0.152.1 was how one host kept the retired `mcp-server` alive — and, with it, a model roster frozen at that release.
 

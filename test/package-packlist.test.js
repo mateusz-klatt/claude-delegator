@@ -25,9 +25,9 @@ const EXPECTED_PACKAGE_FILES = [
   "config/model-catalog.json",
   "config/providers.json",
   "package.json",
-  "prompts/agent-mail-coordination.md",
   "prompts/architect.md",
   "prompts/code-reviewer.md",
+  "prompts/iris-coordination.md",
   "prompts/plan-reviewer.md",
   "prompts/scope-analyst.md",
   "prompts/security-analyst.md",
@@ -96,7 +96,6 @@ test("npm package contains exactly the consumer runtime and documentation contra
   // comparison above is the hermetic boundary; these messages make a regression
   // actionable if someone later widens the allowlist.
   for (const forbidden of [
-    ".agent-mail-project-id",
     ".c8rc.json",
     ".claude/settings.local.json",
     ".git/",

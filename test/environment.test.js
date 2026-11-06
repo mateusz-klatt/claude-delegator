@@ -5,20 +5,16 @@ const test = require("node:test");
 
 const { buildCalleeEnv } = require("../server/shared/environment");
 
-test("callee environment keeps provider auth but scrubs caller Agent Mail identity and credentials", () => {
+test("callee environment keeps provider auth and hub configuration but scrubs the caller Iris identity", () => {
   const source = {
     PATH: "/bin",
     HOME: "/home/callee",
     ANTHROPIC_API_KEY: "provider-auth",
     GITHUB_TOKEN: "provider-auth",
-    AGENT_NAME: "CallerAgent",
-    AGENT_MAIL_AGENT: "CallerAgent",
-    Agent_Mail_Project_Key: "/caller/project",
-    AGENT_MAIL_REGISTRATION_TOKEN: "caller-registration-token",
-    MCP_AGENT_MAIL_WINDOW_ID: "caller-window-id",
-    Mcp_Agent_Mail_Token: "caller-project-token",
-    HTTP_BEARER_TOKEN: "caller-server-token",
-    integration_bearer_token: "caller-integration-token",
+    IRIS_HUB_URL: "https://hub.example",
+    IRIS_TOKEN_FILE: "/home/callee/.config/iris/hub.token",
+    IRIS_EXECUTION: "ex_caller",
+    Iris_Execution: "ex_caller_mixed_case",
     CLAUDECODE: "nested-session"
   };
 
@@ -26,7 +22,9 @@ test("callee environment keeps provider auth but scrubs caller Agent Mail identi
     PATH: "/bin",
     HOME: "/home/callee",
     ANTHROPIC_API_KEY: "provider-auth",
-    GITHUB_TOKEN: "provider-auth"
+    GITHUB_TOKEN: "provider-auth",
+    IRIS_HUB_URL: "https://hub.example",
+    IRIS_TOKEN_FILE: "/home/callee/.config/iris/hub.token"
   });
-  assert.equal(source.AGENT_MAIL_AGENT, "CallerAgent");
+  assert.equal(source.IRIS_EXECUTION, "ex_caller");
 });

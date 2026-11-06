@@ -358,20 +358,21 @@ test("catalog refresh prose follows the catalog dates and response envelope type
   assert.doesNotMatch(orchestration, /launcher\.js|mcp-server`? *\\$/m);
 });
 
-test("coordination guidance follows the live Agent Mail delivery shape", () => {
+test("coordination guidance follows the Iris tool contract", () => {
   const files = [
-    "prompts/agent-mail-coordination.md",
+    "prompts/iris-coordination.md",
     "rules/orchestration.md",
     "rules/delegation-format.md"
   ];
   for (const file of files) {
     const source = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
-    assert.match(source, /deliveries\[0\]\.message\.id/, file);
-    assert.doesNotMatch(source, /deliveries\[0\]\.payload\.id/, file);
+    assert.match(source, /`message_id`/, file);
+    assert.match(source, /`reply_to`/, file);
+    assert.doesNotMatch(source, /Agent Mail|reply_message|send_message|projectKey/, file);
   }
 
   const prompt = fs.readFileSync(
-    path.resolve(__dirname, "../prompts/agent-mail-coordination.md"),
+    path.resolve(__dirname, "../prompts/iris-coordination.md"),
     "utf8"
   );
   const providerSessionLine = prompt.split(/\r?\n/).find((line) =>
@@ -394,7 +395,7 @@ test("coordination guidance follows the live Agent Mail delivery shape", () => {
     delegationFormat.replace(/\r\n?/g, "\n")
   )?.[1];
   assert.ok(mandatoryTemplate, "mandatory seven-section template missing");
-  for (const field of ["projectKey", "callerAgentName", "mailTopic", "checkpointIntervalSeconds"]) {
+  for (const field of ["callerAgentName", "topic", "checkpointIntervalSeconds"]) {
     assert.doesNotMatch(
       mandatoryTemplate,
       new RegExp(`\\b${field}\\b`),
@@ -406,7 +407,7 @@ test("coordination guidance follows the live Agent Mail delivery shape", () => {
   // append-the-contract path would now inject it twice.
   assert.doesNotMatch(delegationFormat, /Native Codex has no `coordination` argument/);
   assert.match(delegationFormat, /pass its\s+fields only through the\s+`coordination` argument/);
-  assert.match(selection, /pass optional Agent Mail coordination through `coordination`, not by duplicating it here/);
+  assert.match(selection, /pass optional Iris coordination through `coordination`, not by duplicating it here/);
 });
 
 test("reply guidance distinguishes defaulted arguments from inherited effort", () => {
