@@ -34,6 +34,31 @@ Done! Claude now routes complex tasks to Codex, Agy, Kimi, Copilot, Grok, and Cu
 
 > **Note**: Requires at least one of [Codex CLI](https://github.com/openai/codex), the Google Antigravity CLI (`agy`), Kimi Code (`kimi`), the Grok CLI (`grok`), the Cursor Agent CLI (`cursor-agent`), or [Copilot CLI](https://github.com/github/copilot). Setup guides you through installation.
 
+## Install for Copilot, Grok, or Kimi
+
+From a persistent checkout of this fork, run the command for each desired MCP
+client:
+
+```bash
+npm run setup:mcp -- --client copilot
+npm run setup:mcp -- --client grok
+npm run setup:mcp -- --client kimi
+```
+
+Each client gets the other six provider bridges (including Claude) and `usage`,
+without a self-target. Existing MCP servers such as Iris are preserved; a
+conflicting same-named server stops setup instead of being overwritten. The
+helper respects `COPILOT_HOME` and `KIMI_CODE_HOME` and needs no npm dependencies.
+For Grok, it also disables the delegator plugin's inherited Grok self-target;
+`grok mcp list` alone does not show servers inherited from Claude Code plugins.
+
+Restart the client, then check `copilot mcp list`, `grok mcp list`, or Kimi's
+`/mcp`. Provider authentication is separate. Keep the checkout at its current
+path and update it in place; do not run this setup from a version-stamped
+Claude plugin cache. The Claude Code plugin's automatic registrations do not
+configure these other clients. See [`commands/setup.md`](commands/setup.md) for
+the client-specific setup and handshake checks.
+
 ---
 
 ## What is Claude Delegator?
@@ -496,7 +521,7 @@ Pass `provider` (`codex`, `claude`, `copilot`, `agy`, `kimi`, `grok`, `cursor` o
 
 | Command | Description |
 |---------|-------------|
-| `/claude-delegator:setup` | Verify plugin-owned MCP servers and install orchestration rules |
+| `/claude-delegator:setup` | Configure Claude Code, Copilot, Grok, or Kimi as an MCP client |
 | `/claude-delegator:uninstall` | Remove the plugin, legacy MCP registrations, and copied rules |
 
 ---

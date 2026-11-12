@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Verify the Codex, Agy, Kimi, Copilot, Grok, and Cursor MCP servers and install orchestration rules
+description: Configure MCP delegation for Claude Code, Copilot, Grok, or Kimi
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 timeout: 60000
 ---
@@ -8,6 +8,58 @@ timeout: 60000
 # Setup
 
 Verify Codex, Agy, Kimi, Copilot, Grok, and Cursor as specialized expert subagents through their MCP bridges, then install their orchestration rules. Five domain experts can advise OR implement.
+
+## Step 0: Select the MCP Client
+
+The client is the orchestrator that will **use** the MCP servers, not a provider
+it delegates to. If the intended client is unclear, ask before changing any
+configuration.
+
+**Claude Code:** follow Steps 1-7 below. Its plugin owns its MCP registrations.
+
+**Copilot, Grok, or Kimi:** use this branch instead; do not run the Claude-only
+registration, rule-copying, or migration steps below.
+
+1. Check Node.js 22.12.0 or newer and the desired provider CLIs as in Step 1.
+2. Locate a persistent checkout or non-versioned installation of this fork.
+   Never pin these clients to a Claude plugin's version-stamped cache directory:
+   those paths disappear on upgrade. If the loaded plugin predates 3.1.0, use
+   the current fork rather than its obsolete Codex/Gemini setup instructions.
+3. Run the helper from that persistent installation, with the requested client
+   (repeat for multiple clients only when requested):
+
+```bash
+node "/absolute/path/to/claude-delegator/scripts/setup-mcp.js" --client copilot
+node "/absolute/path/to/claude-delegator/scripts/setup-mcp.js" --client grok
+node "/absolute/path/to/claude-delegator/scripts/setup-mcp.js" --client kimi
+```
+
+The helper registers the other six providers, including Claude, plus `usage`
+at user scope. It excludes the client itself, preserves unrelated MCP servers
+such as Iris, and refuses conflicting same-named registrations. Copilot and Kimi
+JSON files are merged atomically; Grok's native `mcp add` owns its TOML updates.
+`COPILOT_HOME` and `KIMI_CODE_HOME` are respected.
+Grok also inherits MCP servers from Claude Code plugins, which `grok mcp list`
+does not show. The helper uses `grok inspect --json` to detect and disable the
+delegator plugin's inherited Grok self-target, without disabling other servers.
+
+4. Verify with `copilot mcp list` or `grok mcp list`. For Kimi, inspect only
+   server names and commands in its `mcp.json`, not credentials, and use `/mcp`
+   after restarting. Probe the registered entrypoints without a model call:
+
+```bash
+node "/absolute/path/to/claude-delegator/test/mcp-probe.mjs" -- \
+  node "/absolute/path/to/claude-delegator/server/claude/index.js"
+```
+
+Repeat for the registered providers and `usage`, then report actual results.
+`initialize` and `tools/list` spend no model usage; do not call a delegated
+model just to check installation. A successful registration is not proof of
+provider authentication.
+
+5. Tell the user to restart the affected clients and **stop this workflow**.
+   These registrations do not depend on installing a Claude Code plugin or
+   copying rules into `~/.claude`.
 
 ## Step 1: Check CLI Dependencies
 

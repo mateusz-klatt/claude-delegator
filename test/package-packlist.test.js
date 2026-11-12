@@ -35,6 +35,7 @@ const EXPECTED_PACKAGE_FILES = [
   "rules/model-selection.md",
   "rules/orchestration.md",
   "rules/triggers.md",
+  "scripts/setup-mcp.js",
   "server/agy/index.js",
   "server/claude/index.js",
   "server/codex/index.js",
