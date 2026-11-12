@@ -23,7 +23,7 @@ registration, rule-copying, or migration steps below.
 1. Check Node.js 22.12.0 or newer and the desired provider CLIs as in Step 1.
 2. Locate a persistent checkout or non-versioned installation of this fork.
    Never pin these clients to a Claude plugin's version-stamped cache directory:
-   those paths disappear on upgrade. If the loaded plugin predates 3.0.0, use
+   those paths disappear on upgrade. If the loaded plugin predates 3.1.0, use
    the current fork rather than its obsolete Codex/Gemini setup instructions.
 3. Run the helper from that persistent installation, with the requested client
    (repeat for multiple clients only when requested):
