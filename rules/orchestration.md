@@ -406,6 +406,8 @@ This prevents an inner approval prompt from suspending the parent CLI. The bridg
 
 `CODEX_DELEGATOR_CODEX_BIN` is not needed, so leave it unset. The bridge finds `codex` on PATH and falls back to the standard install locations: `~/.local/bin/codex` for MCP hosts with a minimal PATH, and on Windows the native installer's and npm's. If a host ever sets it, never point it at a version-stamped release directory. A pin to 0.152.1 was how one host kept the retired `mcp-server` alive, and with it a model roster frozen at that release.
 
+When Codex is the orchestrator, each delegator table in its `config.toml` needs `default_tools_approval_mode = "approve"`. Under `approval_policy = "never"` Codex refuses every MCP tool that is not approved, with "MCP tool call requires approval, but approval policy is never". The Codex the bridge starts always runs under that policy. Measured on codex-cli 0.169.0 on 2026-11-13, on three hosts: a call to `kimi` was refused, while an approved `usage` call in the same run answered. With the key in place, the same call reached the bridge. A running `codex app-server` daemon keeps the configuration it started with until `codex app-server daemon restart`.
+
 Codex also supports per-project trust configuration:
 
 ```toml

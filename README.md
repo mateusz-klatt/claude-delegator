@@ -443,7 +443,17 @@ args = ["/absolute/path/to/claude-delegator/server/claude/index.js"]
 enabled_tools = ["claude", "claude-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
+default_tools_approval_mode = "approve"
 ```
+
+Keep `default_tools_approval_mode = "approve"` in every delegator table. Under
+`approval_policy = "never"`, Codex refuses each MCP tool that is not approved
+with "MCP tool call requires approval, but approval policy is never". Every
+Codex that the codex bridge starts runs under that policy. Approval lets Codex
+start other agents unattended, which is the point of the delegator. A running
+`codex app-server` daemon, which serves desktop and remote sessions, keeps the
+configuration it started with, so run `codex app-server daemon restart` after
+the change.
 
 See [`config/codex-mcp.example.toml`](config/codex-mcp.example.toml) for all seven targets: Claude, Codex, Agy, Kimi, Copilot, Grok, and Cursor. Restart the local Codex client after changing its MCP configuration. Do not add this Claude bridge to Claude Code itself.
 

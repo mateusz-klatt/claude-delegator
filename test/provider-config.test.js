@@ -1413,6 +1413,19 @@ test("no distributed config passes a -c override that would CREATE a config tabl
   }
 });
 
+test("the Codex example approves the tools of every delegator server", () => {
+  // Under approval_policy = "never", the policy the codex bridge pins on every
+  // Codex it starts, Codex refuses an MCP tool that is not approved: "MCP tool
+  // call requires approval, but approval policy is never" (codex-cli 0.169.0,
+  // measured on three hosts). Without this key Codex cannot delegate at all.
+  const codexExample = parseCodexMcpExample(CODEX_MCP_EXAMPLE);
+  const expected = [...Object.keys(providers.providers), ...Object.keys(providers.utilities)].sort();
+  assert.deepEqual(Object.keys(codexExample).sort(), expected);
+  for (const [name, table] of Object.entries(codexExample)) {
+    assert.equal(table.default_tools_approval_mode, "approve", `${name}: Codex must be allowed to call its tools`);
+  }
+});
+
 test("shipped rules name the tools the plugin actually advertises", () => {
   const shipped = ["rules/orchestration.md", "rules/model-selection.md", "rules/triggers.md",
                    "CLAUDE.md", "README.md"];
