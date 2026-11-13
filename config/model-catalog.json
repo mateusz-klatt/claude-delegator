@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "verifiedAt": "2026-11-13",
   "cliVersionsCheckedAt": "2026-11-13",
-  "cliVersionNote": "All seven rosters were rescanned on 2026-11-13: claude 2.1.323 (the CLI's own model registry), codex 0.168.0 (model/list over `codex app-server`), copilot 1.0.110 (its CAPI model catalog), agy 1.5.8 (`agy models`), kimi 2.6.0 (`kimi provider list --json`), grok 1.0.77 (ACP initialize), cursor-agent 2026.11.11 (`cursor-agent models` plus live calls). Only Claude changed: claude-fable-5-2 is new and the CLI's `fable` alias now resolves to it. The registry also lists claude-mythos-5, -5-1 and -5-2, which this account cannot use. Earlier: All installed CLI versions were re-read on 2026-11-05 and every roster that can be enumerated headlessly was re-run: codex 0.166.0 (model/list over `codex app-server`) added gpt-6.1-terra; claude 2.1.318 (CLI bundle), agy 1.5.0 (`agy models`), grok 1.0.70 (`grok models`) and kimi 2.5.0 (~/.kimi-code/config.toml) are unchanged; cursor-agent 2026.11.05 lists 274 ids, still only auto and Composer usable on the Free plan; copilot 1.0.105 was refreshed from its own model catalog on 2026-11-04. Earlier note: All installed CLI versions were re-read on 2026-10-23 and every roster that can be enumerated headlessly was re-run. Codex 0.164.0 no longer has `codex mcp-server` (deprecated in 0.149.1, removed by openai/codex#42993), so Codex moved behind a uniform bridge over `codex exec --json`. Sources: codex via ~/.codex/models_cache.json as written by 0.164.0, agy via `agy models`, copilot via `copilot help config`, grok via `grok models`, cursor via `cursor-agent models`, kimi via ~/.kimi-code/config.toml, claude via the installed CLI bundle. grok and cursor-agent were enumerated after logging in, because both print an incomplete list or refuse outright when logged out; ollama was not re-checked and keeps its 2026-08-17 evidence. An invalid --model is a cheap roster probe on agy only; copilot and claude reject it without listing alternatives, and codex accepts any id until the backend refuses it.",
+  "cliVersionNote": "All seven rosters were rescanned again on 2026-11-13 after updating every CLI. codex moved to 0.169.0 and kimi to 2.6.1; claude 2.1.323, copilot 1.0.110, agy 1.5.8, grok 1.0.77 and cursor-agent 2026.11.11 were already current. No roster changed. codex model/list returned the same eight models with the same effort sets. copilot's CAPI catalog returned the same 28 entries with the same effort sets. `agy models` returned the same six ids, and `kimi provider list --json` the same six kimi-code/* aliases. grok's ACP initialize returned the same four models, and `cursor-agent models` still lists every catalogued id. claude's registry is unchanged because its bundle is. A start and a resume through the 3.3.2 bridge succeeded on codex 0.169.0 and on kimi 2.6.1. Earlier the same day: All seven rosters were rescanned on 2026-11-13: claude 2.1.323 (the CLI's own model registry), codex 0.168.0 (model/list over `codex app-server`), copilot 1.0.110 (its CAPI model catalog), agy 1.5.8 (`agy models`), kimi 2.6.0 (`kimi provider list --json`), grok 1.0.77 (ACP initialize), cursor-agent 2026.11.11 (`cursor-agent models` plus live calls). Only Claude changed: claude-fable-5-2 is new and the CLI's `fable` alias now resolves to it. The registry also lists claude-mythos-5, -5-1 and -5-2, which this account cannot use. Earlier: All installed CLI versions were re-read on 2026-11-05 and every roster that can be enumerated headlessly was re-run: codex 0.166.0 (model/list over `codex app-server`) added gpt-6.1-terra; claude 2.1.318 (CLI bundle), agy 1.5.0 (`agy models`), grok 1.0.70 (`grok models`) and kimi 2.5.0 (~/.kimi-code/config.toml) are unchanged; cursor-agent 2026.11.05 lists 274 ids, still only auto and Composer usable on the Free plan; copilot 1.0.105 was refreshed from its own model catalog on 2026-11-04. Earlier note: All installed CLI versions were re-read on 2026-10-23 and every roster that can be enumerated headlessly was re-run. Codex 0.164.0 no longer has `codex mcp-server` (deprecated in 0.149.1, removed by openai/codex#42993), so Codex moved behind a uniform bridge over `codex exec --json`. Sources: codex via ~/.codex/models_cache.json as written by 0.164.0, agy via `agy models`, copilot via `copilot help config`, grok via `grok models`, cursor via `cursor-agent models`, kimi via ~/.kimi-code/config.toml, claude via the installed CLI bundle. grok and cursor-agent were enumerated after logging in, because both print an incomplete list or refuse outright when logged out; ollama was not re-checked and keeps its 2026-08-17 evidence. An invalid --model is a cheap roster probe on agy only; copilot and claude reject it without listing alternatives, and codex accepts any id until the backend refuses it.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
@@ -70,9 +70,9 @@
       ]
     },
     "codex": {
-      "cliVersion": "0.168.0",
+      "cliVersion": "0.169.0",
       "transport": "uniform bridge over `codex exec --json` and `codex exec resume --json`",
-      "discoverySource": "model/list on 0.168.0, 2026-11-13: unchanged, eight visible models. Earlier: Visible entries from `model/list` over `codex app-server` on 0.166.0, 2026-11-05: gpt-6.1-terra is new and takes every level up to ultra; the rest are unchanged. Earlier: Visible entries in ~/.codex/models_cache.json as written by 0.164.0 on 2026-10-23; the hidden gpt-reserve and codex-auto-review entries stay excluded. gpt-6.1-sol, gpt-6-astra, gpt-6-sol and gpt-6-luna are new; gpt-5.5, gpt-5.4, gpt-5.4-mini and gpt-5.3-codex-spark are no longer offered to this account.",
+      "discoverySource": "model/list on 0.169.0, 2026-11-13: unchanged, the same eight visible models with the same effort sets. Earlier: model/list on 0.168.0, 2026-11-13: unchanged, eight visible models. Earlier: Visible entries from `model/list` over `codex app-server` on 0.166.0, 2026-11-05: gpt-6.1-terra is new and takes every level up to ultra; the rest are unchanged. Earlier: Visible entries in ~/.codex/models_cache.json as written by 0.164.0 on 2026-10-23; the hidden gpt-reserve and codex-auto-review entries stay excluded. gpt-6.1-sol, gpt-6-astra, gpt-6-sol and gpt-6-luna are new; gpt-5.5, gpt-5.4, gpt-5.4-mini and gpt-5.3-codex-spark are no longer offered to this account.",
       "defaultModel": "gpt-6.1-sol",
       "defaultEffort": "ultra",
       "efforts": [
@@ -246,6 +246,18 @@
           "result": "success",
           "evidenceDate": "2026-10-23",
           "note": "A turn with a progress message, a shell command and a final token returned the final token via --output-last-message on both calls; no temp directory was left behind."
+        },
+        {
+          "model": "gpt-6-luna",
+          "effort": "low",
+          "transport": "uniform bridge",
+          "operations": [
+            "start",
+            "reply"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-13",
+          "note": "codex-cli 0.169.0 through the 3.3.2 bridge, read-only sandbox: the start answered exactly, the resume kept the thread id and its context, and no warning was appended."
         }
       ],
       "contextNote": "A repository AGENTS.md in cwd is loaded into the session: measured through the bridge, a planted sentinel returned PELICAN-42 while a clean directory returned NO_CODEWORD. Unlike kimi and grok there is an off switch — `project_doc_max_bytes = 0` (in config.toml, or as a -c override) made the same planted file return NO_CODEWORD. The bridge does not set it, because project instructions are normally wanted; an operator delegating into code they do not control can."
@@ -658,8 +670,8 @@
       "pickerNote": "The interactive /model picker was last read on 2026-08-17 and cannot be read headlessly. Two of the display names it offered then, MAI-Code-1.1-Flash and Grok 4.6, are CLI ids on 1.0.103 (mai-code-1.1-flash, grok-4.6); auto remains picker-only. The two ids it marked Unavailable, claude-opus-4.6 and claude-opus-4.5, have left the CLI allowlist altogether."
     },
     "kimi": {
-      "cliVersion": "2.6.0",
-      "discoverySource": "`kimi provider list --json` on 2.6.0, 2026-11-13, after the operator moved kimi from a Moonshot API key to a Kimi Code subscription (`kimi login`): the managed provider managed:kimi-code (https://api.kimi.ai/coding/v1, OAuth) offers these six aliases, and kimi's own default_model became kimi-code/k3.1-pro. The API-key aliases moonshot-ai/* disappeared with that provider, which is why the bridge no longer names a default and lets kimi use its default_model. A host on an API key keeps its own moonshot-ai/* aliases. Earlier: Model aliases configured in ~/.kimi-code/config.toml, re-read on 2026-11-05 under 2.5.0: unchanged. Moonshot's own /v1/models also offered kimi-k3.1-pro (efforts low/high/max, 1M context) on the paid subscription; its alias moonshot-ai/kimi-k3.1-pro was added to config.toml with kimi-k3's capabilities and completed a live call. The roster is user-extensible via `kimi provider catalog`, so --model stays free-form; kimi validates it itself and an unknown alias fails with exit 1 and a clear stderr message before any work happens.",
+      "cliVersion": "2.6.1",
+      "discoverySource": "`kimi provider list --json` on 2.6.1, 2026-11-13: unchanged, the same six kimi-code/* aliases, with default_model kimi-code/k3.1-pro. Earlier: `kimi provider list --json` on 2.6.0, 2026-11-13, after the operator moved kimi from a Moonshot API key to a Kimi Code subscription (`kimi login`): the managed provider managed:kimi-code (https://api.kimi.ai/coding/v1, OAuth) offers these six aliases, and kimi's own default_model became kimi-code/k3.1-pro. The API-key aliases moonshot-ai/* disappeared with that provider, which is why the bridge no longer names a default and lets kimi use its default_model. A host on an API key keeps its own moonshot-ai/* aliases. Earlier: Model aliases configured in ~/.kimi-code/config.toml, re-read on 2026-11-05 under 2.5.0: unchanged. Moonshot's own /v1/models also offered kimi-k3.1-pro (efforts low/high/max, 1M context) on the paid subscription; its alias moonshot-ai/kimi-k3.1-pro was added to config.toml with kimi-k3's capabilities and completed a live call. The roster is user-extensible via `kimi provider catalog`, so --model stays free-form; kimi validates it itself and an unknown alias fails with exit 1 and a clear stderr message before any work happens.",
       "defaultModel": null,
       "freeFormModel": true,
       "emitsEffortFlag": false,
@@ -704,6 +716,17 @@
           "result": "success",
           "evidenceDate": "2026-10-23",
           "note": "kimi 2.3.1: the stream-json parsing and the -S resume still work unchanged."
+        },
+        {
+          "model": "kimi-code/k3.1-pro",
+          "transport": "uniform bridge",
+          "operations": [
+            "start",
+            "reply"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-13",
+          "note": "kimi 2.6.1 through the 3.3.2 bridge with no model passed, so kimi's own default_model ran; the resume kept the session id and its context."
         }
       ],
       "authNote": "Kimi Code supports both a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17, so the API key is the practical path. The key can live as `api_key` under [providers.*] in ~/.kimi-code/config.toml, or come from KIMI_API_KEY / MOONSHOT_API_KEY in the environment, which the bridge passes through untouched.",

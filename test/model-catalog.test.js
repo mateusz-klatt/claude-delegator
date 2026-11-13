@@ -53,7 +53,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
     "Claude reference must name the catalogued CLI version"
   );
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.168.0");
+  assert.equal(catalog.providers.codex.cliVersion, "0.169.0");
   assert.equal(catalog.providers.codex.models.length, 8);
   assert.deepEqual(
     catalog.providers.codex.models.find((model) => model.id === "gpt-6.1-sol").efforts,
@@ -75,7 +75,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.kimi.cliVersion, "2.6.0");
+  assert.equal(catalog.providers.kimi.cliVersion, "2.6.1");
   assert.equal(catalog.providers.kimi.models.length, 6);
   assert.equal(catalog.providers.kimi.defaultModel, null);
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
