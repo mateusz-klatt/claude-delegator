@@ -425,7 +425,7 @@ Copilot persists session state to disk (`~/.copilot/session-state/`), so session
 
 ## Cost Awareness
 
-- **Check usage before a large delegation** - `mcp__plugin_claude-delegator_usage__usage` reports Codex's 5h and weekly windows, Claude's session and weekly windows, Copilot's monthly AI credits with per-model prices, Agy's weekly limit per model group, Kimi's subscription windows or Moonshot balance and Grok's billing period, without spending any of them. Cursor exposes only its plan. A Copilot reading marked `routable: false` came from a stale cache; do not route on it. Prefer a provider with headroom when the task could go to several, and say so when the chosen one is above about 80%
+- **Check usage before a large delegation** - `mcp__plugin_claude-delegator_usage__usage` reports Codex's 5h and weekly windows, Claude's session and weekly windows, Copilot's monthly AI credits with per-model prices, Agy's weekly and, on Pro, 5-hour limits per model group, Kimi's subscription windows or Moonshot balance and Grok's billing period, without spending any of them. Cursor exposes only its plan. A Copilot reading marked `routable: false` came from a stale cache; do not route on it. Prefer a provider with headroom when the task could go to several, and say so when the chosen one is above about 80%
 - **Don't spam** - One well-structured delegation beats multiple vague ones
 - **Include full context** - Saves retry costs from missing information
 - **Reserve for high-value tasks** - Architecture, security, complex analysis

@@ -43,7 +43,7 @@ async function captureJsonRpcResponse(action) {
 test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.verifiedAt, "2026-11-13");
   assert.equal(catalog.cliVersionsCheckedAt, "2026-11-13");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.323");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.325");
   assert.equal(catalog.providers.claude.models.length, 9);
   assert.equal(catalog.providers.claude.aliases.fable, "claude-fable-5-2");
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
@@ -66,7 +66,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
   assert.equal(catalog.providers.agy.cliVersion, "1.5.8");
-  assert.equal(catalog.providers.agy.models.length, 6);
+  assert.equal(catalog.providers.agy.models.length, 22);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
   // A hard allowlist, unlike the free-form roster gemini exposed: agy validates
@@ -115,8 +115,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.110");
-  assert.equal(catalog.providers.copilot.models.length, 28);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.111");
+  assert.equal(catalog.providers.copilot.models.length, 29);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
