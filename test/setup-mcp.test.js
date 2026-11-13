@@ -100,32 +100,84 @@ test("JSON setup preserves a symlinked configuration and existing bridge overrid
   assert.deepEqual(JSON.parse(fs.readFileSync(target)).mcpServers.claude.env, { KEEP: "yes" });
 });
 
-test("Grok setup uses its native user-scope configuration command and excludes Grok itself", (t) => {
-  const home = fixture(t);
-  const calls = [];
-  let configured = [{ name: "iris", command: "iris", args: ["mcp"], scope: "user", enabled: true }];
-  const runGrok = (args) => {
-    calls.push(args);
-    if (args[0] === "inspect") {
-      return JSON.stringify({ mcpServers: [...configured, { name: "grok", source: "plugin: claude-delegator" }] });
+// grok 1.0.77's `inspect --json` entry for the delegator plugin's own grok server.
+const INHERITED_GROK = {
+  name: "grok",
+  transport: "stdio",
+  target: "node index.js",
+  source: { type: "plugin", plugin_name: "claude-delegator", path: "/plugins/claude-delegator/3.3.2" }
+};
+
+// Stands in for the grok CLI. Like grok 1.0.77, every `mcp` write rewrites
+// config.toml and drops its comments.
+function fakeGrok(home, { inherited = [INHERITED_GROK], configured = [] } = {}) {
+  const config = path.join(home, ".grok", "config.toml");
+  const state = { calls: [], configured: [...configured] };
+  const rewrite = (prefix = "") => {
+    const text = fs.existsSync(config) ? fs.readFileSync(config, "utf8") : "";
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(config, prefix + text.split("\n").filter((line) => !line.startsWith("#")).join("\n"));
+  };
+  state.run = (args) => {
+    state.calls.push(args);
+    if (args[0] === "inspect") return JSON.stringify({ mcpServers: [...state.configured, ...inherited] });
+    if (args[1] === "list") return JSON.stringify(state.configured);
+    if (args[1] === "disable") {
+      rewrite('disabled_mcp_servers = ["grok"]\n');
+      return "";
     }
-    if (args[1] === "list") return JSON.stringify(configured);
-    if (args[1] === "disable") return "";
     const [, , , scope, name, , command, ...serverArgs] = args;
-    const entry = { name, scope, command, args: serverArgs, enabled: true };
-    configured = [...configured.filter((server) => server.name !== name), entry];
+    state.configured = [...state.configured.filter((server) => server.name !== name),
+      { name, scope, command, args: serverArgs, enabled: true }];
+    rewrite();
     return "";
   };
-  setupClient("grok", { home, runGrok });
-  const first = structuredClone(configured);
-  setupClient("grok", { home, runGrok });
-  assert.deepEqual(configured, first);
-  assert.deepEqual(configured.filter(({ name }) => name !== "iris").map(({ name }) => name).sort(), expectedNames("grok"));
-  assert.ok(calls.filter((args) => args[1] === "add").every((args) => args[2] === "--scope" && args[3] === "user"));
-  assert.deepEqual(calls.filter((args) => args[1] === "disable"), [
-    ["mcp", "disable", "grok"], ["mcp", "disable", "grok"]
-  ]);
-  assert.deepEqual(configured.find(({ name }) => name === "claude").args, [path.join(ROOT, "server", "claude", "index.js")]);
+  return state;
+}
+
+test("Grok setup uses its native user-scope configuration command and excludes Grok itself", (t) => {
+  const home = fixture(t);
+  const grok = fakeGrok(home, {
+    configured: [{ name: "iris", command: "iris", args: ["mcp"], scope: "user", enabled: true }]
+  });
+  setupClient("grok", { home, runGrok: grok.run });
+  const first = structuredClone(grok.configured);
+  const firstCalls = grok.calls.length;
+  setupClient("grok", { home, runGrok: grok.run });
+  assert.deepEqual(grok.configured, first);
+  assert.deepEqual(grok.configured.filter(({ name }) => name !== "iris").map(({ name }) => name).sort(), expectedNames("grok"));
+  const adds = grok.calls.filter((args) => args[1] === "add");
+  assert.equal(adds.length, expectedNames("grok").length);
+  assert.ok(adds.every((args) => args[2] === "--scope" && args[3] === "user"));
+  assert.deepEqual(grok.calls.filter((args) => args[1] === "disable"), [["mcp", "disable", "grok"]]);
+  // The second run finds everything in place and writes nothing, so it cannot
+  // cost Iris its markers.
+  assert.deepEqual(grok.calls.slice(firstCalls), [["mcp", "list", "--json"], ["inspect", "--json"]]);
+  assert.deepEqual(grok.configured.find(({ name }) => name === "claude").args, [path.join(ROOT, "server", "claude", "index.js")]);
+});
+
+test("Grok setup also recognises the inherited self-target in its string form", (t) => {
+  const home = fixture(t);
+  const grok = fakeGrok(home, { inherited: [{ name: "grok", source: "plugin: claude-delegator" }] });
+  setupClient("grok", { home, runGrok: grok.run });
+  assert.deepEqual(grok.calls.filter((args) => args[1] === "disable"), [["mcp", "disable", "grok"]]);
+});
+
+test("Grok setup warns when grok drops Iris's markers, and only then", (t) => {
+  const marked = '[cli]\n# >>> iris >>>\n[mcp_servers.iris]\ncommand = "iris"\n# <<< iris <<<\n';
+  for (const [initial, warned] of [[marked, true], ["[cli]\n", false]]) {
+    const home = fixture(t);
+    fs.mkdirSync(path.join(home, ".grok"));
+    fs.writeFileSync(path.join(home, ".grok", "config.toml"), initial);
+    const grok = fakeGrok(home);
+    const { warnings } = setupClient("grok", { home, runGrok: grok.run });
+    assert.equal(warnings.length, warned ? 1 : 0);
+    if (warned) assert.match(warnings[0], /iris setup --clients grok --yes/);
+
+    // Once Iris has restored its block, a repeat run leaves it alone.
+    fs.appendFileSync(path.join(home, ".grok", "config.toml"), "\n# >>> iris >>>\n# <<< iris <<<\n");
+    assert.deepEqual(setupClient("grok", { home, runGrok: grok.run }).warnings, []);
+  }
 });
 
 test("Grok setup refuses collisions, project shadows, and invalid listings before adding anything", () => {
@@ -143,10 +195,16 @@ test("Grok setup refuses collisions, project shadows, and invalid listings befor
   }
 });
 
-test("Grok setup does not disable missing or unrelated same-named MCP servers", () => {
-  for (const mcpServers of [[], [{ name: "grok", source: "plugin: unrelated" }]]) {
+test("Grok setup does not disable missing or unrelated same-named MCP servers", (t) => {
+  for (const mcpServers of [
+    [],
+    [{ name: "grok", source: "plugin: unrelated" }],
+    [{ name: "grok", source: { type: "plugin", plugin_name: "unrelated", path: "/plugins/unrelated" } }],
+    [{ name: "grok", source: { type: "configToml", path: "/home/user/.grok/config.toml" } }]
+  ]) {
     const calls = [];
     setupClient("grok", {
+      home: fixture(t),
       runGrok: (args) => {
         calls.push(args);
         if (args[1] === "list") return "[]";
@@ -171,8 +229,9 @@ test("Grok setup rejects an invalid inheritance inspection before applying chang
   }
 });
 
-test("native registration failures are surfaced instead of reporting success", () => {
+test("native registration failures are surfaced instead of reporting success", (t) => {
   assert.throws(() => setupClient("grok", {
+    home: fixture(t),
     runGrok: (args) => {
       if (args[1] === "list") return "[]";
       if (args[0] === "inspect") return '{"mcpServers":[]}';
