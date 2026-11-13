@@ -291,10 +291,11 @@ test("advertises the uniform kimi/kimi-reply MCP contract", async () => {
   const startSchema = listed.result.tools[0].inputSchema;
   const replySchema = listed.result.tools[1].inputSchema;
   assert.equal(startSchema.additionalProperties, false);
-  assert.equal(startSchema.properties.model.default, "moonshot-ai/kimi-k3");
+  // No default: without a model the bridge leaves kimi on its own default_model.
+  assert.equal(startSchema.properties.model.default, undefined);
   // The roster is user-extensible via `kimi provider catalog`, so no hard enum.
   assert.equal(startSchema.properties.model.enum, undefined);
-  assert.ok(startSchema.properties.model.examples.includes("moonshot-ai/kimi-k2.7-code"));
+  assert.ok(startSchema.properties.model.examples.includes("kimi-code/k3.1-pro"));
   assert.equal(startSchema.properties.timeout.minimum, 10_000);
   assert.equal(startSchema.properties.timeout.maximum, 3_600_000);
   assert.equal(startSchema.properties.timeout.default, 900_000);

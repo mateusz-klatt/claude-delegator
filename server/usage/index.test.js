@@ -166,6 +166,21 @@ if (args[0] !== "about" || args[2] !== "json") process.exit(2);
 process.stdout.write(JSON.stringify({ cliVersion: "2026.11.05-86047df", model: "Auto", subscriptionTier: "Free", userEmail: "octo@example.com" }));`);
 
   writeStub(directory, "kimi", `
+if (args[0] === "web") {
+  const http = require("node:http");
+  const port = Number(args[args.indexOf("--port") + 1]);
+  http.createServer((req, res) => {
+    const authorized = req.headers.authorization === "Bearer stub-web-token";
+    res.writeHead(authorized ? 200 : 401, { "content-type": "application/json" });
+    res.end(JSON.stringify(authorized && req.url.startsWith("/api/v1/oauth/usage?provider=managed%3Akimi-code")
+      ? { code: 0, data: { kind: "ok", quota: { usages: {
+          limit5h: { usedRatio: 0.125, resetAt: "2026-11-13T07:49:51Z" },
+          monthTotal: { usedRatio: 0, resetAt: "2026-12-13T00:00:00Z" } },
+          extraUsage: { balanceCents: 250, totalCents: 500, monthlyChargeLimitEnabled: true, monthlyChargeLimitCents: 1000, monthlyUsedCents: 125, currency: "USD" } } } }
+      : { code: 1, data: { kind: "error", message: "no such provider" } }));
+  }).listen(port, "127.0.0.1", () => process.stdout.write("  Kimi server ready\\n  Token:    stub-web-token\\n"));
+  return;
+}
 if (args.join(" ") !== "provider list --json") process.exit(2);
 process.stdout.write(process.env.KIMI_STUB_PROVIDERS || JSON.stringify({ providers: {}, models: {} }));`);
 
@@ -476,4 +491,31 @@ test("summarizes Grok billing and Cursor's JSON about output", () => {
   assert.deepEqual(usage.summarizeGrokModels(undefined), []);
   assert.deepEqual(usage.parseCursorAbout(JSON.stringify({ subscriptionTier: "Pro", userEmail: "a@b.c" })),
     { plan: "Pro", model: null, cliVersion: null });
+});
+
+test("reads a Kimi subscription through kimi's own local server and stops it", async () => {
+  const server = startServer({ KIMI_STUB_PROVIDERS: JSON.stringify({ providers: {
+    "managed:kimi-code": { type: "kimi", baseUrl: "https://api.kimi.ai/coding/v1", apiKey: "oauth-ref", oauth: { storage: "file", key: "oauth/kimi-code" } }
+  } }) });
+  const { kimi } = (await callUsage(server, { provider: "kimi" })).providers;
+  assert.equal(kimi.source, "kimi web: /api/v1/oauth/usage");
+  assert.deepEqual(kimi.subscriptions, [{
+    provider: "managed:kimi-code",
+    windows: [
+      { label: "5h", usedPercent: 12.5, resetsAt: "2026-11-13T07:49:51Z" },
+      { label: "monthly", usedPercent: 0, resetsAt: "2026-12-13T00:00:00Z" }
+    ],
+    extraUsage: { currency: "USD", balance: 2.5, monthlyUsed: 1.25, monthlyLimit: 10 }
+  }]);
+  // A managed provider's apiKey is an OAuth reference, never a Moonshot key.
+  assert.equal(kimi.balances, undefined);
+  assert.doesNotMatch(JSON.stringify(kimi), /stub-web-token/);
+  const web = readCalls(server.capturePath).find((call) => call.name === "kimi" && call.args[0] === "web");
+  assert.deepEqual(web.args.slice(0, 2), ["web", "--no-open"]);
+});
+
+test("summarizes Kimi quota entries that are present", () => {
+  assert.deepEqual(usage.summarizeKimiQuota("p", { usages: { limit7d: { usedRatio: 1 } }, extraUsage: null }),
+    { provider: "p", windows: [{ label: "weekly", usedPercent: 100, resetsAt: null }], extraUsage: null });
+  assert.deepEqual(usage.summarizeKimiQuota("p", null).windows, []);
 });

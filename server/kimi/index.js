@@ -28,7 +28,6 @@ const depth = core.createDepthGuard("CLAUDE_DELEGATOR_KIMI_DEPTH");
 const resolveWindowsShim = (candidate, readShim) => core.resolveWindowsShim(candidate, "kimi", readShim);
 
 const KIMI_CATALOG = modelCatalog.providers.kimi;
-const DEFAULT_MODEL = KIMI_CATALOG.defaultModel;
 const VALID_SANDBOX_VALUES = new Set(["read-only", "workspace-write"]);
 
 
@@ -138,9 +137,8 @@ const KIMI_TOOLS = [
         cwd: { type: "string", description: "Working directory. Note that a repository-supplied AGENTS.md here is auto-loaded into the session and cannot be disabled." },
         model: {
           type: "string",
-          default: DEFAULT_MODEL,
           examples: KIMI_CATALOG.models,
-          description: "Model alias from ~/.kimi-code/config.toml. Free-form because the roster is user-extensible; kimi rejects an unknown alias before doing any work."
+          description: "Model alias from `kimi provider list`. Omit it to use kimi's own default_model. Free-form because the roster depends on how kimi is signed in; kimi rejects an unknown alias before doing any work."
         },
         timeout: timeoutSchema(),
         coordination: coordinationSchema
@@ -183,7 +181,12 @@ function cliFallbacks({ home = os.homedir(), isWindows = IS_WINDOWS } = {}) {
 function buildStartArgs(args, coordination) {
   let prompt = args.prompt;
   if (args["developer-instructions"]) prompt = `${args["developer-instructions"]}\n\n${prompt}`;
-  return ["-m", args.model || DEFAULT_MODEL, "-p", appendCoordinationInstructions(prompt, coordination)];
+  // Without a model, kimi runs its own default_model. A fixed alias would break
+  // whenever the operator's providers change: the API-key alias moonshot-ai/*
+  // stopped existing when this host moved kimi to a subscription login.
+  const kimiArgs = args.model ? ["-m", args.model] : [];
+  kimiArgs.push("-p", appendCoordinationInstructions(prompt, coordination));
+  return kimiArgs;
 }
 
 function buildReplyArgs(args, coordination, threadId) {
