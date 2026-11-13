@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-11-05",
-  "cliVersionsCheckedAt": "2026-11-05",
-  "cliVersionNote": "All installed CLI versions were re-read on 2026-11-05 and every roster that can be enumerated headlessly was re-run: codex 0.166.0 (model/list over `codex app-server`) added gpt-6.1-terra; claude 2.1.318 (CLI bundle), agy 1.5.0 (`agy models`), grok 1.0.70 (`grok models`) and kimi 2.5.0 (~/.kimi-code/config.toml) are unchanged; cursor-agent 2026.11.05 lists 274 ids, still only auto and Composer usable on the Free plan; copilot 1.0.105 was refreshed from its own model catalog on 2026-11-04. Earlier note: All installed CLI versions were re-read on 2026-10-23 and every roster that can be enumerated headlessly was re-run. Codex 0.164.0 no longer has `codex mcp-server` (deprecated in 0.149.1, removed by openai/codex#42993), so Codex moved behind a uniform bridge over `codex exec --json`. Sources: codex via ~/.codex/models_cache.json as written by 0.164.0, agy via `agy models`, copilot via `copilot help config`, grok via `grok models`, cursor via `cursor-agent models`, kimi via ~/.kimi-code/config.toml, claude via the installed CLI bundle. grok and cursor-agent were enumerated after logging in, because both print an incomplete list or refuse outright when logged out; ollama was not re-checked and keeps its 2026-08-17 evidence. An invalid --model is a cheap roster probe on agy only; copilot and claude reject it without listing alternatives, and codex accepts any id until the backend refuses it.",
+  "verifiedAt": "2026-11-13",
+  "cliVersionsCheckedAt": "2026-11-13",
+  "cliVersionNote": "All seven rosters were rescanned on 2026-11-13: claude 2.1.323 (the CLI's own model registry), codex 0.168.0 (model/list over `codex app-server`), copilot 1.0.110 (its CAPI model catalog), agy 1.5.8 (`agy models`), kimi 2.6.0 (`kimi provider list --json`), grok 1.0.77 (ACP initialize), cursor-agent 2026.11.11 (`cursor-agent models` plus live calls). Only Claude changed: claude-fable-5-2 is new and the CLI's `fable` alias now resolves to it. The registry also lists claude-mythos-5, -5-1 and -5-2, which this account cannot use. Earlier: All installed CLI versions were re-read on 2026-11-05 and every roster that can be enumerated headlessly was re-run: codex 0.166.0 (model/list over `codex app-server`) added gpt-6.1-terra; claude 2.1.318 (CLI bundle), agy 1.5.0 (`agy models`), grok 1.0.70 (`grok models`) and kimi 2.5.0 (~/.kimi-code/config.toml) are unchanged; cursor-agent 2026.11.05 lists 274 ids, still only auto and Composer usable on the Free plan; copilot 1.0.105 was refreshed from its own model catalog on 2026-11-04. Earlier note: All installed CLI versions were re-read on 2026-10-23 and every roster that can be enumerated headlessly was re-run. Codex 0.164.0 no longer has `codex mcp-server` (deprecated in 0.149.1, removed by openai/codex#42993), so Codex moved behind a uniform bridge over `codex exec --json`. Sources: codex via ~/.codex/models_cache.json as written by 0.164.0, agy via `agy models`, copilot via `copilot help config`, grok via `grok models`, cursor via `cursor-agent models`, kimi via ~/.kimi-code/config.toml, claude via the installed CLI bundle. grok and cursor-agent were enumerated after logging in, because both print an incomplete list or refuse outright when logged out; ollama was not re-checked and keeps its 2026-08-17 evidence. An invalid --model is a cheap roster probe on agy only; copilot and claude reject it without listing alternatives, and codex accepts any id until the backend refuses it.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
-      "cliVersion": "2.1.318",
-      "discoverySource": "Full ids read from the installed 2.1.309 CLI bundle on 2026-10-23, where claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5 and claude-haiku-5-5 are the newest id of each family; the previous generation stays listed because the bundle still carries it. The /model selector is interactive and cannot be enumerated headlessly, so account access is established only by liveCalls.",
+      "cliVersion": "2.1.323",
+      "discoverySource": "The CLI's own model registry in the 2.1.323 bundle ({id, family, display_name} entries), read on 2026-11-13. claude-fable-5-2 is new, and `--model fable` now resolves to it: measured, modelUsage reported claude-fable-5-2. The registry also has a mythos family (claude-mythos-5, claude-mythos-5-1, claude-mythos-5-2); all three answered 'There's an issue with the selected model … you may not have access' and `--model mythos` is unrecognized, so none is catalogued. Earlier: Full ids read from the installed 2.1.309 CLI bundle on 2026-10-23, where claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5 and claude-haiku-5-5 are the newest id of each family; the previous generation stays listed because the bundle still carries it. The /model selector is interactive and cannot be enumerated headlessly, so account access is established only by liveCalls.",
       "defaultModel": "claude-opus-5-5",
       "defaultEffort": "xhigh",
       "efforts": [
@@ -19,21 +19,32 @@
       ],
       "models": [
         "claude-opus-5-5",
-        "claude-fable-5-1",
+        "claude-fable-5-2",
         "claude-sonnet-5-5",
         "claude-haiku-5-5",
         "claude-opus-5",
+        "claude-fable-5-1",
         "claude-fable-5",
         "claude-sonnet-5",
         "claude-haiku-4-5"
       ],
       "aliases": {
         "opus": "claude-opus-5-5",
-        "fable": "claude-fable-5-1",
+        "fable": "claude-fable-5-2",
         "sonnet": "claude-sonnet-5-5",
         "haiku": "claude-haiku-5-5"
       },
       "liveCalls": [
+        {
+          "model": "claude-fable-5-2",
+          "transport": "claude (direct)",
+          "operations": [
+            "start"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-13",
+          "note": "Returned the exact OK canary; `--model fable` resolved to the same id."
+        },
         {
           "model": "claude-haiku-4-5",
           "effort": "low",
@@ -59,9 +70,9 @@
       ]
     },
     "codex": {
-      "cliVersion": "0.166.0",
+      "cliVersion": "0.168.0",
       "transport": "uniform bridge over `codex exec --json` and `codex exec resume --json`",
-      "discoverySource": "Visible entries from `model/list` over `codex app-server` on 0.166.0, 2026-11-05: gpt-6.1-terra is new and takes every level up to ultra; the rest are unchanged. Earlier: Visible entries in ~/.codex/models_cache.json as written by 0.164.0 on 2026-10-23; the hidden gpt-reserve and codex-auto-review entries stay excluded. gpt-6.1-sol, gpt-6-astra, gpt-6-sol and gpt-6-luna are new; gpt-5.5, gpt-5.4, gpt-5.4-mini and gpt-5.3-codex-spark are no longer offered to this account.",
+      "discoverySource": "model/list on 0.168.0, 2026-11-13: unchanged, eight visible models. Earlier: Visible entries from `model/list` over `codex app-server` on 0.166.0, 2026-11-05: gpt-6.1-terra is new and takes every level up to ultra; the rest are unchanged. Earlier: Visible entries in ~/.codex/models_cache.json as written by 0.164.0 on 2026-10-23; the hidden gpt-reserve and codex-auto-review entries stay excluded. gpt-6.1-sol, gpt-6-astra, gpt-6-sol and gpt-6-luna are new; gpt-5.5, gpt-5.4, gpt-5.4-mini and gpt-5.3-codex-spark are no longer offered to this account.",
       "defaultModel": "gpt-6.1-sol",
       "defaultEffort": "ultra",
       "efforts": [
@@ -240,8 +251,8 @@
       "contextNote": "A repository AGENTS.md in cwd is loaded into the session: measured through the bridge, a planted sentinel returned PELICAN-42 while a clean directory returned NO_CODEWORD. Unlike kimi and grok there is an off switch — `project_doc_max_bytes = 0` (in config.toml, or as a -c override) made the same planted file return NO_CODEWORD. The bridge does not set it, because project instructions are normally wanted; an operator delegating into code they do not control can."
     },
     "agy": {
-      "cliVersion": "1.5.0",
-      "discoverySource": "`agy models` on 2026-10-23 returned 6 ids, down from 14 on 1.1.14: every Gemini 3.1 Pro id and every Flash generation before 3.8 is gone, including the previous default gemini-3.1-pro-high. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
+      "cliVersion": "1.5.8",
+      "discoverySource": "`agy models` on 1.5.8, 2026-11-13: unchanged, six ids. Earlier: `agy models` on 2026-10-23 returned 6 ids, down from 14 on 1.1.14: every Gemini 3.1 Pro id and every Flash generation before 3.8 is gone, including the previous default gemini-3.1-pro-high. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
       "defaultModel": "gemini-3.8-flash-high",
       "freeFormModel": false,
       "emitsEffortFlag": false,
@@ -773,8 +784,8 @@
       ]
     },
     "grok": {
-      "cliVersion": "1.0.70",
-      "discoverySource": "`grok models` on 2026-10-23, logged in on 1.0.67, lists grok-4.7 (the CLI's new default), grok-4.7-build-fast, grok-4.6 and grok-4.5 headlessly; logged out, the same command printed 'You are not authenticated.' and only grok-4.6 and grok-4.5, so a logged-out listing is neither complete nor proof of access.",
+      "cliVersion": "1.0.77",
+      "discoverySource": "ACP initialize (availableModels) on 1.0.77, 2026-11-13: unchanged, four models. Earlier: `grok models` on 2026-10-23, logged in on 1.0.67, lists grok-4.7 (the CLI's new default), grok-4.7-build-fast, grok-4.6 and grok-4.5 headlessly; logged out, the same command printed 'You are not authenticated.' and only grok-4.6 and grok-4.5, so a logged-out listing is neither complete nor proof of access.",
       "defaultModel": "grok-4.7",
       "freeFormModel": false,
       "emitsEffortFlag": true,
@@ -806,12 +817,19 @@
     },
     "cursor": {
       "cliVersion": "2026.11.11-b912975",
-      "discoverySource": "On 2026-11-06 the Free plan refused composer-2.5-fast with 'Model unavailable on Free. Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings', then refused auto too once its usage limit was reached. Only auto is catalogued; the listing offers grok-4.7-* and grok-4.6-* variants, but which of them 'fixed settings' means was not measured. Earlier: `cursor-agent models` printed 204 ids on 2026-08-17, 265 on 2026-10-23 (2026.10.14) and 274 on 2026-11-05 (2026.11.05, after login; logged out it refuses with 'Authentication required. Run 'agent login' …'). The listing is what the CLI knows, not what the account may use: on this Free plan every named third-party id fails with 'Named models unavailable. Free plans can only use Auto.' before any work happens — re-measured on 2026-10-23 with grok-4.7-low. `auto` completed a live start and reply through the bridge on 2026-10-23; `composer-2.5` and `composer-2.5-fast` are still listed and last completed a live call on 2026-08-17.",
+      "discoverySource": "Premium plan, 2026-11-13 (2026.11.11): `cursor-agent models` printed 284 ids. The eight listed here completed a live call. The weekly allowance covers auto, Composer and every Grok variant (grok-4.7-*, cursor-grok-4.6-*, cursor-grok-4.5-*); a representative of every other family (claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2, claude-haiku-5-5, gpt-5.6-sol, gpt-5.3-codex, gemini-4-hydrogen, kimi-k3, glm-5.2, deepseek-v41-flash-1017, muse-spark-1.3) answered 'not included in your weekly usage. Buy credits or switch to a Grok model'. Earlier: On 2026-11-06 the Free plan refused composer-2.5-fast with 'Model unavailable on Free. Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings', then refused auto too once its usage limit was reached. Only auto is catalogued; the listing offers grok-4.7-* and grok-4.6-* variants, but which of them 'fixed settings' means was not measured. Earlier: `cursor-agent models` printed 204 ids on 2026-08-17, 265 on 2026-10-23 (2026.10.14) and 274 on 2026-11-05 (2026.11.05, after login; logged out it refuses with 'Authentication required. Run 'agent login' …'). The listing is what the CLI knows, not what the account may use: on this Free plan every named third-party id fails with 'Named models unavailable. Free plans can only use Auto.' before any work happens — re-measured on 2026-10-23 with grok-4.7-low. `auto` completed a live start and reply through the bridge on 2026-10-23; `composer-2.5` and `composer-2.5-fast` are still listed and last completed a live call on 2026-08-17.",
       "defaultModel": "auto",
       "freeFormModel": true,
       "emitsEffortFlag": false,
       "models": [
-        "auto"
+        "auto",
+        "composer-2.5",
+        "composer-2.5-fast",
+        "grok-4.7-low",
+        "grok-4.7-high-fast",
+        "grok-4.7-xhigh",
+        "cursor-grok-4.6-high",
+        "cursor-grok-4.5-high"
       ],
       "modelNote": "The enum is deliberately absent: the CLI documents bracket-parameterised overrides such as 'claude-opus-4-8[context=1m,effort=high,fast=false]', which no allowlist can express, so the bridge forwards the string and lets cursor-agent reject an unusable one. `models` here lists only what completed a live call on the verification account; a paid plan should reach far more. Reasoning tier is baked into most ids (-low/-high/-xhigh, plus -fast variants) exactly as on agy, so there is no effort flag and none is emitted. `auto` is server-routed and NOT stable: it resolved to cursor-grok-4.6-high-fast on one turn and cursor-grok-4.6-high on the next turn of the same session, so the plan restricts choosing a model rather than using one. Choose a Composer id when a run must be reproducible.",
       "permissionNote": "read-only DEFLECTS, it does not deny — agy's category, not grok's. --mode ask refused an insistent write-or-shell prompt twice, including under a permissive caller allow list, then was defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls: both the file write and the shell command succeeded, and the model's own report read 'the Ask mode label did not block either call'. --mode plan is worse and is never emitted: with workspace trust granted it wrote the file on the first insistent prompt, despite help text promising 'no edits'. --sandbox enabled is never emitted either; it is accepted and did not stop a workspace write. There are no command-line deny rules, so the trick that makes grok's read-only enforce is unavailable here; real permission state lives in ~/.cursor/cli-config.json (permissions.allow/deny, approvalMode) and sandbox-policies/, which are operator configuration the bridge never writes. All measurements used a live positive control in the same directory.",
@@ -820,6 +838,16 @@
       "outputNote": "`--output-format json` emits one single-line object: { type, subtype, is_error, duration_ms, result, session_id, request_id, usage }. The exit code does NOT classify the run, so the bridge parses stdout first: a transient backend failure returned code 0 with plain-text 'Connection lost, reconnecting to ...' and no JSON, while a rejected model returned code 1, also without JSON.",
       "installNote": "POSIX: ~/.local/bin/cursor-agent, a symlink into ~/.local/share/cursor-agent/versions/<version>/cursor-agent. Only the stable launcher is a fallback; the versioned path is not, because the version is in the directory name. The POSIX launcher is a bash script that execs a bundled node with index.js, and is deliberately NOT expanded by the bridge — spawn(shell:false) runs it directly, and reproducing it would mean copying the vendor's NODE_COMPILE_CACHE and --use-system-ca decisions. Windows: the measured stable launcher is `%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd`, a .cmd that invokes powershell.exe -NoProfile -ExecutionPolicy Bypass -File on a sibling .ps1; the shared resolver expands that relationship without enabling a shell.",
       "liveCalls": [
+        {
+          "model": "grok-4.7-low",
+          "transport": "uniform bridge",
+          "operations": [
+            "start"
+          ],
+          "result": "success",
+          "evidenceDate": "2026-11-13",
+          "note": "With an Iris coordination envelope: STARTED and COMPLETED reached the caller in one thread."
+        },
         {
           "model": "auto",
           "transport": "uniform bridge",

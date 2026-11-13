@@ -214,7 +214,7 @@
       "description": "Cursor-hosted models via the Cursor Agent CLI - specialized expert subagents",
       "cli": "cursor-agent",
       "install": "install the Cursor Agent CLI; on Unix it lands in ~/.local/bin/cursor-agent as a symlink into ~/.local/share/cursor-agent/versions/<version>/. On Windows the measured stable launcher is `%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd`; the bridge expands its sibling PowerShell shim without enabling a shell.",
-      "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: the verified Free plan rejected every named third-party model, while `auto`, `composer-2.5`, and `composer-2.5-fast` completed live calls.",
+      "auth": "`cursor-agent login` (Cursor account). Plan tier decides the model roster: on Premium the weekly allowance covers `auto`, Composer and the Grok variants, and `auto`, `composer-2.5`, `composer-2.5-fast`, `grok-4.7-low`, `grok-4.7-high-fast`, `grok-4.7-xhigh`, `cursor-grok-4.6-high` and `cursor-grok-4.5-high` completed live calls; other families need bought credits, and on Free only `auto` ran.",
       "mcp": {
         "type": "stdio",
         "command": "node",

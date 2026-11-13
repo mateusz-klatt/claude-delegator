@@ -193,7 +193,7 @@ Never pass a hub token, an execution handle or another credential. If a native s
 
 Three properties of Iris shape what the envelope can do:
 
-- **Only the same repository.** A message to a peer in another repository is refused, so delegate with a `cwd` inside the caller's repository, or expect no progress.
+- **Any repository on the hub.** Iris delivers to an agent name in any repository on the same hub, and the caller sees `cross_repository: true` on a message from another one. Cross-repository sends have their own quota, about 120 recipients a minute per credential.
 - **Only an integrated client.** A delegate reports only if its CLI has Iris configured; `iris doctor` lists which do. Otherwise it completes normally without reporting.
 - **Claims apply to delegates.** A delegate is a separate session, not a subagent of the caller, so a path the caller has claimed or edited is refused to it by the delegate's own hook. Before implementation work on those paths, release them with the Iris `release` tool, or give the delegate a task that does not touch them.
 
