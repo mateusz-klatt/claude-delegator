@@ -404,7 +404,7 @@ The Codex bridge runs `node "${CLAUDE_PLUGIN_ROOT}"/server/codex/index.js`, whic
 
 This prevents an inner approval prompt from suspending the parent CLI. The bridge scrubs the caller's Iris identity from the child environment and stamps `CLAUDE_DELEGATOR_CODEX_DEPTH`, so a nested Codex refuses to delegate onward through its own codex target. That makes `-c mcp_servers.codex.enabled=false` unnecessary — which matters, because that override creates the table it means to disable when `config.toml` has none, and Codex then rejects the transport-less entry. Advisory-versus-implementation authorization remains explicit in `developer-instructions`; use `sandbox: "read-only"` only when refusal is preferable to autonomous completion.
 
-`CODEX_DELEGATOR_CODEX_BIN` can still name the binary explicitly. Do not point it at a version-stamped release directory: a pin to 0.152.1 was how one host kept the retired `mcp-server` alive — and, with it, a model roster frozen at that release.
+`CODEX_DELEGATOR_CODEX_BIN` is not needed, so leave it unset. The bridge finds `codex` on PATH and falls back to the standard install locations: `~/.local/bin/codex` for MCP hosts with a minimal PATH, and on Windows the native installer's and npm's. If a host ever sets it, never point it at a version-stamped release directory. A pin to 0.152.1 was how one host kept the retired `mcp-server` alive, and with it a model roster frozen at that release.
 
 Codex also supports per-project trust configuration:
 

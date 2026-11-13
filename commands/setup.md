@@ -42,6 +42,10 @@ JSON files are merged atomically; Grok's native `mcp add` owns its TOML updates.
 Grok also inherits MCP servers from Claude Code plugins, which `grok mcp list`
 does not show. The helper uses `grok inspect --json` to detect and disable the
 delegator plugin's inherited Grok self-target, without disabling other servers.
+Every `grok mcp` write drops the comments in Grok's `config.toml`, including
+Iris's markers. The helper therefore skips registrations that are already in
+place, and it warns when the markers disappear. In that case, delete the
+unmarked `[mcp_servers.iris]` block and run `iris setup --clients grok --yes`.
 
 4. Verify with `copilot mcp list` or `grok mcp list`. For Kimi, inspect only
    server names and commands in its `mcp.json`, not credentials, and use `/mcp`

@@ -51,6 +51,12 @@ conflicting same-named server stops setup instead of being overwritten. The
 helper respects `COPILOT_HOME` and `KIMI_CODE_HOME` and needs no npm dependencies.
 For Grok, it also disables the delegator plugin's inherited Grok self-target;
 `grok mcp list` alone does not show servers inherited from Claude Code plugins.
+Every `grok mcp` change rewrites Grok's `config.toml` without its comments,
+which removes the markers Iris uses to find its own block. The helper therefore
+writes only what is missing and warns when the markers are gone. If you see that
+warning, delete the unmarked `[mcp_servers.iris]` block and run
+`iris setup --clients grok --yes`. Run Iris's setup after this helper, not
+before it.
 
 Restart the client, then check `copilot mcp list`, `grok mcp list`, or Kimi's
 `/mcp`. Provider authentication is separate. Keep the checkout at its current

@@ -12,6 +12,30 @@ const { isObject, MAX_TIMEOUT_MS, resolveCli, spawnTarget } = require("../server
 const CLIENTS = ["copilot", "grok", "kimi"];
 const ROOT = path.resolve(__dirname, "..");
 const TOOL_TIMEOUT_MS = MAX_TIMEOUT_MS + 60_000;
+const IRIS_BEGIN = "# >>> iris >>>";
+
+// grok 1.0.77 `inspect --json` reports an inherited server's source as an object,
+// {"type":"plugin","plugin_name":"claude-delegator","path":...}. The string form
+// is what this helper matched first; it stays accepted in case a grok build
+// prints it.
+function isDelegatorPlugin(source) {
+  return source === "plugin: claude-delegator" ||
+    (isObject(source) && source.type === "plugin" && source.plugin_name === "claude-delegator");
+}
+
+function readText(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+// `grok mcp disable` records the name in a top-level `disabled_mcp_servers` array.
+function grokSelfDisabled(configText) {
+  const match = /^disabled_mcp_servers\s*=\s*\[([^\]]*)\]/m.exec(configText);
+  return match !== null && /["']grok["']/.test(match[1]);
+}
 
 function serversFor(client, root) {
   if (!CLIENTS.includes(client)) {
@@ -116,7 +140,8 @@ function setupClient(client, {
         throw new Error(`MCP server "${entry.name}" is shadowed outside user scope; configuration was not changed.`);
       }
     }
-    checkConflicts(servers, Object.fromEntries(listed.map((entry) => [entry.name, entry])));
+    const existing = Object.fromEntries(listed.map((entry) => [entry.name, entry]));
+    checkConflicts(servers, existing);
     // `mcp list` omits Claude plugin servers; `inspect` includes their inheritance.
     const inspected = parseJson(run(["inspect", "--json"]), "grok inspect");
     if (!isObject(inspected) || !Array.isArray(inspected.mcpServers) ||
@@ -124,12 +149,22 @@ function setupClient(client, {
       throw new Error("grok inspect returned an unexpected server list; configuration was not changed.");
     }
     const inheritedSelf = inspected.mcpServers.some((entry) =>
-      entry.name === "grok" && entry.source === "plugin: claude-delegator");
-    if (inheritedSelf) run(["mcp", "disable", "grok"]);
+      entry.name === "grok" && isDelegatorPlugin(entry.source));
+    // Every `grok mcp` write rewrites config.toml and drops its comments, Iris's
+    // `# >>> iris >>>` markers included (measured on grok 1.0.77). So write only
+    // what is missing, and say so when the markers went.
+    const config = path.join(home, ".grok", "config.toml");
+    const before = readText(config);
+    if (inheritedSelf && !grokSelfDisabled(before)) run(["mcp", "disable", "grok"]);
     for (const [name, server] of Object.entries(servers)) {
+      if (Object.hasOwn(existing, name)) continue; // checkConflicts proved it identical
       run(["mcp", "add", "--scope", "user", name, "--", server.command, ...server.args]);
     }
-    return { client, servers: Object.keys(servers), config: path.join(home, ".grok", "config.toml") };
+    const warnings = before.includes(IRIS_BEGIN) && !readText(config).includes(IRIS_BEGIN)
+      ? ["grok rewrote its config.toml and dropped Iris's markers. Delete the unmarked " +
+        "[mcp_servers.iris] block, then run `iris setup --clients grok --yes`."]
+      : [];
+    return { client, servers: Object.keys(servers), config, warnings };
   }
 
   const directory = client === "copilot"
@@ -148,7 +183,7 @@ function setupClient(client, {
   }));
   config.data.mcpServers = { ...previous, ...additions };
   writeConfig(config);
-  return { client, servers: Object.keys(servers), config: file };
+  return { client, servers: Object.keys(servers), config: file, warnings: [] };
 }
 
 if (require.main === module) {
@@ -162,6 +197,7 @@ if (require.main === module) {
       }
       const result = setupClient(args[1]);
       console.log(`${result.client}: registered ${result.servers.join(", ")}\nConfig: ${result.config}`);
+      for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
       console.log("Restart the client to load the MCP servers.");
     } catch (error) {
       console.error(`Setup failed: ${error.message}`);
