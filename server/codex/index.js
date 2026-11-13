@@ -181,7 +181,11 @@ function parseCodexOutput(stdout) {
     } else if (event.type === "item.completed" && isObject(event.item)) {
       const { item } = event;
       if (item.type === "agent_message" && typeof item.text === "string") result.message = item.text;
-      if (item.type === "error" && isNonEmptyString(item.message)) result.warnings.push(item.message.trim());
+      // 0.168.0 emits a config deprecation warning twice per run, as two items
+      // with the same text; one copy says everything.
+      if (item.type === "error" && isNonEmptyString(item.message) && !result.warnings.includes(item.message.trim())) {
+        result.warnings.push(item.message.trim());
+      }
     } else if (event.type === "turn.completed") {
       result.completed = true;
     } else if (event.type === "turn.failed") {

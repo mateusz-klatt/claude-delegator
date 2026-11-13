@@ -103,6 +103,8 @@ if (prompt.includes("NO_TURN")) process.exit(0);
 emit({ type: "turn.started" });
 if (prompt.includes("WARN_MISMATCH")) {
   emit({ type: "item.completed", item: { id: "item_0", type: "error", message: "This session was recorded with model \`gpt-6-luna\` but is resuming with \`gpt-6.1-sol\`." } });
+  // Real 0.168.0 shape: the same warning arrives twice, as two items.
+  emit({ type: "item.completed", item: { id: "item_1", type: "error", message: "This session was recorded with model \`gpt-6-luna\` but is resuming with \`gpt-6.1-sol\`." } });
 }
 const finalText = (isResume ? "reply" : "start") + " result\\n";
 if (!prompt.includes("NO_MESSAGE")) {
@@ -516,7 +518,7 @@ test("fails loudly on a different thread, a missing turn or a missing answer", a
   assert.match(noMessage.result.content[0].text, /without a final message/);
 });
 
-test("appends Codex's own warnings to a successful answer", async () => {
+test("appends one copy of each of Codex's own warnings to a successful answer", async () => {
   const server = startServer();
   await server.request("initialize");
 

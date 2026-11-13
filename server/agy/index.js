@@ -195,8 +195,13 @@ async function runAgy(args, cwd, timeoutMs, abortSignal, expectedThreadId) {
       const resumable = threadId ? ` (resumable threadId: ${threadId})` : "";
 
       if (parsed.status && parsed.status !== "SUCCESS") {
-        const errorText = parsed.error || stderr.trim() || `exit ${code}`;
-        throw new Error(`Agy ${parsed.status}: ${errorText}${resumable}${diagnostics()}`);
+        // When agy names the cause itself (an exhausted quota, an unknown model),
+        // the stderr echo and up to 4 KB of log tail only bury it, as a quota
+        // refusal showed in the 3.3.0 UAT. Point at the log instead.
+        if (isNonEmptyString(parsed.error)) {
+          throw new Error(`Agy ${parsed.status}: ${parsed.error.trim()}${resumable}\nDiagnostics: ${logPath}`);
+        }
+        throw new Error(`Agy ${parsed.status}: ${stderr.trim() || `exit ${code}`}${resumable}${diagnostics()}`);
       }
       if (code !== 0) {
         throw new Error(`Agy exited with code ${code}: ${parsed.error || stderr.trim() || "no error text"}${resumable}${diagnostics()}`);
