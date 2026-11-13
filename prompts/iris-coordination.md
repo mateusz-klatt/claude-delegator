@@ -6,7 +6,7 @@ Apply this contract only when the delegation includes a `coordination` envelope 
 
 - Deliver to `callerAgentName`. It is the name Iris reports as `agent.name` from `whoami` and lists in `peers`.
 - Your own identity comes from this client's Iris integration. Never act as the caller, and never pass the caller's execution handle to an Iris tool. If Iris reports `unbound`, follow what the error says; if that does not resolve it, report without Iris.
-- Iris routes only inside one repository. If `send` answers that the recipient is not in this repository, the caller cannot be reached from here: continue without reporting.
+- The caller may be in another repository on the same hub; Iris delivers across repositories and shows the caller where the message came from. If `send` refuses the recipient, the caller cannot be reached from here: continue without reporting.
 - No credential belongs in the envelope or in a message.
 - Useful native subagents are allowed. If a native runner or subagent forwards the delegation, keep the original caller envelope unchanged so progress reaches the agent that can make decisions.
 

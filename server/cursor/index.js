@@ -200,12 +200,12 @@ const SANDBOX_DESCRIPTION =
 const MODEL_DESCRIPTION =
   "Free-form, because the CLI documents bracket-parameterised overrides such as " +
   "'claude-opus-4-8[context=1m,effort=high,fast=false]' that no enum can express. `cursor-agent " +
-  "models` listed 204 ids on the verification account, but only 'auto' and the Composer family " +
-  "actually ran: every named third-party model failed with 'Named models unavailable. Free plans can " +
-  "only use Auto.' Note that 'auto' is server-routed and not stable — it resolved to " +
-  "cursor-grok-4.6-high-fast on one turn and cursor-grok-4.6-high on the next turn of one session, " +
-  "so the restriction is on choosing a model, not on using one. Pick a Composer id when a run must " +
-  "be reproducible.";
+  "models` lists far more ids than a plan runs. On Premium the weekly allowance covered 'auto', " +
+  "composer-2.5, composer-2.5-fast and every Grok variant (grok-4.7-*, cursor-grok-4.6-*, " +
+  "cursor-grok-4.5-*); other families answered 'not included in your weekly usage' until credits " +
+  "are bought, and on Free only 'auto' ran. Note that 'auto' is server-routed and not stable — it " +
+  "resolved to cursor-grok-4.6-high-fast on one turn and cursor-grok-4.6-high on the next turn of " +
+  "one session. Pick a named id when a run must be reproducible.";
 
 const CWD_DESCRIPTION =
   "Working directory, which also becomes the workspace. --add-dir is never passed: it adds workspace " +

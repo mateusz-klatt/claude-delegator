@@ -41,10 +41,11 @@ async function captureJsonRpcResponse(action) {
 }
 
 test("model catalog records the empirically discovered CLI rosters", () => {
-  assert.equal(catalog.verifiedAt, "2026-11-05");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-05");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.318");
-  assert.equal(catalog.providers.claude.models.length, 8);
+  assert.equal(catalog.verifiedAt, "2026-11-13");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-13");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.323");
+  assert.equal(catalog.providers.claude.models.length, 9);
+  assert.equal(catalog.providers.claude.aliases.fable, "claude-fable-5-2");
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules/model-selection.md"), "utf8");
   assert.ok(
@@ -52,7 +53,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
     "Claude reference must name the catalogued CLI version"
   );
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.166.0");
+  assert.equal(catalog.providers.codex.cliVersion, "0.168.0");
   assert.equal(catalog.providers.codex.models.length, 8);
   assert.deepEqual(
     catalog.providers.codex.models.find((model) => model.id === "gpt-6.1-sol").efforts,
@@ -64,7 +65,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.5.0");
+  assert.equal(catalog.providers.agy.cliVersion, "1.5.8");
   assert.equal(catalog.providers.agy.models.length, 6);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
@@ -85,7 +86,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // extra provider, so the catalog records it without an MCP server entry.
   assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
   const grokBridge = require("../server/grok");
-  assert.equal(catalog.providers.grok.cliVersion, "1.0.70");
+  assert.equal(catalog.providers.grok.cliVersion, "1.0.77");
   assert.deepEqual(catalog.providers.grok.models, ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"]);
   assert.equal(catalog.providers.grok.freeFormModel, false);
   assert.equal(catalog.providers.grok.emitsEffortFlag, true);

@@ -284,10 +284,11 @@ test("advertises a uniform claude/claude-reply contract", async () => {
   assert.equal(startSchema.properties.effort.default, "xhigh");
   assert.deepEqual(startSchema.properties.model.enum, [
     "claude-opus-5-5",
-    "claude-fable-5-1",
+    "claude-fable-5-2",
     "claude-sonnet-5-5",
     "claude-haiku-5-5",
     "claude-opus-5",
+    "claude-fable-5-1",
     "claude-fable-5",
     "claude-sonnet-5",
     "claude-haiku-4-5",

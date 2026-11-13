@@ -13,14 +13,14 @@ Before delegating, check which MCP tools are available in the current environmen
    - Use **Copilot** for tasks where the user explicitly asked for "Copilot".
    - Use **Kimi** for tasks where the user explicitly asked for "Kimi", or for a Moonshot second opinion.
    - Use **Grok** when the user explicitly asks for Grok or wants an xAI second opinion.
-   - Use **Cursor** when the user explicitly asks for Cursor or a Composer model.
+   - Use **Cursor** when the user explicitly asks for Cursor, a Composer model, or Grok through Cursor's allowance.
    - Default to **Agy** for general reasoning.
    - Do **not** use Agy, Kimi, or Cursor when the caller genuinely needs enforced denial; Agy and Cursor are advisory/deflecting, and Kimi refuses `read-only`. Use Codex for denial enforced by its own operating-system sandbox, Claude or Copilot for provider-enforced denial, or Grok for denial of its built-in write/shell tools.
    - Prefer Claude or Agy over Kimi when delegating into a repository you do not control: Kimi auto-loads its `AGENTS.md` with no off switch. Codex loads `AGENTS.md` too, but an operator can switch that off with `project_doc_max_bytes = 0`.
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-05 for the catalog snapshot. CLI versions were rechecked on 2026-11-05 against Codex 0.166.0, Agy 1.5.0, Kimi 2.5.0, Grok 1.0.70, Copilot 1.0.105 (roster read from Copilot's own model catalog on 2026-11-04), Claude Code 2.1.318 and cursor-agent 2026.11.05; Codex added `gpt-6.1-terra` and Kimi gained `moonshot-ai/kimi-k3.1-pro`, and every other roster was unchanged. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-13 for the catalog snapshot. CLI versions were rechecked on 2026-11-13 against Codex 0.168.0, Agy 1.5.8, Kimi 2.6.0, Grok 1.0.77, Copilot 1.0.110, Claude Code 2.1.323 and cursor-agent 2026.11.11. Since 2026-11-05: Codex added `gpt-6.1-terra`, Kimi moved to a subscription with `kimi-code/*` aliases, Copilot (now on Max) added `claude-fable-5.2` and `gemini-4-carbon`, Claude added `claude-fable-5-2` (now the `fable` alias), and Cursor's Premium allowance covers `auto`, Composer and Grok. Claude Code's registry also lists a Mythos family that this account cannot use. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -119,7 +119,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
-The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.166.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
+The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.168.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
 
 ### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
@@ -361,7 +361,7 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
-Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August **265** on 2026.10.14 and **274** on 2026.11.05 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. By 2026-11-06 the Free plan had dropped Composer too (`Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings`) and soon refused `auto` once its usage limit was reached, so only `auto` stays catalogued. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
+Be careful reading `cursor-agent models`: it printed **204 ids** in August, **274** on 2026.11.05 and **284** on 2026.11.11 (it refuses to list at all until `cursor-agent login`), and the plan decides which of them run. On Free every named model failed with `Named models unavailable. Free plans can only use Auto.`, and by 2026-11-06 Composer was refused too. On 2026-11-13, on the Premium plan, the weekly allowance covered `auto`, Composer and every Grok variant (`grok-4.7-*`, `cursor-grok-4.6-*`, `cursor-grok-4.5-*`); every other family (Claude, GPT, Gemini, Kimi, GLM, DeepSeek, Muse) answered `… is not included in your weekly usage. Buy credits or switch to a Grok model`. The catalog records what completed a live call, not what the CLI listed.
 
 `auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. On a paid plan, pick a named id when a run has to be reproducible.
 
@@ -406,7 +406,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `cwd` | path | Working directory for the task |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
-**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work. Every catalogued id completed a live start on a Pro+ account on 2026-11-04, including `claude-opus-5.5`, `claude-fable-5.1` and `gpt-6.1-terra`, which `copilot help config` does not list. `gpt-5.6-terra` or `gpt-6.1-terra` suit everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-opus-5.5` or `claude-sonnet-5.5` for a cross-family second opinion, `auto` to let Copilot route (it picks its own model, so no `--effort` is sent), and `gpt-5.6-sol` as a fallback when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work. Every catalogued id completed a live start: on a Pro+ account on 2026-11-04, including `claude-opus-5.5`, `claude-fable-5.1` and `gpt-6.1-terra`, which `copilot help config` does not list, and `claude-fable-5.2` and `gemini-4-carbon` on the Max plan on 2026-11-13. `gpt-5.6-terra` or `gpt-6.1-terra` suit everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-opus-5.5` or `claude-sonnet-5.5` for a cross-family second opinion, `auto` to let Copilot route (it picks its own model, so no `--effort` is sent), and `gpt-5.6-sol` as a fallback when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
 
 **Effort sets**: Start calls default to `max` and resolve each request to the highest level the chosen model supports at or below it, from the per-model sets in `effortsByModel`. The sets are not contiguous — `kimi-k3` takes `low`, `high` and `max` only — and `claude-haiku-4.5` and `auto` get no `--effort` at all. So `max` runs as `high` on `gemini-3.8-flash` and `mai-code-1.1-flash`, and as `xhigh` on `grok-4.7` and `gpt-5.3-codex`; `minimal` runs as `low` where `none` is unsupported. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded unresolved, with `max` capped to `xhigh`.
 
@@ -414,7 +414,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 
 ## Claude Parameters Reference (external orchestrators)
 
-The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.1.318) with the same start/reply contract used by the other providers.
+The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.1.323) with the same start/reply contract used by the other providers.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
