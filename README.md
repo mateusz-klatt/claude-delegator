@@ -187,10 +187,10 @@ Codex no longer ships its own MCP server: `codex mcp-server` was removed by open
 | **Claude** | `opus` / `claude-opus-5-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases (Opus 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5) and the full IDs of both generations. |
 | **Codex** | `gpt-6.1-sol` (`ultra`) | Seven account-visible models, from `gpt-6.1-sol` through `gpt-5.6-luna`; free-form ids are passed through, and effort is clamped per model. |
 | **Agy** | `gemini-3.8-flash-high` | Six ids across Gemini 3.8 Flash, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
-| **Kimi** | `moonshot-ai/kimi-k3` | Four configured aliases; `--model` stays free-form because the roster is user-extensible. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
+| **Kimi** | kimi's own `default_model` | Six `kimi-code/*` aliases on a subscription login, `moonshot-ai/*` on an API key; `--model` stays free-form because the roster depends on the login. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.7` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6` and `grok-4.5`. `read-only` adds deny rules for built-in write and shell tools. |
 | **Cursor** | `auto` | 274 ids listed on 2026.11.05, three usable on a Free plan. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-6.1-sol` (`max`) | 26 Pro+ models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
+| **Copilot** | `gpt-6.1-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 
@@ -509,7 +509,7 @@ The plugin also ships a `usage` server with one tool, `mcp__plugin_claude-delega
 | **Claude** | session | yes | — | none reported | `claude -p /usage` with no user settings, hooks or MCP servers |
 | **Copilot** | — | — | AI credits | AI credits per 1M tokens, per model | `gh api /copilot_internal/user` (the CLI's plan cache as fallback), plus the model catalog from a model-less probe run |
 | **Agy** | — | per model group (Gemini; Claude and GPT) | — | quota drawn in proportion to token cost | `agy -p /usage`, answered by the CLI with zero turns |
-| **Kimi** | — | — | API balance (cash, voucher) | none reported | Moonshot `/v1/users/me/balance`, only for providers in `~/.kimi-code/config.toml` on a Moonshot host |
+| **Kimi** | 5h | weekly where offered | subscription month; API balance on a key | none reported | subscription: kimi's own local `kimi web` server, `/api/v1/oauth/usage`; API key: Moonshot `/v1/users/me/balance` |
 | **Grok** | — | billing period (weekly on SuperGrok) | on-demand cap and use, prepaid balance | efforts and relative price hints | `grok agent stdio` (ACP): `_x.ai/billing`, no session created |
 | **Cursor** | — | — | plan name | — | `cursor-agent about`; `/usage` in print mode is sent to the model |
 

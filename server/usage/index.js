@@ -11,6 +11,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -539,7 +540,7 @@ function runKimiProviderList({ timeoutMs, abortSignal }) {
 function moonshotAccounts(config, environment) {
   const accounts = [];
   for (const [id, provider] of Object.entries(config?.providers || {})) {
-    if (!isObject(provider) || provider.type !== "kimi") continue;
+    if (!isObject(provider) || provider.type !== "kimi" || isObject(provider.oauth)) continue;
     let url;
     try { url = new URL(provider.baseUrl ?? provider.base_url); } catch { continue; }
     // The key goes only to the Moonshot host kimi would send it to anyway.
@@ -574,18 +575,122 @@ async function moonshotBalance(account, { signal, fetchImpl }) {
   };
 }
 
-async function kimiUsage({ timeoutMs, abortSignal, environment = process.env, fetchImpl = fetch, listProviders = runKimiProviderList }) {
-  const accounts = moonshotAccounts(await listProviders({ timeoutMs, abortSignal }), environment);
-  if (accounts.length === 0) throw new Error("kimi has no provider of type kimi on a Moonshot host");
-  const balances = [];
-  for (const account of accounts) balances.push(await moonshotBalance(account, { signal: abortSignal, fetchImpl }));
-  if (balances.every((balance) => balance.error)) throw new Error(balances.map((balance) => `${balance.provider}: ${balance.error}`).join("; "));
-  return {
-    source: "kimi provider list --json + Moonshot /v1/users/me/balance",
-    windows: "Kimi is pay-as-you-go on an API key; there is no short or weekly window, only a balance.",
-    balances,
-    costNote: "Moonshot's API reports no per-model price; providers behind other hosts (Ollama, Anthropic) are not queried."
+// A subscription login keeps a 15-minute OAuth token that only kimi may refresh:
+// refreshing it here would spend the refresh token kimi holds. So the server
+// starts kimi's own local web server, which refreshes as kimi always does, and
+// asks its /api/v1/oauth/usage route. Nothing is opened in a browser.
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function runKimiManagedUsage({ provider, timeoutMs, abortSignal, fetchImpl = fetch }) {
+  const binary = resolveCli("kimi", { fallbacks: kimiBridge.cliFallbacks() });
+  const port = await freePort();
+  const target = spawnTarget(binary, ["web", "--no-open", "--port", String(port)]);
+  const child = spawn(target.command, target.args, {
+    cwd: os.tmpdir(), detached: !IS_WINDOWS, env: buildCalleeEnv(process.env), shell: false, stdio: ["ignore", "pipe", "pipe"]
+  });
+  activeChildren.add(child);
+  let exited = false;
+  child.on("close", () => { exited = true; activeChildren.delete(child); });
+  try {
+    // The server prints its bearer token once it is ready; it is used here and never echoed.
+    const token = await new Promise((resolve, reject) => {
+      let output = "";
+      const done = (error, value) => { clearTimeout(timer); abortSignal?.removeEventListener("abort", onAbort); if (error) reject(error); else resolve(value); };
+      const onAbort = () => done(new Error("Request cancelled"));
+      const timer = setTimeout(() => done(new Error(`kimi web did not start within ${timeoutMs} ms`)), timeoutMs);
+      abortSignal?.addEventListener("abort", onAbort, { once: true });
+      child.on("error", (error) => done(error));
+      child.on("close", (code) => done(new Error(`kimi web exited with code ${code} before it was ready`)));
+      child.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+        const match = output.match(/^\s*Token:\s*(\S+)\s*$/m);
+        if (match) done(null, match[1]);
+      });
+      child.stderr.resume();
+    });
+    const url = `http://127.0.0.1:${port}/api/v1/oauth/usage?provider=${encodeURIComponent(provider)}`;
+    let response;
+    try {
+      response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` }, signal: abortSignal });
+    } catch (error) {
+      throw new Error(`kimi usage request failed (${error?.name || "Error"})`);
+    }
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.data?.kind !== "ok") {
+      throw new Error(`kimi usage request failed: ${body?.data?.message || `HTTP ${response.status}`}`);
+    }
+    return body.data.quota;
+  } finally {
+    if (!exited) {
+      killProcessTree(child, "SIGTERM");
+      setTimeout(() => { if (!exited) killProcessTree(child, "SIGKILL"); }, 3_000).unref();
+    }
+  }
+}
+
+function summarizeKimiQuota(provider, quota) {
+  const window = (label, entry) => entry && {
+    label,
+    usedPercent: Number.isFinite(entry.usedRatio) ? Math.round(entry.usedRatio * 1000) / 10 : null,
+    resetsAt: entry.resetAt ?? null
   };
+  const usages = quota?.usages || {};
+  const extra = quota?.extraUsage;
+  return {
+    provider,
+    windows: [
+      window("5h", usages.limit5h),
+      window("weekly", usages.limit7d),
+      window("monthly", usages.monthTotal),
+      window("monthly-code", usages.monthCode)
+    ].filter(Boolean),
+    extraUsage: extra ? {
+      currency: extra.currency,
+      balance: extra.balanceCents / 100,
+      monthlyUsed: extra.monthlyUsedCents / 100,
+      monthlyLimit: extra.monthlyChargeLimitEnabled ? extra.monthlyChargeLimitCents / 100 : null
+    } : null
+  };
+}
+
+async function kimiUsage({ timeoutMs, abortSignal, environment = process.env, fetchImpl = fetch, listProviders = runKimiProviderList, managedUsage = runKimiManagedUsage }) {
+  const config = await listProviders({ timeoutMs, abortSignal });
+  const managed = Object.entries(config?.providers || {})
+    .filter(([, provider]) => isObject(provider) && provider.type === "kimi" && isObject(provider.oauth))
+    .map(([id]) => id);
+  const accounts = moonshotAccounts(config, environment);
+  if (managed.length === 0 && accounts.length === 0) throw new Error("kimi has no subscription login and no provider of type kimi on a Moonshot host");
+  const usage = { source: [], costNote: "Kimi reports no per-model price." };
+  if (managed.length > 0) {
+    usage.source.push("kimi web: /api/v1/oauth/usage");
+    usage.subscriptions = [];
+    for (const provider of managed) {
+      try {
+        usage.subscriptions.push(summarizeKimiQuota(provider, await managedUsage({ provider, timeoutMs, abortSignal, fetchImpl })));
+      } catch (error) {
+        usage.subscriptions.push({ provider, error: error.message });
+      }
+    }
+  }
+  if (accounts.length > 0) {
+    usage.source.push("Moonshot /v1/users/me/balance");
+    usage.balances = [];
+    for (const account of accounts) usage.balances.push(await moonshotBalance(account, { signal: abortSignal, fetchImpl }));
+  }
+  const results = [...(usage.subscriptions || []), ...(usage.balances || [])];
+  if (results.every((entry) => entry.error)) throw new Error(results.map((entry) => `${entry.provider}: ${entry.error}`).join("; "));
+  usage.source = usage.source.join(" + ");
+  return usage;
 }
 
 // --- Grok: the ACP agent's `_x.ai/billing` extension, asked before any session exists ---
@@ -761,6 +866,7 @@ module.exports = {
   summarizeGrokBilling,
   summarizeGrokModels,
   moonshotAccounts,
+  summarizeKimiQuota,
   kimiUsage,
   parseCursorAbout,
   handlers,

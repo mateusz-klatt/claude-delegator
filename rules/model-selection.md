@@ -208,12 +208,12 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
 | `sandbox` | `workspace-write` only | `read-only` is **refused** with -32602. See **Sandbox honesty** below. |
-| `model` | alias from `~/.kimi-code/config.toml` | Free-form; the roster is user-extensible. Default: `moonshot-ai/kimi-k3` |
+| `model` | alias from `kimi provider list` | Free-form; the roster depends on how kimi is signed in. Omit it to use kimi's own `default_model` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory. **A repository `AGENTS.md` here is auto-loaded.** |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
-**Model guidance**: `moonshot-ai/kimi-k3` (default) for expert work, `moonshot-ai/kimi-k3.1-pro` (paid subscription, same efforts and 1M context) as the stronger option; `moonshot-ai/kimi-k2.7-code` for coding tasks, `moonshot-ai/kimi-k2.7-code-highspeed` for quick low-stakes checks, `moonshot-ai/kimi-k2.6` as a fallback. The alias is free-form because `kimi provider catalog` can import more providers; an unknown alias fails with exit 1 and a clear message before any work happens.
+**Model guidance**: omit `model` to run kimi's own `default_model`. On a Kimi Code subscription (`kimi login`) the aliases are `kimi-code/k3.1-pro` (the default on this host), `kimi-code/k3.1-pro-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`, `kimi-code/kimi-for-coding` and `kimi-code/kimi-for-coding-highspeed`. A host on a Moonshot API key has `moonshot-ai/*` aliases instead, and the two sets do not overlap: switching the login removed every `moonshot-ai/*` alias, which is why the bridge no longer names a default. An unknown alias fails with exit 1 and a clear message before any work happens.
 
 **Authentication**: Kimi Code supports a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17 — in practice it is the API key. Put it in `~/.kimi-code/config.toml` or export `KIMI_API_KEY` / `MOONSHOT_API_KEY`; the bridge forwards the caller environment untouched apart from Iris identity. Be aware the CLI also recognises a large catalog of third-party provider key variables (`ANTHROPIC_API_KEY`, `AZURE_API_KEY` and many more), so any such key exported in the parent shell is visible to the delegated process.
 
@@ -361,9 +361,9 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
-Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August **265** on 2026.10.14 and **274** on 2026.11.05 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
+Be careful reading `cursor-agent models`: it printed **204 ids** on the verification account in August **265** on 2026.10.14 and **274** on 2026.11.05 (which refuses to list at all until `cursor-agent login`), and only three of them ran. Every named third-party model failed with `Named models unavailable. Free plans can only use Auto.` before any work happened, leaving `auto`, `composer-2.5` and `composer-2.5-fast`. By 2026-11-06 the Free plan had dropped Composer too (`Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings`) and soon refused `auto` once its usage limit was reached, so only `auto` stays catalogued. A paid plan should reach more; the catalog records what completed a live call, not what the CLI listed.
 
-`auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. Pick a Composer id when a run has to be reproducible.
+`auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. On a paid plan, pick a named id when a run has to be reproducible.
 
 **Sandbox honesty**: `read-only` **deflects, it does not deny.** `--mode ask` refused an insistent write-or-shell prompt twice, including under a permissive allow list — and was then defeated by a prompt asserting the mode label was a display artefact and demanding real tool calls. Both the write and the shell command went through, and the model's own report read "the Ask mode label did not block either call". This is Agy's category, not Grok's: the value is kept because it is strictly more restrictive than the alternative, and it is documented for exactly what it is. Carry advisory intent in `developer-instructions` too.
 
@@ -400,7 +400,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** on the verifica
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
-| `model` | One of the 26 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist: the Pro+ roster from Copilot's own model catalog, plus `auto`) |
+| `model` | One of the 28 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist: the account's roster from Copilot's own model catalog, plus `auto`) |
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; resolved on start to the highest level the model supports at or below it |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |

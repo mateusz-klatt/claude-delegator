@@ -72,9 +72,17 @@ function nextLogPath() {
   return path.join(os.tmpdir(), `claude-delegator-agy-${process.pid}-${logSequence}.log`);
 }
 
+// agy's file watcher logs one "skipping empty or temp file" line per file it
+// passes over, and a few hundred of them buried the real error in a failed
+// call's message (measured on 1.5.2). They say nothing about the failure.
+const LOG_NOISE = /file_watcher\.go:\d+\] skipping empty or temp file/;
+
 function readLogTail(logPath, bytes = 4096) {
   try {
-    const contents = fs.readFileSync(logPath, "utf8");
+    const contents = fs.readFileSync(logPath, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => !LOG_NOISE.test(line))
+      .join("\n");
     return contents.length > bytes ? contents.slice(-bytes) : contents;
   } catch {
     return "";
@@ -347,6 +355,7 @@ module.exports = {
   handlers,
   parseAgyOutput,
   printTimeoutFor,
+  readLogTail,
   sandboxArguments,
   toolDefinitions: AGY_TOOLS
 };

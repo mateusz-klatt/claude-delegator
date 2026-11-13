@@ -734,3 +734,23 @@ test("binds the shared shim resolver to its own CLI name", () => {
     /could not resolve agy/
   );
 });
+
+test("drops agy's file-watcher noise from the diagnostic log tail", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-log-tail-"));
+  try {
+    const log = path.join(dir, "agy.log");
+    const noise = "E1106 19:57:04.448916      29 file_watcher.go:194] skipping empty or temp file: ";
+    fs.writeFileSync(log, ["real failure: quota reached", ...Array(400).fill(noise), "last real line"].join("\n"));
+    const { readLogTail } = require("./index.js");
+    const tail = readLogTail(log);
+    assert.doesNotMatch(tail, /skipping empty or temp file/);
+    assert.match(tail, /real failure: quota reached/);
+    assert.match(tail, /last real line/);
+    assert.equal(readLogTail(path.join(dir, "missing.log")), "");
+  } finally {
+    fs.rmSync(dir, { force: true, recursive: true });
+  }
+});

@@ -74,8 +74,9 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.kimi.cliVersion, "2.5.0");
-  assert.equal(catalog.providers.kimi.models.length, 5);
+  assert.equal(catalog.providers.kimi.cliVersion, "2.6.0");
+  assert.equal(catalog.providers.kimi.models.length, 6);
+  assert.equal(catalog.providers.kimi.defaultModel, null);
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
   assert.equal(catalog.providers.kimi.freeFormModel, true);
   assert.equal(catalog.providers.kimi.emitsEffortFlag, false);
@@ -113,8 +114,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.105");
-  assert.equal(catalog.providers.copilot.models.length, 26);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.110");
+  assert.equal(catalog.providers.copilot.models.length, 28);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -136,7 +137,8 @@ test("catalog defaults, aliases, and effort overrides reference unique advertise
   for (const providerName of ["agy", "kimi", "copilot"]) {
     const provider = catalog.providers[providerName];
     assert.equal(new Set(provider.models).size, provider.models.length);
-    assert.ok(provider.models.includes(provider.defaultModel));
+    // kimi names no default: the bridge leaves the choice to kimi's default_model.
+    if (provider.defaultModel !== null) assert.ok(provider.models.includes(provider.defaultModel));
   }
   const copilot = catalog.providers.copilot;
   assert.deepEqual(Object.keys(copilot.effortsByModel), copilot.models);
