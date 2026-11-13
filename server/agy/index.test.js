@@ -330,8 +330,9 @@ test("advertises the uniform agy/agy-reply MCP contract", async () => {
   const replySchema = listed.result.tools[1].inputSchema;
   assert.equal(startSchema.additionalProperties, false);
   assert.equal(startSchema.properties.model.default, "gemini-3.8-flash-high");
-  assert.ok(startSchema.properties.model.enum.includes("claude-opus-4-6-thinking"));
-  assert.equal(startSchema.properties.model.enum.length, 6);
+  assert.ok(startSchema.properties.model.enum.includes("claude-opus-5-5-high"));
+  assert.equal(startSchema.properties.model.enum.includes("claude-opus-4-6-thinking"), false);
+  assert.equal(startSchema.properties.model.enum.length, 22);
   assert.deepEqual(startSchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
   assert.equal(startSchema.properties.sandbox.default, "workspace-write");
   assert.deepEqual(replySchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
