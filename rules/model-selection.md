@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-13 for the catalog snapshot. CLI versions were rechecked on 2026-11-13 against Codex 0.168.0, Agy 1.5.8, Kimi 2.6.0, Grok 1.0.77, Copilot 1.0.110, Claude Code 2.1.323 and cursor-agent 2026.11.11. Since 2026-11-05: Codex added `gpt-6.1-terra`, Kimi moved to a subscription with `kimi-code/*` aliases, Copilot (now on Max) added `claude-fable-5.2` and `gemini-4-carbon`, Claude added `claude-fable-5-2` (now the `fable` alias), and Cursor's Premium allowance covers `auto`, Composer and Grok. Claude Code's registry also lists a Mythos family that this account cannot use. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-13 for the catalog snapshot. CLI versions were rechecked on 2026-11-13, after updating every CLI, against Codex 0.169.0, Agy 1.5.8, Kimi 2.6.1, Grok 1.0.77, Copilot 1.0.110, Claude Code 2.1.323 and cursor-agent 2026.11.11. The rescan after those updates found no roster change. Since 2026-11-05: Codex added `gpt-6.1-terra`, Kimi moved to a subscription with `kimi-code/*` aliases, Copilot (now on Max) added `claude-fable-5.2` and `gemini-4-carbon`, Claude added `claude-fable-5-2` (now the `fable` alias), and Cursor's Premium allowance covers `auto`, Composer and Grok. Claude Code's registry also lists a Mythos family that this account cannot use. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
 
 ## Expert Directory
 
@@ -119,7 +119,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
-The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.168.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
+The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.169.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
 
 ### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
