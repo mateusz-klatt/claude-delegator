@@ -466,7 +466,9 @@ test("classifies the agy failure channels that are not exit-code shaped", async 
   assert.equal(preflight.result.isError, true);
   assert.match(preflight.result.content[0].text, /Agy ERROR: invalid model selection/);
   assert.equal(/resumable threadId/.test(preflight.result.content[0].text), false);
-  assert.match(preflight.result.content[0].text, /stub log: model rejected/);
+  // agy named the cause, so the message points at the log instead of quoting it.
+  assert.match(preflight.result.content[0].text, /Diagnostics: \S+/);
+  assert.doesNotMatch(preflight.result.content[0].text, /stub log: model rejected/);
 
   // exit 1 + valid JSON + a real conversation id: the run IS resumable.
   const printTimeout = await server.request("tools/call", {

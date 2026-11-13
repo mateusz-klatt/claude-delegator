@@ -195,7 +195,7 @@ Three properties of Iris shape what the envelope can do:
 
 - **Any repository on the hub.** Iris delivers to an agent name in any repository on the same hub, and the caller sees `cross_repository: true` on a message from another one. Cross-repository sends have their own quota, about 120 recipients a minute per credential.
 - **Only an integrated client.** A delegate reports only if its CLI has Iris configured; `iris doctor` lists which do. Otherwise it completes normally without reporting.
-- **Claims apply to delegates.** A delegate is a separate session, not a subagent of the caller, so a path the caller has claimed or edited is refused to it by the delegate's own hook. Before implementation work on those paths, release them with the Iris `release` tool, or give the delegate a task that does not touch them.
+- **Claims apply to delegates.** A delegate is a separate session, not a subagent of the caller, so a path the caller has claimed or edited is refused to it by the delegate's own hook. Measured: a delegated Codex was refused a write to a claimed file, reported `BLOCKED`, and wrote it once the claim was released. Before implementation work on those paths, release them with the Iris `release` tool, or give the delegate a task that does not touch them.
 
 The callee sends `STARTED` with `send`, keeps the `message_id` it gets back, and passes it as `reply_to` on later checkpoints so Iris keeps them in one thread. The provider session `threadId` is unrelated: it is returned by `claude`, `codex`, `agy`, `kimi`, `grok`, `cursor`, or `copilot` and consumed only by the corresponding `*-reply` tool.
 
