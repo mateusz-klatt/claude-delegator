@@ -5,6 +5,14 @@
 # approval prompt cannot suspend its parent, and clamps effort per model. It no
 # longer needs `-c mcp_servers.codex.enabled=false`: a nested Codex inherits
 # CLAUDE_DELEGATOR_CODEX_DEPTH and its own codex bridge refuses to delegate.
+#
+# Every table approves its own tools. Under approval_policy = "never", Codex
+# refuses any MCP tool that is not approved ("MCP tool call requires approval,
+# but approval policy is never"), and the codex bridge pins exactly that
+# policy on every Codex it starts. Approval lets Codex start other agents
+# unattended, which is what this delegator is for. A running
+# `codex app-server` daemon keeps the configuration it started with, so run
+# `codex app-server daemon restart` after editing this file.
 
 [mcp_servers.claude]
 command = "node"
@@ -13,6 +21,7 @@ enabled_tools = ["claude", "claude-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.codex]
 command = "node"
@@ -21,6 +30,7 @@ enabled_tools = ["codex", "codex-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.agy]
 command = "node"
@@ -29,6 +39,7 @@ enabled_tools = ["agy", "agy-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.kimi]
 command = "node"
@@ -37,6 +48,7 @@ enabled_tools = ["kimi", "kimi-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.copilot]
 command = "node"
@@ -45,6 +57,7 @@ enabled_tools = ["copilot", "copilot-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.grok]
 command = "node"
@@ -53,6 +66,7 @@ enabled_tools = ["grok", "grok-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.cursor]
 command = "node"
@@ -61,6 +75,7 @@ enabled_tools = ["cursor", "cursor-reply"]
 startup_timeout_sec = 45
 tool_timeout_sec = 3600
 required = false
+default_tools_approval_mode = "approve"
 
 [mcp_servers.usage]
 command = "node"
@@ -69,3 +84,4 @@ enabled_tools = ["usage"]
 startup_timeout_sec = 45
 tool_timeout_sec = 300
 required = false
+default_tools_approval_mode = "approve"
