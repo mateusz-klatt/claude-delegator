@@ -154,6 +154,7 @@ Land the bridge and its test file in the same commit: coverage counts `server/**
 ### JavaScript (MCP bridges)
 
 - Keep the runtime zero-dependency; development-only test dependencies are acceptable
+- The `overrides` entry in `package.json` lifts `test-exclude`'s `glob` and `minimatch` (pulled in by `c8`) to their patched majors for GHSA-3g3m-2fjr-6pw4 and GHSA-g3hv-75wg-m249; remove it once `test-exclude` depends on them itself
 - Validate all public tool arguments before invoking a CLI
 - Never forward the caller's Iris identity into a delegated process
 
