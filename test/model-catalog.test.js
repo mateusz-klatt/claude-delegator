@@ -65,7 +65,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.5.8");
+  assert.equal(catalog.providers.agy.cliVersion, "1.5.9");
   assert.equal(catalog.providers.agy.models.length, 22);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
@@ -115,7 +115,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.111");
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.112");
   assert.equal(catalog.providers.copilot.models.length, 29);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
