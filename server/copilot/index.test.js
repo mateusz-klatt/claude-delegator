@@ -436,8 +436,8 @@ test("uses each model's supported effort set and caps max conservatively on resu
   assert.equal(resolveEffort("gpt-6.1-sol", "none"), "low");
   assert.equal(resolveEffort("gpt-6.1-sol", "minimal"), "low");
   assert.equal(resolveEffort("gpt-6.1-sol", "low"), "low");
-  assert.equal(resolveEffort("gpt-5.6-terra", "minimal"), "none");
-  assert.equal(resolveEffort("gpt-5.6-terra", "max"), "max");
+  assert.equal(resolveEffort("gpt-5.6-sol", "minimal"), "none");
+  assert.equal(resolveEffort("gpt-5.6-sol", "max"), "max");
   assert.equal(resolveEffort("gpt-5.3-codex", "max"), "xhigh");
   assert.equal(resolveEffort("gemini-3.8-flash", "max"), "high");
   assert.equal(resolveEffort("kimi-k3", "xhigh"), "high");

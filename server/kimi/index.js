@@ -138,7 +138,7 @@ const KIMI_TOOLS = [
         model: {
           type: "string",
           examples: KIMI_CATALOG.models,
-          description: "Model alias from `kimi provider list`. Omit it to use kimi's own default_model. Free-form because the roster depends on how kimi is signed in; kimi rejects an unknown alias before doing any work."
+          description: "Model ID from the Kimi model selector. Omit it to use kimi's own default_model. Free-form because the roster depends on how kimi is signed in; kimi rejects an unknown alias before doing any work."
         },
         timeout: timeoutSchema(),
         coordination: coordinationSchema

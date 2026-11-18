@@ -281,7 +281,7 @@ test("README states the runtime and provider continuity contracts", () => {
   assert.match(readme, /same `cwd`[\s\S]{0,120}Kimi[\s\S]{0,120}Cursor/);
   assert.doesNotMatch(readme, /mcp__claude__claude/);
 
-  for (const model of catalog.providers.cursor.models) {
+  for (const model of catalog.providers.cursor.verifiedModels) {
     assert.ok(
       providers.providers.cursor.auth.includes(`\`${model}\``),
       `Cursor auth metadata must retain the verified live model ${model}`

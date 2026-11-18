@@ -329,10 +329,10 @@ test("advertises the uniform agy/agy-reply MCP contract", async () => {
   const startSchema = listed.result.tools[0].inputSchema;
   const replySchema = listed.result.tools[1].inputSchema;
   assert.equal(startSchema.additionalProperties, false);
-  assert.equal(startSchema.properties.model.default, "gemini-3.8-flash-high");
+  assert.equal(startSchema.properties.model.default, "gemini-4-carbon-high");
   assert.ok(startSchema.properties.model.enum.includes("claude-opus-5-5-high"));
   assert.equal(startSchema.properties.model.enum.includes("claude-opus-4-6-thinking"), false);
-  assert.equal(startSchema.properties.model.enum.length, 22);
+  assert.equal(startSchema.properties.model.enum.length, 27);
   assert.deepEqual(startSchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
   assert.equal(startSchema.properties.sandbox.default, "workspace-write");
   assert.deepEqual(replySchema.properties.sandbox.enum, ["read-only", "workspace-write"]);
@@ -442,7 +442,7 @@ test("constructs read-only and workspace-write calls with the forced non-interac
   assert.equal(replyCall.args[replyCall.args.indexOf("--model") + 1], "gemini-3.8-flash-low");
   assert.ok(replyCall.args.includes("--dangerously-skip-permissions"));
 
-  assert.equal(defaultCall.args[defaultCall.args.indexOf("--model") + 1], "gemini-3.8-flash-high");
+  assert.equal(defaultCall.args[defaultCall.args.indexOf("--model") + 1], "gemini-4-carbon-high");
   assert.ok(defaultCall.args.includes("--dangerously-skip-permissions"));
   await server.close();
 });

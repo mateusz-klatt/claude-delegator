@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-For the account-specific roster, use `config/model-catalog.json` as the source of truth. Rosters were refreshed on 2026-11-13 for the catalog snapshot. CLI versions were rechecked on 2026-11-13, after updating every CLI, against Codex 0.169.0, Agy 1.5.8, Kimi 2.6.1, Grok 1.0.77, Copilot 1.0.111, Claude Code 2.1.325 and cursor-agent 2026.11.13, and again on 2026-11-14 after Agy 1.5.9 and Copilot 1.0.112, with no roster change. An evening rescan found two server-side changes: Agy 1.5.8 now lists 22 ids, including Gemini 4 and Claude 5.5 tiers, and Copilot added `gemini-4-hydrogen`. Since 2026-11-05: Codex added `gpt-6.1-terra`, Kimi moved to a subscription with `kimi-code/*` aliases, Copilot (now on Max) added `claude-fable-5.2` and `gemini-4-carbon`, Claude added `claude-fable-5-2` (now the `fable` alias), and Cursor's Premium allowance covers `auto`, Composer and Grok. Claude Code's registry also lists a Mythos family that this account cannot use. Grok and cursor-agent list their full rosters only when logged in, and Ollama was not re-checked, so it retains its 2026-08-17 evidence. The catalog records selector/cache/registry/help discovery separately from combinations that completed a live call; backend access still depends on the active account.
+Use `config/model-catalog.json` for the account-specific model snapshots. Rosters were refreshed on 2026-11-13 for the historical live-call snapshot. CLI versions were rechecked on 2026-11-18 alongside fresh model discovery. Claude Code 2.1.327 confirmed its default and aliases; the catalog distinguishes the installed registry from the previously verified account roster.
 
 ## Expert Directory
 
@@ -128,13 +128,13 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), sent on Codex's native `developer_instructions` channel rather than prepended |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` is Codex's own `sandbox_mode="read-only"`, enforced by the OS; `workspace-write` is `danger-full-access` with `approval_policy="never"`. Default: `workspace-write`. See **Sandbox honesty**. |
-| `model` | free-form; catalogued ids under `providers.codex.models` in `config/model-catalog.json` | Default: `gpt-6.1-sol`. An unknown id fails with HTTP 400 before any work happens |
+| `model` | free-form; catalogued ids under `providers.codex.models` in `config/model-catalog.json` | Default: `gpt-6.2-sol`. An unknown id fails with HTTP 400 before any work happens |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Default: `ultra`, clamped per model — see **Effort guidance** |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory and Codex workspace. **A repository `AGENTS.md` here is loaded.** |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
-**Model guidance**: `gpt-6.1-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6.1-terra` for everyday work at lower cost, `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
+**Model guidance**: `gpt-6.2-sol` (default) at `ultra` for expert work; `gpt-6-sol` and `gpt-6-astra` take `ultra` as well. Use `gpt-6.1-terra` for everyday work at lower cost, `gpt-6-luna` or `gpt-5.6-luna` for quick low-stakes checks, and `gpt-5.6-sol`/`gpt-5.6-terra` as fallbacks. `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` and `gpt-5.3-codex-spark` are no longer offered to this account.
 
 **Effort guidance**: effort travels as `-c model_reasoning_effort`, and the bridge clamps it to the levels `config/model-catalog.json` records for the chosen model, so `ultra` on `gpt-6-luna` or `gpt-5.6-luna` runs at `max`. A model the catalog does not list is passed through unclamped. This retires the old launcher trap, where a per-call `model` override kept the server-wide `ultra` and older CLIs failed with HTTP 400 before a thread existed; 0.164.0 itself accepted `ultra` on `gpt-6-luna`.
 
@@ -150,7 +150,7 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 |-----------|--------|-------|
 | `threadId` | string | **Required.** `threadId` from the previous `codex` call. The bridge fails loudly if Codex resumes a different thread. |
 | `prompt` | string | **Required.** Follow-up instruction |
-| `model` | free-form | Default: `gpt-6.1-sol`. **Repeat a non-default start model** — a resume does not inherit it |
+| `model` | free-form | Default: `gpt-6.2-sol`. **Repeat a non-default start model** — a resume does not inherit it |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | Default: `ultra`, clamped per model. Repeat a non-default start effort |
 | `sandbox` | `read-only`, `workspace-write` | Repeat the original value; a resume inherits no permission state |
 | `cwd` | path | **Repeat the start call's `cwd`** — a resume runs in the directory it is launched from |
@@ -168,12 +168,12 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
 | `sandbox` | `read-only`, `workspace-write` | `workspace-write` passes `--dangerously-skip-permissions`; `read-only` omits it. Default: `workspace-write`. See **Sandbox honesty**. |
-| `model` | one of the 22 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-3.8-flash-high` |
+| `model` | one of the 27 ids under `providers.agy.models` in `config/model-catalog.json` | Hard allowlist. Default: `gemini-4-carbon-high` |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory; it becomes the session workspace |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
-**Model guidance**: `gemini-3.8-flash-high` (default) for expert work. On 2026-11-13 agy 1.5.8 began listing Gemini 4 without a CLI update. There are three families, `gemini-4-carbon-*`, `gemini-4-argon-*` and `gemini-4-hydrogen-*`, the last one going up to `-xhigh`. There are also two orchestrators, `gemini-pro-orchestrator` (Carbon) and `gemini-pro-orchestrator-argon`. `gemini-4-carbon-low` completed a live call; the other Gemini 4 ids are catalogued from `agy models` only. The previous default, `gemini-3.1-pro-high`, still fails pre-flight as "not recognized". The reasoning tier is baked into most ids (`-low`, `-medium`, `-high`, `-xhigh`), so pick the tier by picking the model. Use `gemini-3.8-flash-low` for quick low-stakes checks, and `claude-sonnet-5-5-*` or `claude-opus-5-5-*` for a cross-family second opinion; `claude-sonnet-5-5-low` completed a start and a resume. They replaced `claude-sonnet-4-6` and `claude-opus-4-6-thinking`, which agy no longer lists. Use `gpt-oss-120b-medium` for an open-weights perspective.
+**Model guidance**: `gemini-4-carbon-high` (default) for expert work. On 2026-11-13 agy 1.5.8 began listing Gemini 4 without a CLI update. The current catalog includes Carbon, Argon, Neon, Hydrogen and their listed Orchestrator options. `gemini-4-carbon-low` completed a live call; the other Gemini 4 ids are catalogued from `agy models` only. The previous default, `gemini-3.1-pro-high`, still fails pre-flight as "not recognized". The reasoning tier is baked into most ids (`-low`, `-medium`, `-high`, `-xhigh`), so pick the tier by picking the model. Use `gemini-3.8-flash-low` for quick low-stakes checks, and `claude-sonnet-5-5-*` or `claude-opus-5-5-*` for a cross-family second opinion; `claude-sonnet-5-5-low` completed a start and a resume. They replaced `claude-sonnet-4-6` and `claude-opus-4-6-thinking`, which agy no longer lists. Use `gpt-oss-120b-medium` for an open-weights perspective.
 
 **No effort parameter**: the bridge never emits `--effort` and the tools do not expose it. Combining `--effort` with a tier-suffixed id fails pre-flight (`conflicts with --effort=high`), the earlier Claude ids rejected the flag outright, and a bare family id would require it. Selecting the tier through `model` makes all of those unreachable. This is the opposite of the Codex trap documented above: there, a `model` override without a matching effort override fails; here, effort simply is not a separate knob.
 
@@ -354,14 +354,14 @@ Unlike `agy-reply`, no `model` is required: a resumed grok session keeps its mod
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`), prepended to the prompt |
 | `sandbox` | `read-only`, `workspace-write` | `workspace-write` passes `--force`; `read-only` passes `--mode ask`. Default: `workspace-write`. See **Sandbox honesty** below. |
-| `model` | free-form string | Default: `auto`. Not an enum — see **Model guidance** |
+| `model` | free-form string | Default: `grok-4.7-xhigh`. Not an enum — see **Model guidance** |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min) |
 | `cwd` | path | Working directory; it also becomes the workspace |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
 **Model guidance**: the roster is free-form for the same reason as Kimi's, but a different one in detail — the CLI documents bracket-parameterised overrides such as `claude-opus-4-8[context=1m,effort=high,fast=false]`, which no allowlist can express. There is **no effort parameter**: the reasoning tier is baked into most ids (`-low`, `-high`, `-xhigh`, plus `-fast` variants), exactly as on Agy.
 
-Be careful reading `cursor-agent models`: it printed **204 ids** in August, **274** on 2026.11.05 and **284** on 2026.11.11 (it refuses to list at all until `cursor-agent login`), and the plan decides which of them run. On Free every named model failed with `Named models unavailable. Free plans can only use Auto.`, and by 2026-11-06 Composer was refused too. On 2026-11-13, on the Premium plan, the weekly allowance covered `auto`, Composer and every Grok variant (`grok-4.7-*`, `cursor-grok-4.6-*`, `cursor-grok-4.5-*`); every other family (Claude, GPT, Gemini, Kimi, GLM, DeepSeek, Muse) answered `… is not included in your weekly usage. Buy credits or switch to a Grok model`. The catalog records what completed a live call, not what the CLI listed.
+Be careful reading `cursor-agent models`: it printed **204 ids** in August, **274** on 2026.11.05 and **284** on 2026.11.11 (it refuses to list at all until `cursor-agent login`), and the plan decides which of them run. On Free every named model failed with `Named models unavailable. Free plans can only use Auto.`, and by 2026-11-06 Composer was refused too. On 2026-11-13, on the Premium plan, the weekly allowance covered `auto`, Composer and every Grok variant (`grok-4.7-*`, `cursor-grok-4.6-*`, `cursor-grok-4.5-*`); every other family (Claude, GPT, Gemini, Kimi, GLM, DeepSeek, Muse) answered `… is not included in your weekly usage. Buy credits or switch to a Grok model`. The catalog stores the CLI listing and live-call evidence separately.
 
 `auto` is **server-routed and not stable**. It resolved to `cursor-grok-4.6-high-fast` on one turn and `cursor-grok-4.6-high` on the next turn of the *same* session — so the plan restricts *choosing* a model, not *using* one. On a paid plan, pick a named id when a run has to be reproducible.
 
@@ -400,13 +400,13 @@ Be careful reading `cursor-agent models`: it printed **204 ids** in August, **27
 | `prompt` | string | **Required.** The delegation prompt (use 7-section format) |
 | `developer-instructions` | string | Expert prompt injection (from `prompts/*.md`) |
 | `sandbox` | `read-only`, `workspace-write` | `read-only` denies shell/write/edit; `workspace-write` uses `--allow-all-tools`. Default: `workspace-write`. |
-| `model` | One of the 29 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist: the account's roster from Copilot's own model catalog, plus `auto`) |
+| `model` | One of the 31 entries under `providers.copilot.models` in `config/model-catalog.json` | Override the default model (hard allowlist: the account's roster from Copilot's own model catalog, plus `auto`) |
 | `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Start-call reasoning effort. Default: `max`; resolved on start to the highest level the model supports at or below it |
 | `timeout` | 10000–3600000 ms | Hard kill deadline. Default: 900000 (15 min); raise it for long implementation runs |
 | `cwd` | path | Working directory for the task |
 | `coordination` | object | Optional Iris caller envelope; never include credentials |
 
-**Model guidance**: `gpt-6.1-sol` (default) at `max` effort for expert work. Every catalogued id completed a live start: on a Pro+ account on 2026-11-04, including `claude-opus-5.5`, `claude-fable-5.1` and `gpt-6.1-terra`, which `copilot help config` does not list, and `claude-fable-5.2` and `gemini-4-carbon` on the Max plan on 2026-11-13. The exception is `gemini-4-hydrogen`, added the same evening: the monthly allowance was already exhausted, so it has not been tried. `gpt-5.6-terra` or `gpt-6.1-terra` suit everyday tasks; use `gpt-6-luna` or `gpt-5.3-codex` for fast low-stakes checks, `claude-opus-5.5` or `claude-sonnet-5.5` for a cross-family second opinion, `auto` to let Copilot route (it picks its own model, so no `--effort` is sent), and `gpt-5.6-sol` as a fallback when 6.x quota runs dry (the Codex bridge already runs `gpt-6.1-sol` at `ultra`). Use Gemini models only when the Agy MCP server is unavailable (it covers them natively).
+**Model guidance**: `gpt-6.2-sol` (default) at `max` effort for expert work. The catalog lists the current plan's model options separately from historical live calls. Use `auto` to let Copilot route and select an effort.
 
 **Effort sets**: Start calls default to `max` and resolve each request to the highest level the chosen model supports at or below it, from the per-model sets in `effortsByModel`. The sets are not contiguous — `kimi-k3` takes `low`, `high` and `max` only — and `claude-haiku-4.5` and `auto` get no `--effort` at all. So `max` runs as `high` on `gemini-3.8-flash` and `mai-code-1.1-flash`, and as `xhigh` on `grok-4.7` and `gpt-5.3-codex`; `minimal` runs as `low` where `none` is unsupported. A reply does not carry the model, so omit `effort` there to retain the session's setting; an explicit reply override is forwarded unresolved, with `max` capped to `xhigh`.
 
