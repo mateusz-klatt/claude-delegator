@@ -190,13 +190,13 @@ Codex no longer ships its own MCP server: `codex mcp-server` was removed by open
 
 | Provider | Default | Selectable models |
 |---|---|---|
-| **Claude** | `opus` / `claude-opus-5-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases (Opus 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5) and the full IDs of both generations. |
-| **Codex** | `gpt-6.1-sol` (`ultra`) | Seven account-visible models, from `gpt-6.1-sol` through `gpt-5.6-luna`; free-form ids are passed through, and effort is clamped per model. |
-| **Agy** | `gemini-3.8-flash-high` | Six ids across Gemini 3.8 Flash, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
+| **Claude** | `opus` / `claude-opus-5-5` (`xhigh`) | `opus`, `fable`, `sonnet`, `haiku` aliases (Opus 5.5, Fable 5.2, Sonnet 5.5, Haiku 5.5) and the full IDs of both generations. |
+| **Codex** | `gpt-6.2-sol` (`ultra`) | Ten account-visible models, from `gpt-6.2-sol` through `gpt-5.6-luna`; free-form ids are passed through, and effort is clamped per model. |
+| **Agy** | `gemini-4-carbon-high` | 27 IDs across Gemini 4, Gemini 3.8 Flash, Claude and GPT-OSS; the reasoning tier is baked into the id, so there is no separate effort knob. |
 | **Kimi** | kimi's own `default_model` | Six `kimi-code/*` aliases on a subscription login, `moonshot-ai/*` on an API key; `--model` stays free-form because the roster depends on the login. Also routes to **Ollama** (local VRAM and cloud `:cloud` models) through the same bridge — see below. |
 | **Grok** | `grok-4.7` | `grok-4.7`, `grok-4.7-build-fast`, `grok-4.6` and `grok-4.5`. `read-only` adds deny rules for built-in write and shell tools. |
-| **Cursor** | `auto` | 284 ids listed; on Premium the weekly allowance covers `auto`, Composer and every Grok variant, other families need bought credits. `auto` is server-routed and not stable across turns. |
-| **Copilot** | `gpt-6.1-sol` (`max`) | 27 models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
+| **Cursor** | `grok-4.7-xhigh` | 284 ids listed; on Premium the weekly allowance covers `auto`, Composer and every Grok variant, other families need bought credits. `auto` is server-routed and not stable across turns. |
+| **Copilot** | `gpt-6.2-sol` (`max`) | 30 models across Claude, GPT, Gemini, Grok, Kimi, and MAI, plus `auto`; start calls resolve effort to each model's supported set. Reply calls should omit `effort` to retain the session setting. |
 
 The discovery sources, account-visible rosters, CLI versions, effort ceilings, live-call evidence, and rejected combinations live in [`config/model-catalog.json`](config/model-catalog.json). Availability still depends on the active account and may change after a CLI update.
 

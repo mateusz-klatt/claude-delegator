@@ -42,8 +42,8 @@ async function captureJsonRpcResponse(action) {
 
 test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.verifiedAt, "2026-11-13");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-13");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.325");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-18");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.327");
   assert.equal(catalog.providers.claude.models.length, 9);
   assert.equal(catalog.providers.claude.aliases.fable, "claude-fable-5-2");
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
@@ -53,8 +53,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
     "Claude reference must name the catalogued CLI version"
   );
 
-  assert.equal(catalog.providers.codex.cliVersion, "0.169.0");
-  assert.equal(catalog.providers.codex.models.length, 8);
+  assert.equal(catalog.providers.codex.cliVersion, "0.170.0");
+  assert.equal(catalog.providers.codex.models.length, 10);
   assert.deepEqual(
     catalog.providers.codex.models.find((model) => model.id === "gpt-6.1-sol").efforts,
     ["low", "medium", "high", "xhigh", "max", "ultra"]
@@ -65,8 +65,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.5.9");
-  assert.equal(catalog.providers.agy.models.length, 22);
+  assert.equal(catalog.providers.agy.cliVersion, "1.5.11");
+  assert.equal(catalog.providers.agy.models.length, 27);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
   // A hard allowlist, unlike the free-form roster gemini exposed: agy validates
@@ -75,8 +75,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // Most agy ids bake the reasoning tier into the name, so the bridge emits no --effort.
   assert.equal(catalog.providers.agy.emitsEffortFlag, false);
 
-  assert.equal(catalog.providers.kimi.cliVersion, "2.6.1");
-  assert.equal(catalog.providers.kimi.models.length, 6);
+  assert.equal(catalog.providers.kimi.cliVersion, "2.6.3");
+  assert.equal(catalog.providers.kimi.models.length, 17);
   assert.equal(catalog.providers.kimi.defaultModel, null);
   // The roster is user-extensible via `kimi provider catalog`, so --model stays free-form.
   assert.equal(catalog.providers.kimi.freeFormModel, true);
@@ -86,7 +86,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   // extra provider, so the catalog records it without an MCP server entry.
   assert.equal(catalog.providers.ollama.hasOwnMcpServer, false);
   const grokBridge = require("../server/grok");
-  assert.equal(catalog.providers.grok.cliVersion, "1.0.77");
+  assert.equal(catalog.providers.grok.cliVersion, "1.0.89");
   assert.deepEqual(catalog.providers.grok.models, ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"]);
   assert.equal(catalog.providers.grok.freeFormModel, false);
   assert.equal(catalog.providers.grok.emitsEffortFlag, true);
@@ -115,8 +115,8 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.ollama.cloudModelsPro.includes("kimi-k3"), false);
   assert.equal(catalog.providers.ollama.cloudModelsFree.includes("kimi-k3"), false);
 
-  assert.equal(catalog.providers.copilot.cliVersion, "1.0.112");
-  assert.equal(catalog.providers.copilot.models.length, 29);
+  assert.equal(catalog.providers.copilot.cliVersion, "1.0.114");
+  assert.equal(catalog.providers.copilot.models.length, 31);
   assert.deepEqual(
     catalog.providers.copilot.efforts,
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -163,7 +163,7 @@ test("Copilot tool schema is sourced from the catalog and resolves effort per mo
   assert.equal(copilotBridge.resolveEffort("gpt-6.1-sol", "none"), "low");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "max"), "max");
   assert.equal(copilotBridge.resolveEffort("gpt-5.6-sol", "minimal"), "none");
-  assert.equal(copilotBridge.resolveEffort("claude-opus-5", "max"), "max");
+  assert.equal(copilotBridge.resolveEffort("claude-opus-5.5", "max"), "max");
   assert.equal(copilotBridge.resolveEffort("grok-4.7", undefined), "xhigh");
   assert.equal(copilotBridge.resolveEffort("mai-code-1.1-flash", undefined), "high");
   assert.equal(copilotBridge.resolveEffort("kimi-k3", "xhigh"), "high");
@@ -249,12 +249,12 @@ test("bridge validation rejects token-bearing coordination before invoking a CLI
   }
 });
 
-test("the Cursor catalog entry records what the account can use, not what the CLI lists", () => {
+test("the Cursor catalog entry separates the full CLI listing from verified live models", () => {
   const catalog = require("../config/model-catalog.json");
   const cursorBridge = require("../server/cursor");
   const cursor = catalog.providers.cursor;
 
-  assert.equal(cursor.defaultModel, "auto");
+  assert.equal(cursor.defaultModel, "grok-4.7-xhigh");
   // Free-form, like kimi: the CLI documents bracket-parameterised overrides that
   // no enum can express, so the bridge forwards the string.
   assert.equal(cursor.freeFormModel, true);
@@ -263,10 +263,10 @@ test("the Cursor catalog entry records what the account can use, not what the CL
   // The tier is baked into the model id, as on agy, so no effort flag exists.
   assert.equal(cursor.emitsEffortFlag, false);
 
-  // `cursor-agent models` printed 204 ids while only these completed a live call;
-  // the entry must record the second number, not the first.
+  // The selector exposes more IDs than have completed live calls.
+  assert.ok(cursor.verifiedModels.every((model) => cursor.models.includes(model)));
   assert.ok(cursor.models.includes("auto"));
-  assert.ok(cursor.models.length < 10, "models must list what ran, not what was listed");
+  assert.equal(new Set(cursor.models).size, 284);
   assert.match(cursor.discoverySource, /204/);
   assert.match(cursor.discoverySource, /Free plans can only use Auto/);
 
