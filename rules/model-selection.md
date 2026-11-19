@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-Use `config/model-catalog.json` for the account-specific model snapshots. Rosters were refreshed on 2026-11-13 for the historical live-call snapshot. CLI versions were rechecked on 2026-11-18 alongside fresh model discovery. Claude Code 2.1.327 confirmed its default and aliases; the catalog distinguishes the installed registry from the previously verified account roster.
+Use `config/model-catalog.json` for the account-specific model snapshots. Rosters were refreshed on 2026-11-13 for the historical live-call snapshot. CLI versions were rechecked on 2026-11-19 (Claude Code 2.1.328, Agy 1.5.12, cursor-agent 2026.11.19), with no roster change since the fresh model discovery of 2026-11-18. Claude Code confirmed its default and aliases; the catalog distinguishes the installed registry from the previously verified account roster.
 
 ## Expert Directory
 
