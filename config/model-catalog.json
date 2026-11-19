@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "verifiedAt": "2026-11-13",
-  "cliVersionsCheckedAt": "2026-11-18",
-  "cliVersionNote": "Local versions checked on 2026-11-18. Current catalog listings are distinct from historical live-call evidence. Claude Code /model confirmed its default and aliases, but did not enumerate full model IDs.",
+  "cliVersionsCheckedAt": "2026-11-19",
+  "cliVersionNote": "Rescanned on 2026-11-19 after updating every CLI: claude 2.1.328, agy 1.5.12 and cursor-agent 2026.11.19 are new; codex 0.170.0, copilot 1.0.114, kimi 2.6.3 and grok 1.0.89 were current. No roster changed: codex 10, copilot 31 (same effort sets), grok 4, kimi 17, agy 27, cursor 284. Local versions checked on 2026-11-18. Current catalog listings are distinct from historical live-call evidence. Claude Code /model confirmed its default and aliases, but did not enumerate full model IDs.",
   "scope": "Version- and account-specific discovery snapshot. A listed model is not necessarily live-call verified; consult each provider's discoverySource and liveCalls.",
   "providers": {
     "claude": {
-      "cliVersion": "2.1.327",
+      "cliVersion": "2.1.328",
       "registryModels": [
         "claude-3-5-haiku",
         "claude-3-5-sonnet",
@@ -33,7 +33,7 @@
         "claude-sonnet-5",
         "claude-sonnet-5-5"
       ],
-      "discoverySource": "2026-11-18: Local /model reported Opus 5.5 as the default and listed aliases; the installed registry exposes registryModels, and models retains the previously verified account roster. Earlier: The 2.1.325 bundle's registry, 2026-11-13 evening: the same model ids as 2.1.323. Earlier: The CLI's own model registry in the 2.1.323 bundle ({id, family, display_name} entries), read on 2026-11-13. claude-fable-5-2 is new, and `--model fable` now resolves to it: measured, modelUsage reported claude-fable-5-2. The registry also has a mythos family (claude-mythos-5, claude-mythos-5-1, claude-mythos-5-2); all three answered 'There's an issue with the selected model … you may not have access' and `--model mythos` is unrecognized, so none is catalogued. Earlier: Full ids read from the installed 2.1.309 CLI bundle on 2026-10-23, where claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5 and claude-haiku-5-5 are the newest id of each family; the previous generation stays listed because the bundle still carries it. The /model selector is interactive and cannot be enumerated headlessly, so account access is established only by liveCalls.",
+      "discoverySource": "The 2.1.328 bundle's registry, 2026-11-19: every catalogued id is still present; the extra registry ids are older families and the inaccessible Mythos models, as before. Earlier: 2026-11-18: Local /model reported Opus 5.5 as the default and listed aliases; the installed registry exposes registryModels, and models retains the previously verified account roster. Earlier: The 2.1.325 bundle's registry, 2026-11-13 evening: the same model ids as 2.1.323. Earlier: The CLI's own model registry in the 2.1.323 bundle ({id, family, display_name} entries), read on 2026-11-13. claude-fable-5-2 is new, and `--model fable` now resolves to it: measured, modelUsage reported claude-fable-5-2. The registry also has a mythos family (claude-mythos-5, claude-mythos-5-1, claude-mythos-5-2); all three answered 'There's an issue with the selected model … you may not have access' and `--model mythos` is unrecognized, so none is catalogued. Earlier: Full ids read from the installed 2.1.309 CLI bundle on 2026-10-23, where claude-opus-5-5, claude-fable-5-1, claude-sonnet-5-5 and claude-haiku-5-5 are the newest id of each family; the previous generation stays listed because the bundle still carries it. The /model selector is interactive and cannot be enumerated headlessly, so account access is established only by liveCalls.",
       "defaultModel": "claude-opus-5-5",
       "defaultEffort": "xhigh",
       "efforts": [
@@ -311,8 +311,8 @@
       "contextNote": "A repository AGENTS.md in cwd is loaded into the session: measured through the bridge, a planted sentinel returned PELICAN-42 while a clean directory returned NO_CODEWORD. Unlike kimi and grok there is an off switch — `project_doc_max_bytes = 0` (in config.toml, or as a -c override) made the same planted file return NO_CODEWORD. The bridge does not set it, because project instructions are normally wanted; an operator delegating into code they do not control can."
     },
     "agy": {
-      "cliVersion": "1.5.11",
-      "discoverySource": "2026-11-18: Authenticated agy models listed 27 IDs. Earlier: `agy models` on 1.5.9, 2026-11-14: unchanged, the same 22 ids. Earlier: `agy models` on 1.5.8, 2026-11-13 evening: the server-side roster grew from 6 to 22 ids with no CLI update. New: gemini-4-carbon-{low,medium,high}, gemini-4-argon-{low,medium,high}, gemini-4-hydrogen-{low,medium,high,xhigh}, gemini-pro-orchestrator (Orchestrator (Carbon)), gemini-pro-orchestrator-argon, claude-opus-5-5-{low,medium,high} and claude-sonnet-5-5-{low,medium,high}. Gone: claude-sonnet-4-6 and claude-opus-4-6-thinking. The change came with the account's move to an Agy Pro subscription: usage then reported the Gemini weekly group at 17.7% instead of the morning's 100%, and a 5-hour window per group appeared. gemini-4-carbon-low answered a live call. Earlier: `agy models` on 1.5.8, 2026-11-13: unchanged, six ids. Earlier: `agy models` on 2026-10-23 returned 6 ids, down from 14 on 1.1.14: every Gemini 3.1 Pro id and every Flash generation before 3.8 is gone, including the previous default gemini-3.1-pro-high. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
+      "cliVersion": "1.5.12",
+      "discoverySource": "`agy models` on 1.5.12, 2026-11-19: unchanged, the same 27 ids. Earlier: 2026-11-18: Authenticated agy models listed 27 IDs. Earlier: `agy models` on 1.5.9, 2026-11-14: unchanged, the same 22 ids. Earlier: `agy models` on 1.5.8, 2026-11-13 evening: the server-side roster grew from 6 to 22 ids with no CLI update. New: gemini-4-carbon-{low,medium,high}, gemini-4-argon-{low,medium,high}, gemini-4-hydrogen-{low,medium,high,xhigh}, gemini-pro-orchestrator (Orchestrator (Carbon)), gemini-pro-orchestrator-argon, claude-opus-5-5-{low,medium,high} and claude-sonnet-5-5-{low,medium,high}. Gone: claude-sonnet-4-6 and claude-opus-4-6-thinking. The change came with the account's move to an Agy Pro subscription: usage then reported the Gemini weekly group at 17.7% instead of the morning's 100%, and a 5-hour window per group appeared. gemini-4-carbon-low answered a live call. Earlier: `agy models` on 1.5.8, 2026-11-13: unchanged, six ids. Earlier: `agy models` on 2026-10-23 returned 6 ids, down from 14 on 1.1.14: every Gemini 3.1 Pro id and every Flash generation before 3.8 is gone, including the previous default gemini-3.1-pro-high. Hard allowlist: --model is validated by the CLI and an unknown id fails pre-flight with status ERROR before any work happens.",
       "defaultModel": "gemini-4-carbon-high",
       "freeFormModel": false,
       "emitsEffortFlag": false,
@@ -872,6 +872,16 @@
           "result": "success",
           "evidenceDate": "2026-11-13",
           "note": "kimi 2.6.1 through the 3.3.2 bridge with no model passed, so kimi's own default_model ran; the resume kept the session id and its context."
+        },
+        {
+          "model": "openai-api/gpt-4o-mini",
+          "transport": "uniform bridge",
+          "operations": [
+            "start"
+          ],
+          "result": "rejected by the API",
+          "evidenceDate": "2026-11-14",
+          "note": "kimi 2.6.1 treats every gpt-* model as a reasoning model and always sends a reasoning parameter; gpt-4o and gpt-4o-mini reject it ('Unrecognized request argument supplied: reasoning_effort', and 'reasoning.effort is not supported' with type openai_responses). support_efforts = [] did not stop it, and with [thinking] disabled kimi demanded an off_effort it would also send. These two openai-api aliases are host-specific selector entries that cannot complete a call through kimi."
         }
       ],
       "authNote": "Kimi Code supports both a subscription (`kimi login`, device-code flow) and an API key, but subscription signup was not yet open as of 2026-08-17, so the API key is the practical path. The key can live as `api_key` under [providers.*] in ~/.kimi-code/config.toml, or come from KIMI_API_KEY / MOONSHOT_API_KEY in the environment, which the bridge passes through untouched.",
@@ -984,7 +994,7 @@
       ]
     },
     "cursor": {
-      "cliVersion": "2026.11.17-f532c45",
+      "cliVersion": "2026.11.19-f005e9d",
       "verifiedModels": [
         "auto",
         "composer-2.5",
@@ -995,7 +1005,7 @@
         "cursor-grok-4.6-high",
         "cursor-grok-4.5-high"
       ],
-      "discoverySource": "2026-11-18: cursor-agent --list-models returned 284 IDs. cursor-agent about reported Super and Grok 4.7 500K Extra High. Listed IDs are selector entries; liveCalls records separately tested combinations. Earlier: `cursor-agent models` on 2026.11.13, 2026-11-13 evening: the same 280 ids as on 2026.11.11, every catalogued id still listed. Earlier: Premium plan, 2026-11-13 (2026.11.11): `cursor-agent models` printed 284 ids. The eight listed here completed a live call. The weekly allowance covers auto, Composer and every Grok variant (grok-4.7-*, cursor-grok-4.6-*, cursor-grok-4.5-*); a representative of every other family (claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2, claude-haiku-5-5, gpt-5.6-sol, gpt-5.3-codex, gemini-4-hydrogen, kimi-k3, glm-5.2, deepseek-v41-flash-1017, muse-spark-1.3) answered 'not included in your weekly usage. Buy credits or switch to a Grok model'. Earlier: On 2026-11-06 the Free plan refused composer-2.5-fast with 'Model unavailable on Free. Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings', then refused auto too once its usage limit was reached. Only auto is catalogued; the listing offers grok-4.7-* and grok-4.6-* variants, but which of them 'fixed settings' means was not measured. Earlier: `cursor-agent models` printed 204 ids on 2026-08-17, 265 on 2026-10-23 (2026.10.14) and 274 on 2026-11-05 (2026.11.05, after login; logged out it refuses with 'Authentication required. Run 'agent login' …'). The listing is what the CLI knows, not what the account may use: on this Free plan every named third-party id fails with 'Named models unavailable. Free plans can only use Auto.' before any work happens — re-measured on 2026-10-23 with grok-4.7-low. `auto` completed a live start and reply through the bridge on 2026-10-23; `composer-2.5` and `composer-2.5-fast` are still listed and last completed a live call on 2026-08-17.",
+      "discoverySource": "`cursor-agent models` on 2026.11.19, 2026-11-19: 284 listed, every catalogued id present. Earlier: 2026-11-18: cursor-agent --list-models returned 284 IDs. cursor-agent about reported Super and Grok 4.7 500K Extra High. Listed IDs are selector entries; liveCalls records separately tested combinations. Earlier: `cursor-agent models` on 2026.11.13, 2026-11-13 evening: the same 280 ids as on 2026.11.11, every catalogued id still listed. Earlier: Premium plan, 2026-11-13 (2026.11.11): `cursor-agent models` printed 284 ids. The eight listed here completed a live call. The weekly allowance covers auto, Composer and every Grok variant (grok-4.7-*, cursor-grok-4.6-*, cursor-grok-4.5-*); a representative of every other family (claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2, claude-haiku-5-5, gpt-5.6-sol, gpt-5.3-codex, gemini-4-hydrogen, kimi-k3, glm-5.2, deepseek-v41-flash-1017, muse-spark-1.3) answered 'not included in your weekly usage. Buy credits or switch to a Grok model'. Earlier: On 2026-11-06 the Free plan refused composer-2.5-fast with 'Model unavailable on Free. Free includes Grok 4.7, Grok 4.6, and Auto with fixed settings', then refused auto too once its usage limit was reached. Only auto is catalogued; the listing offers grok-4.7-* and grok-4.6-* variants, but which of them 'fixed settings' means was not measured. Earlier: `cursor-agent models` printed 204 ids on 2026-08-17, 265 on 2026-10-23 (2026.10.14) and 274 on 2026-11-05 (2026.11.05, after login; logged out it refuses with 'Authentication required. Run 'agent login' …'). The listing is what the CLI knows, not what the account may use: on this Free plan every named third-party id fails with 'Named models unavailable. Free plans can only use Auto.' before any work happens — re-measured on 2026-10-23 with grok-4.7-low. `auto` completed a live start and reply through the bridge on 2026-10-23; `composer-2.5` and `composer-2.5-fast` are still listed and last completed a live call on 2026-08-17.",
       "defaultModel": "grok-4.7-xhigh",
       "freeFormModel": true,
       "emitsEffortFlag": false,

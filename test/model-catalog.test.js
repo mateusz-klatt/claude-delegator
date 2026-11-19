@@ -42,8 +42,8 @@ async function captureJsonRpcResponse(action) {
 
 test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.verifiedAt, "2026-11-13");
-  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-18");
-  assert.equal(catalog.providers.claude.cliVersion, "2.1.327");
+  assert.equal(catalog.cliVersionsCheckedAt, "2026-11-19");
+  assert.equal(catalog.providers.claude.cliVersion, "2.1.328");
   assert.equal(catalog.providers.claude.models.length, 9);
   assert.equal(catalog.providers.claude.aliases.fable, "claude-fable-5-2");
   assert.equal(catalog.providers.claude.aliases.opus, "claude-opus-5-5");
@@ -65,7 +65,7 @@ test("model catalog records the empirically discovered CLI rosters", () => {
   assert.equal(catalog.providers.codex.freeFormModel, true);
 
   assert.equal(catalog.providers.gemini, undefined, "gemini was replaced by agy");
-  assert.equal(catalog.providers.agy.cliVersion, "1.5.11");
+  assert.equal(catalog.providers.agy.cliVersion, "1.5.12");
   assert.equal(catalog.providers.agy.models.length, 27);
   // The 1.9.2 default was rejected pre-flight by agy 1.4.6, so it must not return.
   assert.equal(catalog.providers.agy.models.includes("gemini-3.1-pro-high"), false);
