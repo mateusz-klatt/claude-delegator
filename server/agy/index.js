@@ -313,33 +313,57 @@ function buildReplyArgs(args, coordination, threadId) {
   ];
 }
 
-// agy keeps one SQLite file per conversation, named by its id, under its own
-// directory in the user's home. Measured on agy 1.5.16 on WSL.
-function conversationsDirectory(home = os.homedir()) {
+// agy keeps one file per conversation, named by its id, under its own
+// directory in the user's home: SQLite `.db` (measured on agy 1.5.16 on WSL),
+// or protobuf `.pb` for histories agy restored from that older format
+// (google-antigravity/antigravity-cli#1602). A launcher that moves agy's
+// store elsewhere names the directory in CONVERSATIONS_DIR_VARIABLE.
+const CONVERSATIONS_DIR_VARIABLE = "CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR";
+const CONVERSATION_SUFFIXES = [".db", ".pb"];
+
+function conversationsDirectory(home = os.homedir(), environment = process.env) {
+  const override = environment[CONVERSATIONS_DIR_VARIABLE];
+  if (isNonEmptyString(override)) return override.trim();
   return path.join(home, ".gemini", "antigravity-cli", "conversations");
 }
 
 const CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
+function holdsConversation(directory, entries, threadId) {
+  // Exact names, so a case-insensitive volume cannot pass an alias, and
+  // regular files only (a symlink counts by its target).
+  for (const suffix of CONVERSATION_SUFFIXES) {
+    const name = `${threadId}${suffix}`;
+    if (!entries.includes(name)) continue;
+    try {
+      if (fs.statSync(path.join(directory, name)).isFile()) return true;
+    } catch {
+      // A dangling link holds no conversation.
+    }
+  }
+  return false;
+}
+
 // An unknown --conversation id does not fail in agy: it runs the prompt in a
 // different conversation, which a fleet session observed reaching another
 // live one. The check after the run (runAgy) catches the mismatch only once
 // the prompt has been sent and possibly acted on, so refuse an id agy does not
-// hold before anything is sent. When the directory itself is absent the
-// layout is not one we measured, and the check after the run stays the only one.
+// hold before anything is sent. When the directory does not exist the layout
+// is not one we measured, and the check after the run stays the only one; a
+// directory that exists but cannot be read is refused instead of guessed at.
 function unknownConversation(threadId, directory = conversationsDirectory()) {
   if (!CONVERSATION_ID.test(threadId)) {
     return `Invalid params: 'threadId' ${JSON.stringify(threadId)} is not an agy conversation id; nothing was sent`;
   }
-  let present;
+  let entries;
   try {
-    present = fs.statSync(directory).isDirectory();
-  } catch {
-    return null;
+    entries = fs.readdirSync(directory);
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+    return `Invalid params: cannot read agy's conversations in ${directory} (${error.code || error.message}); nothing was sent. Set ${CONVERSATIONS_DIR_VARIABLE} if agy keeps them elsewhere`;
   }
-  if (!present) return null;
-  if (fs.existsSync(path.join(directory, `${threadId}.db`))) return null;
-  return `Invalid params: agy holds no conversation ${threadId} on this machine (looked in ${directory}); nothing was sent. Start a new session with agy instead`;
+  if (holdsConversation(directory, entries, threadId)) return null;
+  return `Invalid params: agy holds no conversation ${threadId} in ${directory}; nothing was sent. Start a new session with agy, or set ${CONVERSATIONS_DIR_VARIABLE} if agy keeps its conversations elsewhere`;
 }
 
 function validateAgyArgs(name, args) {
