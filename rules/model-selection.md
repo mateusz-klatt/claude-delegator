@@ -20,7 +20,7 @@ Before delegating, check which MCP tools are available in the current environmen
 2. **If only one is available**: Use the available provider regardless of the task type.
 3. **If none are available**: Do not delegate. In Claude Code, suggest `/claude-delegator:setup`; in another MCP client, point to `config/codex-mcp.example.toml` or that client's MCP configuration.
 
-Use `config/model-catalog.json` for the account-specific model snapshots. Rosters were refreshed on 2026-11-13 for the historical live-call snapshot. CLI versions were rechecked on 2026-11-19 (Claude Code 2.1.328, Agy 1.5.12, cursor-agent 2026.11.19), with no roster change since the fresh model discovery of 2026-11-18. Claude Code confirmed its default and aliases; the catalog distinguishes the installed registry from the previously verified account roster.
+Use `config/model-catalog.json` for the account-specific model snapshots. Rosters were refreshed on 2026-11-13 for the historical live-call snapshot. CLI versions were rechecked on 2026-11-25 (Claude Code 2.1.332, Codex 0.172.0, Agy 1.5.17, Copilot 1.0.115, Kimi 2.7.3, Grok 1.0.92, cursor-agent 2026.11.22), with no roster change since the fresh model discovery of 2026-11-18. Claude Code confirmed its default and aliases; the catalog distinguishes the installed registry from the previously verified account roster.
 
 ## Expert Directory
 
@@ -119,7 +119,7 @@ The mode is determined by the task, not the expert, and must always be stated in
 
 ## Codex Parameters Reference
 
-The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.169.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
+The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roster rechecked on 0.172.0) with the same start/reply contract as every other provider. Codex removed its own `codex mcp-server` — deprecated in 0.149.1, deleted by openai/codex#42993 — and `codex app-server` speaks Codex's own JSON-RPC protocol rather than MCP, so neither can be registered directly any more.
 
 ### `mcp__plugin_claude-delegator_codex__codex` (Start Session)
 
@@ -416,7 +416,7 @@ Be careful reading `cursor-agent models`: it printed **204 ids** in August, **27
 
 ## Claude Parameters Reference (external orchestrators)
 
-The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.1.325) with the same start/reply contract used by the other providers.
+The Claude bridge wraps Claude Code (measured on 2.1.309, roster rechecked on 2.1.332) with the same start/reply contract used by the other providers.
 
 | Parameter | Values | Notes |
 |-----------|--------|-------|
