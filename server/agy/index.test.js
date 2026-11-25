@@ -45,7 +45,9 @@ function createAgyStub() {
   // The bridge refuses a reply whose conversation agy does not hold, so the
   // stub gets a home of its own with the conversations the suite resumes.
   const homePath = path.join(directory, "home");
-  const conversationsPath = bridge.conversationsDirectory(homePath);
+  // Never the runner's own CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: the suite seeds and
+  // deletes this directory.
+  const conversationsPath = bridge.conversationsDirectory(homePath, {});
   fs.mkdirSync(conversationsPath, { recursive: true });
   for (const id of ["conversation-original", "conversation-that-expired", "conversation-x"]) {
     fs.writeFileSync(path.join(conversationsPath, `${id}.db`), "");
@@ -573,6 +575,25 @@ test("leaves the check to the run when agy's conversation directory is absent", 
   assert.equal(response.result.threadId, "conversation-never-seen");
   assert.equal(readCalls(server.capturePath).length, 1);
   await server.close();
+});
+
+test("keeps the fixture's store inside its own home whatever the runner sets", async () => {
+  const sentinel = fs.mkdtempSync(path.join(os.tmpdir(), "agy-runner-store-"));
+  temporaryDirectories.push(sentinel);
+  fs.writeFileSync(path.join(sentinel, "keep.db"), "");
+  const previous = process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR;
+  process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR = sentinel;
+  try {
+    const server = startServer();
+    assert.notEqual(server.conversationsPath, sentinel);
+    assert.ok(fs.existsSync(path.join(server.conversationsPath, "conversation-original.db")));
+    fs.rmSync(server.conversationsPath, { recursive: true, force: true });
+    await server.close();
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR;
+    else process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR = previous;
+  }
+  assert.deepEqual(fs.readdirSync(sentinel), ["keep.db"]);
 });
 
 test("resumes the conversation a start returned", async () => {
