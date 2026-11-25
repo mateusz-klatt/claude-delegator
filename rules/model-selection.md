@@ -187,6 +187,8 @@ The Codex bridge wraps `codex exec --json` (measured on Codex CLI 0.164.0, roste
 
 **Reply re-pins the model**: unlike every sibling bridge, `agy-reply` **requires** `model`. A resumed agy conversation inherits neither its model nor its workspace — omitting the flag silently falls back to the user's `settings.json` default, which was observed switching a Flash-tier session to Gemini 3.7 Flash (High) mid-conversation. Echo back the model the start call used, and pass the same `cwd`.
 
+**An unknown conversation is refused before anything is sent**: agy does not fail on a `--conversation` id it does not hold. It runs the prompt in a different conversation, and a fleet session saw a placeholder id reach another live one. The bridge used to detect the mismatch only after the run, when the prompt had already been acted on. It now refuses with -32602, before starting agy, any id that is not a plain conversation id, or that has no regular file named exactly `<id>.db` or `<id>.pb` in `~/.gemini/antigravity-cli/conversations/`. `.db` is the layout measured on agy 1.5.16 on WSL; `.pb` holds histories agy restored from its older format. A directory that exists but cannot be read is refused too. When the directory does not exist at all, the layout is unmeasured and the check after the run remains the only one. A launcher that moves agy's store, through another home or agy's own data-directory flags, must name the directory in `CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR`, or every reply is checked against the default store.
+
 ### `mcp__plugin_claude-delegator_agy__agy-reply` (Continue Session)
 
 | Parameter | Values | Notes |

@@ -42,6 +42,16 @@ function createAgyStub() {
   const workspacePath = path.join(directory, "workspace");
   const scriptPath = path.join(directory, "agy-stub.js");
   fs.mkdirSync(workspacePath);
+  // The bridge refuses a reply whose conversation agy does not hold, so the
+  // stub gets a home of its own with the conversations the suite resumes.
+  const homePath = path.join(directory, "home");
+  // Never the runner's own CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: the suite seeds and
+  // deletes this directory.
+  const conversationsPath = bridge.conversationsDirectory(homePath, {});
+  fs.mkdirSync(conversationsPath, { recursive: true });
+  for (const id of ["conversation-original", "conversation-that-expired", "conversation-x"]) {
+    fs.writeFileSync(path.join(conversationsPath, `${id}.db`), "");
+  }
 
   const script = `#!/usr/bin/env node
 "use strict";
@@ -132,8 +142,13 @@ if (prompt.includes("WRONG_CONVERSATION")) {
 }
 
 const suffix = requestedConversation ? "reply" : "start";
+const conversationId = requestedConversation || ("conversation-" + suffix + "-" + permissive);
+if (!requestedConversation && process.env.AGY_STUB_CONVERSATIONS) {
+  // Like agy, keep the conversation a start created, so a reply can find it.
+  fs.writeFileSync(require("node:path").join(process.env.AGY_STUB_CONVERSATIONS, conversationId + ".db"), "");
+}
 process.stdout.write(JSON.stringify({
-  conversation_id: requestedConversation || ("conversation-" + suffix + "-" + permissive),
+  conversation_id: conversationId,
   status: "SUCCESS",
   response: suffix + " result via " + permissive
 }) + "\\n");
@@ -154,9 +169,15 @@ process.stdout.write(JSON.stringify({
     : "/usr/bin:/bin";
   return {
     capturePath,
+    conversationsPath,
+    homePath,
     workspacePath,
     env: {
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
+      HOME: homePath,
+      USERPROFILE: homePath,
+      AGY_STUB_CONVERSATIONS: conversationsPath,
+      CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: "",
       AGY_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
       IRIS_EXECUTION: "ex_caller",
@@ -259,6 +280,7 @@ function startServer(extraEnv = {}) {
 
   return {
     capturePath: stub.capturePath,
+    conversationsPath: stub.conversationsPath,
     workspacePath: stub.workspacePath,
     request,
     requestAndCancelInSingleWrite,
@@ -515,6 +537,140 @@ test("fails loudly when agy resumes a different conversation", async () => {
   assert.match(response.result.content[0].text, /requested conversation-that-expired/);
   assert.match(response.result.content[0].text, /received conversation-somewhere-else/);
   await server.close();
+});
+
+test("refuses a reply to a conversation agy does not hold, before sending anything", async () => {
+  // A fleet session sent agy-reply a placeholder id: the bridge reported a
+  // different conversation, but agy had already run the prompt in another one.
+  const server = startServer();
+  for (const threadId of ["PLACEHOLDER", "0f6e1c1a-0000-4000-8000-000000000000"]) {
+    const response = await server.request("tools/call", {
+      name: "agy-reply",
+      arguments: { threadId, prompt: "Continue", model: "gemini-3.8-flash-low" }
+    });
+    assert.equal(response.error.code, -32602);
+    assert.match(response.error.message, /agy holds no conversation/);
+    assert.match(response.error.message, /nothing was sent/);
+  }
+  for (const threadId of ["../conversation-original", "conversation/original", ".hidden", "a b"]) {
+    const response = await server.request("tools/call", {
+      name: "agy-reply",
+      arguments: { threadId, prompt: "Continue", model: "gemini-3.8-flash-low" }
+    });
+    assert.equal(response.error.code, -32602);
+    assert.match(response.error.message, /is not an agy conversation id; nothing was sent/);
+  }
+  assert.deepEqual(readCalls(server.capturePath), []);
+  await server.close();
+});
+
+test("leaves the check to the run when agy's conversation directory is absent", async () => {
+  const server = startServer();
+  fs.rmSync(server.conversationsPath, { recursive: true, force: true });
+  const response = await server.request("tools/call", {
+    name: "agy-reply",
+    arguments: { threadId: "conversation-never-seen", prompt: "Continue", model: "gemini-3.8-flash-low" }
+  });
+  assert.equal(response.error, undefined);
+  assert.equal(response.result.threadId, "conversation-never-seen");
+  assert.equal(readCalls(server.capturePath).length, 1);
+  await server.close();
+});
+
+test("keeps the fixture's store inside its own home whatever the runner sets", async () => {
+  const sentinel = fs.mkdtempSync(path.join(os.tmpdir(), "agy-runner-store-"));
+  temporaryDirectories.push(sentinel);
+  fs.writeFileSync(path.join(sentinel, "keep.db"), "");
+  const previous = process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR;
+  process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR = sentinel;
+  try {
+    const server = startServer();
+    assert.notEqual(server.conversationsPath, sentinel);
+    assert.ok(fs.existsSync(path.join(server.conversationsPath, "conversation-original.db")));
+    fs.rmSync(server.conversationsPath, { recursive: true, force: true });
+    await server.close();
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR;
+    else process.env.CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR = previous;
+  }
+  assert.deepEqual(fs.readdirSync(sentinel), ["keep.db"]);
+});
+
+test("resumes the conversation a start returned", async () => {
+  const server = startServer();
+  const start = await server.request("tools/call", { name: "agy", arguments: { prompt: "Begin" } });
+  const reply = await server.request("tools/call", {
+    name: "agy-reply",
+    arguments: { threadId: start.result.threadId, prompt: "Continue", model: "gemini-3.8-flash-low" }
+  });
+  assert.equal(reply.error, undefined);
+  assert.equal(reply.result.threadId, start.result.threadId);
+  assert.equal(readCalls(server.capturePath).length, 2);
+  await server.close();
+});
+
+test("checks the conversations directory a launcher names instead of the default", async () => {
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "agy-profile-"));
+  temporaryDirectories.push(elsewhere);
+  fs.writeFileSync(path.join(elsewhere, "conversation-profile-only.db"), "");
+  const server = startServer({ CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: elsewhere });
+  const held = await server.request("tools/call", {
+    name: "agy-reply",
+    arguments: { threadId: "conversation-profile-only", prompt: "Continue", model: "gemini-3.8-flash-low" }
+  });
+  assert.equal(held.error, undefined);
+  // Held only by the default store, which the launcher does not use.
+  const defaultOnly = await server.request("tools/call", {
+    name: "agy-reply",
+    arguments: { threadId: "conversation-original", prompt: "Continue", model: "gemini-3.8-flash-low" }
+  });
+  assert.equal(defaultOnly.error.code, -32602);
+  assert.match(defaultOnly.error.message, /CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR/);
+  assert.equal(readCalls(server.capturePath).length, 1);
+  await server.close();
+});
+
+test("accepts exact regular .db and .pb conversation files only", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "agy-conversations-"));
+  temporaryDirectories.push(directory);
+  fs.writeFileSync(path.join(directory, "conversation-sqlite.db"), "");
+  fs.writeFileSync(path.join(directory, "conversation-restored.pb"), "");
+  fs.mkdirSync(path.join(directory, "conversation-folder.db"));
+  fs.writeFileSync(path.join(directory, "conversation-other.txt"), "");
+  assert.equal(bridge.unknownConversation("conversation-sqlite", directory), null);
+  assert.equal(bridge.unknownConversation("conversation-restored", directory), null);
+  for (const id of ["conversation-folder", "conversation-other", "CONVERSATION-SQLITE", "conversation-absent"]) {
+    assert.match(bridge.unknownConversation(id, directory), /agy holds no conversation/);
+  }
+  if (process.platform !== "win32") {
+    fs.symlinkSync(path.join(directory, "conversation-sqlite.db"), path.join(directory, "conversation-linked.db"));
+    fs.symlinkSync(path.join(directory, "missing-target.db"), path.join(directory, "conversation-dangling.db"));
+    assert.equal(bridge.unknownConversation("conversation-linked", directory), null);
+    assert.match(bridge.unknownConversation("conversation-dangling", directory), /agy holds no conversation/);
+  }
+});
+
+test("refuses when agy's conversations directory exists but cannot be read", { skip: process.platform === "win32" }, () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "agy-conversations-"));
+  temporaryDirectories.push(directory);
+  const loop = path.join(directory, "loop");
+  fs.symlinkSync(loop, loop);
+  assert.match(bridge.unknownConversation("conversation-any", loop), /cannot read agy's conversations .*ELOOP.*nothing was sent/);
+});
+
+test("names the default store, or the one a launcher sets", () => {
+  const home = path.join(os.tmpdir(), "h");
+  assert.equal(bridge.conversationsDirectory(home, {}), path.join(home, ".gemini", "antigravity-cli", "conversations"));
+  assert.equal(bridge.conversationsDirectory(home, { CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: "  " }), path.join(home, ".gemini", "antigravity-cli", "conversations"));
+  assert.equal(bridge.conversationsDirectory(home, { CLAUDE_DELEGATOR_AGY_CONVERSATIONS_DIR: " /elsewhere " }), "/elsewhere");
+});
+
+test("treats a conversations path that is not a directory as an unmeasured layout", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "agy-conversations-"));
+  temporaryDirectories.push(directory);
+  const file = path.join(directory, "conversations");
+  fs.writeFileSync(file, "");
+  assert.equal(bridge.unknownConversation("conversation-anything", file), null);
 });
 
 test("refuses to delegate from inside an already delegated agy session", async () => {
