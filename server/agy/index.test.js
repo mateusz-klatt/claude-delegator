@@ -42,6 +42,14 @@ function createAgyStub() {
   const workspacePath = path.join(directory, "workspace");
   const scriptPath = path.join(directory, "agy-stub.js");
   fs.mkdirSync(workspacePath);
+  // The bridge refuses a reply whose conversation agy does not hold, so the
+  // stub gets a home of its own with the conversations the suite resumes.
+  const homePath = path.join(directory, "home");
+  const conversationsPath = bridge.conversationsDirectory(homePath);
+  fs.mkdirSync(conversationsPath, { recursive: true });
+  for (const id of ["conversation-original", "conversation-that-expired", "conversation-x"]) {
+    fs.writeFileSync(path.join(conversationsPath, `${id}.db`), "");
+  }
 
   const script = `#!/usr/bin/env node
 "use strict";
@@ -154,9 +162,13 @@ process.stdout.write(JSON.stringify({
     : "/usr/bin:/bin";
   return {
     capturePath,
+    conversationsPath,
+    homePath,
     workspacePath,
     env: {
       ...withPath(process.env, [directory, path.dirname(process.execPath), systemBinaryPath].join(path.delimiter)),
+      HOME: homePath,
+      USERPROFILE: homePath,
       AGY_STUB_CAPTURE: capturePath,
       CLAUDECODE: "nested-session-marker",
       IRIS_EXECUTION: "ex_caller",
@@ -259,6 +271,7 @@ function startServer(extraEnv = {}) {
 
   return {
     capturePath: stub.capturePath,
+    conversationsPath: stub.conversationsPath,
     workspacePath: stub.workspacePath,
     request,
     requestAndCancelInSingleWrite,
@@ -515,6 +528,53 @@ test("fails loudly when agy resumes a different conversation", async () => {
   assert.match(response.result.content[0].text, /requested conversation-that-expired/);
   assert.match(response.result.content[0].text, /received conversation-somewhere-else/);
   await server.close();
+});
+
+test("refuses a reply to a conversation agy does not hold, before sending anything", async () => {
+  // A fleet session sent agy-reply a placeholder id: the bridge reported a
+  // different conversation, but agy had already run the prompt in another one.
+  const server = startServer();
+  for (const threadId of ["PLACEHOLDER", "0f6e1c1a-0000-4000-8000-000000000000"]) {
+    const response = await server.request("tools/call", {
+      name: "agy-reply",
+      arguments: { threadId, prompt: "Continue", model: "gemini-3.8-flash-low" }
+    });
+    assert.equal(response.error.code, -32602);
+    assert.match(response.error.message, /agy holds no conversation/);
+    assert.match(response.error.message, /nothing was sent/);
+  }
+  for (const threadId of ["../conversation-original", "conversation/original", ".hidden", "a b"]) {
+    const response = await server.request("tools/call", {
+      name: "agy-reply",
+      arguments: { threadId, prompt: "Continue", model: "gemini-3.8-flash-low" }
+    });
+    assert.equal(response.error.code, -32602);
+    assert.match(response.error.message, /is not an agy conversation id; nothing was sent/);
+  }
+  assert.deepEqual(readCalls(server.capturePath), []);
+  await server.close();
+});
+
+test("leaves the check to the run when agy's conversation directory is absent", async () => {
+  const server = startServer();
+  fs.rmSync(server.conversationsPath, { recursive: true, force: true });
+  const response = await server.request("tools/call", {
+    name: "agy-reply",
+    arguments: { threadId: "conversation-never-seen", prompt: "Continue", model: "gemini-3.8-flash-low" }
+  });
+  assert.equal(response.error, undefined);
+  assert.equal(response.result.threadId, "conversation-never-seen");
+  assert.equal(readCalls(server.capturePath).length, 1);
+  await server.close();
+});
+
+test("treats a conversations path that is not a directory as an unmeasured layout", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "agy-conversations-"));
+  temporaryDirectories.push(directory);
+  const file = path.join(directory, "conversations");
+  fs.writeFileSync(file, "");
+  assert.equal(bridge.unknownConversation("conversation-anything", file), null);
+  assert.equal(bridge.conversationsDirectory("/h"), path.join("/h", ".gemini", "antigravity-cli", "conversations"));
 });
 
 test("refuses to delegate from inside an already delegated agy session", async () => {

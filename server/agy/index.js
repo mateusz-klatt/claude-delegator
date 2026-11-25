@@ -313,6 +313,35 @@ function buildReplyArgs(args, coordination, threadId) {
   ];
 }
 
+// agy keeps one SQLite file per conversation, named by its id, under its own
+// directory in the user's home. Measured on agy 1.5.16 on WSL.
+function conversationsDirectory(home = os.homedir()) {
+  return path.join(home, ".gemini", "antigravity-cli", "conversations");
+}
+
+const CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+// An unknown --conversation id does not fail in agy: it runs the prompt in a
+// different conversation, which a fleet session observed reaching another
+// live one. The check after the run (runAgy) catches the mismatch only once
+// the prompt has been sent and possibly acted on, so refuse an id agy does not
+// hold before anything is sent. When the directory itself is absent the
+// layout is not one we measured, and the check after the run stays the only one.
+function unknownConversation(threadId, directory = conversationsDirectory()) {
+  if (!CONVERSATION_ID.test(threadId)) {
+    return `Invalid params: 'threadId' ${JSON.stringify(threadId)} is not an agy conversation id; nothing was sent`;
+  }
+  let present;
+  try {
+    present = fs.statSync(directory).isDirectory();
+  } catch {
+    return null;
+  }
+  if (!present) return null;
+  if (fs.existsSync(path.join(directory, `${threadId}.db`))) return null;
+  return `Invalid params: agy holds no conversation ${threadId} on this machine (looked in ${directory}); nothing was sent. Start a new session with agy instead`;
+}
+
 function validateAgyArgs(name, args) {
   if (args.model !== undefined && !VALID_MODELS.has(args.model)) {
     return `Invalid params: 'model' must be one of: ${[...VALID_MODELS].join(", ")}`;
@@ -320,6 +349,7 @@ function validateAgyArgs(name, args) {
   if (name === "agy-reply" && !isNonEmptyString(args.model)) {
     return "Invalid params: 'model' is required for agy-reply because a resumed conversation does not inherit its model — pass the model the start call used";
   }
+  if (name === "agy-reply") return unknownConversation(args.threadId.trim());
   return null;
 }
 
@@ -356,7 +386,9 @@ if (require.main === module) {
 module.exports = {
   buildAgyEnv,
   cliFallbacks,
+  conversationsDirectory,
   resolveWindowsShim,
+  unknownConversation,
   handlers,
   parseAgyOutput,
   printTimeoutFor,
